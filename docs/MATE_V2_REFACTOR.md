@@ -27,3 +27,16 @@
 - 聊天页未做「未连接服务器」的内联连接卡片，未配对时首条消息会报错提示去配对。
 - UI 重做（顶部助手头像/状态栏、悬浮箭头遮挡修复）未做。
 - 真实服务器配对、真机性能、旧 Mate 数据迁移、长期记忆读写均未验证。
+
+
+## 0.1.2-preview.1（2026-11-19，PR #6）
+
+- 修复：`MATE_PROVIDER` 之前只建了常量却没进 `DEFAULT_PROVIDERS`，导致李鱼助手解析不到模型、
+  首屏仍弹"没有可用模型"。现在它排在默认服务商第一位。
+- 修复：`mate_intro_summary` 未转义的撇号、`quick_start_page_setup_desc` 未转义的 `&`
+  （后者就是 PR #6 里 aapt 报的 1878 行），全部资源文件用 XML 解析器逐个验过。
+- 新增单测：默认助手能解析到 `liyu` 模型；升级设置会补回缺失的内置服务商；
+  用户自建服务商和助手在规整后原样保留、内置项只补一次。
+- 命名按最新规则：应用名 `Rikkahub-M`，内置服务商 `Mate 服务端`，模型 `Mate 网关`，
+  设置入口 `Connect to server / 连接服务器`。默认助手仍叫李鱼。
+- Release：https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.1.2-preview.1
