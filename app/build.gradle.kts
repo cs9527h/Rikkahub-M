@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.dafayu.rikkahubm.preview"
+        applicationId = "com.rikkahub.mate"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
