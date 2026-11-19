@@ -236,25 +236,25 @@ fun SettingAboutPage() {
                         item(
                             onClick = { context.openUrl("https://qm.qq.com/q/Yvc3ugiCoE") },
                             leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("联系开发者反馈使用问题") },
-                            headlineContent = { Text("问题反馈") },
+                            supportingContent = { Text("通过 QQ 联系 Rikkahub-M 作者，反馈问题或提出建议") },
+                            headlineContent = { Text("联系作者 · 问题反馈") },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M") },
                             leadingContent = { CardGroupIcon(HugeIcons.Earth, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("github.com/cs9527h/Rikkahub-M") },
-                            headlineContent = { Text(stringResource(R.string.about_page_website)) },
+                            headlineContent = { Text("Rikkahub-M 项目主页") },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/rikkahub/rikkahub") },
                             leadingContent = { CardGroupIcon(HugeIcons.Github, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("https://github.com/rikkahub/rikkahub") },
-                            headlineContent = { Text(stringResource(R.string.about_page_github)) },
+                            headlineContent = { Text("上游 RikkaHub · 开源署名") },
                         )
                         item(
-                            onClick = { context.openUrl("https://github.com/rikkahub/rikkahub/blob/master/LICENSE") },
+                            onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/master/LICENSE") },
                             leadingContent = { CardGroupIcon(HugeIcons.File02, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("https://github.com/rikkahub/rikkahub/blob/master/LICENSE") },
+                            supportingContent = { Text("AGPL-3.0 · 原版权声明保留") },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )
                     }
