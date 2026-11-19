@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.mate
 
 import androidx.compose.foundation.layout.Arrangement
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.ui.QRCodeScannerDialog
+import me.rerere.rikkahub.ui.context.LocalNavController
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.utils.plus
 
 /**
@@ -42,6 +46,7 @@ fun MateConnectionPage() {
     val store = remember(context) { MateGatewayStore(context) }
     val gateway = remember { MateGatewayClient() }
     val scope = rememberCoroutineScope()
+    val navController = LocalNavController.current
     var address by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("Mate Android") }
@@ -49,6 +54,34 @@ fun MateConnectionPage() {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("正在读取本机连接…") }
     var restoring by remember { mutableStateOf(true) }
+    var showScanner by remember { mutableStateOf(false) }
+
+    if (showScanner) {
+        QRCodeScannerDialog(
+            onResult = { data ->
+                showScanner = false
+                try {
+                    val uri = Uri.parse(data)
+                    require(uri.scheme == "mate" && uri.host == "pair") { "不是 Mate 配对码" }
+                    val safeBase = MateGatewayAddress.normalize(
+                        uri.getQueryParameter("server") ?: error("二维码缺少服务器地址")
+                    )
+                    val parsedCode = uri.getQueryParameter("code") ?: error("二维码缺少配对码")
+                    require(parsedCode.length in 24..80 && parsedCode.all { it.code in 33..126 })
+                    address = safeBase
+                    code = parsedCode
+                    message = "已读取一次性二维码，请核对服务器地址并点击配对"
+                } catch (_: Exception) {
+                    message = "二维码不是有效的 Mate 一次性配对格式"
+                }
+            },
+            onPermissionDenied = {
+                showScanner = false
+                message = "没有摄像头权限，可手动输入服务器地址与配对码"
+            },
+            onDismissRequest = { showScanner = false },
+        )
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -101,6 +134,11 @@ fun MateConnectionPage() {
             }
             if (!restoring && paired == null) {
                 item {
+                    TextButton(
+                        enabled = !busy, onClick = { showScanner = true }
+                    ) { Text("扫码导入设备配对信息") }
+                }
+                item {
                     OutlinedTextField(
                         value = code, onValueChange = { code = it },
                         modifier = Modifier.fillMaxWidth(), singleLine = true,
@@ -147,6 +185,18 @@ fun MateConnectionPage() {
                 item {
                     Button(
                         enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                        onClick = { navController.navigate(Screen.MateChat) }
+                    ) { Text("进入李鱼聊天") }
+                }
+                item {
+                    Button(
+                        enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                        onClick = { navController.navigate(Screen.MateDevices) }
+                    ) { Text("设备管理 · 生成配对二维码") }
+                }
+                item {
+                    Button(
+                        enabled = !busy, modifier = Modifier.fillMaxWidth(),
                         onClick = {
                             busy = true
                             scope.launch {
@@ -188,7 +238,7 @@ fun MateConnectionPage() {
             }
             item {
                 Text(
-                    "第一阶段：仅设备连接与授权检测。聊天请求、远端记忆和设备管理尚未接入本次 Fork，不会显示虚假的已同步状态。",
+                    "Mate V1 预览：提供独立李鱼聊天、请求恢复、本机历史、设备列表与配对二维码。远端记忆仅只读检索；跨设备历史同步、旧 Mate 数据导入和正式签名发布仍在开发。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
