@@ -1875,9 +1875,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="quick_start_page_step_todo">待完成</string>
   <string name="quick_start_page_step_optional">可选</string>
   <string name="quick_start_page_ready_title">一切就绪</string>
-  <string name="quick_start_page_ready_desc">独立 API 聊天已准备好，李鱼服务器聊天功能仍在另行开发。</string>
+  <string name="quick_start_page_ready_desc">李鱼已作为内置聊天助手提供。连接服务器后即可使用；独立 API 可按需配置。</string>
   <string name="quick_start_page_setup_title">几分钟完成配置</string>
-  <string name="quick_start_page_setup_desc">使用独立模型聊天，请先配置提供商和默认模型。连接李鱼请切换到「李鱼 · Mate」页；李鱼服务器聊天目前还在开发中。</string>
+  <string name="quick_start_page_setup_desc">Mate 默认使用李鱼。请在「连接与设备」中配对李鱼服务器；独立 API 模型可按需添加。</string>
   <string name="quick_start_page_start_chat">开始聊天</string>
   <string name="quick_start_page_required_steps">必要步骤</string>
   <string name="quick_start_page_provider_title">配置提供商</string>
@@ -1915,7 +1915,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="quick_start_page_deepseek_get_key">获取 API Key</string>
   <string name="quick_start_page_deepseek_configure">配置 DeepSeek</string>
   <string name="quick_start_card_title">还没有可用的模型</string>
-  <string name="quick_start_card_desc">在 Mate 使用独立 AI，请先配置提供商和默认模型。李鱼服务器连接正在开发中，配对不等于已开通聊天。</string>
+  <string name="quick_start_card_desc">李鱼模型暂不可用。请检查内置李鱼提供商及连接状态；需要独立 AI 时可添加其他模型。</string>
   <string name="setting_page_quick_start">快速入门</string>
   <string name="setting_page_quick_start_desc">配置独立 API、了解李鱼连接及 DeepSeek 记录导入</string>
   <string name="setting_page_share_text">Rikkahub-M · 开源 Android AI 客户端\n源码：https://github.com/cs9527h/Rikkahub-M</string>
