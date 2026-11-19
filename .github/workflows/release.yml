@@ -171,6 +171,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: Rikkahub-M-signed-apk
+          path: dist
       - name: Create or update preview release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -178,8 +179,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v0.1.0-preview.1"
-          ls -lh
-          cat SHA256SUMS.txt
+          ls -lh dist
+          cat dist/SHA256SUMS.txt
           NOTES=$(cat <<'EOF'
           Rikkahub-M 0.1.0-preview.1
 
@@ -194,9 +195,9 @@ jobs:
           EOF
           )
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.apk SHA256SUMS.txt APK_SIGNING.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" dist/*.apk SHA256SUMS.txt APK_SIGNING.txt \
+            gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
               --repo "$GITHUB_REPOSITORY" --prerelease \
               --title "Rikkahub-M 0.1.0-preview.1" --notes "$NOTES"
           fi
