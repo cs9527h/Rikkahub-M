@@ -37,8 +37,14 @@ jobs:
       # setup-android@v3 invokes removed "sdkmanager tools" and fails in CI.
       - name: Install SDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "build-tools;37.0.0"
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
+          fi
+          test -x "$SDK_MANAGER" || { echo "Android SDK cmdline tools unavailable"; exit 1; }
+          yes | "$SDK_MANAGER" --licenses >/dev/null || true
+          "$SDK_MANAGER" "platform-tools" "platforms;android-37" "build-tools;37.0.0"
       - name: Generate CI-only Firebase placeholder
         # This is not a production Firebase project. Never upload real secrets.
         # Placeholder allows Kotlin/Compose build checks without borrowing upstream keys.
