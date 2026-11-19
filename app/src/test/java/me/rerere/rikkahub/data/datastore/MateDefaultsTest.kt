@@ -41,6 +41,23 @@ class MateDefaultsTest {
         assertFalse(normalized.isNotConfigured())
     }
 
+    @Test fun defaultAssistantCarriesItsOwnIdentity() {
+        val assistant = DEFAULT_ASSISTANTS.single()
+        assertEquals("李鱼", assistant.name)
+        assertTrue(assistant.useAssistantAvatar)
+        assertTrue(assistant.avatar is me.rerere.rikkahub.data.model.Avatar.Emoji)
+        assertEquals(MATE_MODEL_ID, assistant.chatModelId)
+    }
+
+    @Test fun newAssistantDefaultsToItsOwnAvatar() {
+        // 新助手默认用自己的名字和头像，不要回退成模型名（Mate 网关）
+        assertTrue(Assistant(name = "临时").useAssistantAvatar)
+    }
+
+    @Test fun fastModelIdFallsBackToTheBuiltInAutoId() {
+        assertEquals(DEFAULT_AUTO_MODEL_ID, Settings().fastModelId)
+    }
+
     @Test fun normalizedSettingsKeepUserProvidersAndAssistants() {
         val customProvider = ProviderSetting.OpenAI(
             id = Uuid.parse("aa11bb22-cc33-dd44-ee55-ff6677889900"),

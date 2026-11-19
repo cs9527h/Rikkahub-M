@@ -1,12 +1,15 @@
 package me.rerere.rikkahub.data.ai
 
 import android.content.Context
+import me.rerere.ai.core.MessageRole
+import me.rerere.ai.provider.MATE_GATEWAY_CHAT_PATH
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Conversation
@@ -21,10 +24,12 @@ class ConversationMetaGenerator(
 ) {
     /** 快速模型或它的提供商找不到时抛出异常，提示用户检查设置 */
     suspend fun generateTitle(settings: Settings, conversation: Conversation): String {
-        val model = settings.findModelById(settings.fastModelId)
-            ?: throw IllegalStateException(context.getString(R.string.error_fast_model_not_found))
-        val provider = model.findProvider(settings.providers)
-            ?: throw IllegalStateException(context.getString(R.string.error_fast_model_provider_not_found))
+        // 快速模型可能指向已被删除的模型，退回当前会话模型；再不行就用本地标题
+        val model = settings.findModelById(settings.fastModelId) ?: settings.getCurrentChatModel()
+        val provider = model?.findProvider(settings.providers)
+        if (model == null || provider == null) return localTitle(conversation)
+        // 网关不是 OpenAI 接口，用它生成标题会把元数据请求塞进李鱼的对话与记忆里
+        if (isMateGateway(provider)) return localTitle(conversation)
         return generate(
             settings,
             model,
@@ -41,6 +46,7 @@ class ConversationMetaGenerator(
     suspend fun generateSuggestions(settings: Settings, conversation: Conversation): List<String>? {
         val model = settings.findModelById(settings.fastModelId) ?: return null
         val provider = model.findProvider(settings.providers) ?: return null
+        if (isMateGateway(provider)) return null
         return generate(
             settings,
             model,
@@ -55,6 +61,13 @@ class ConversationMetaGenerator(
             .filter { it.isNotBlank() }
             .take(10)
     }
+
+    private fun isMateGateway(provider: ProviderSetting): Boolean =
+        provider is ProviderSetting.OpenAI && provider.chatCompletionsPath == MATE_GATEWAY_CHAT_PATH
+
+    /** 没有可用快速模型时的本地标题：取第一条用户消息，不碰服务器 */
+    private fun localTitle(conversation: Conversation): String =
+        localTitleFrom(conversation.currentMessages, context.getString(R.string.chat_page_new_chat))
 
     private suspend fun generate(
         settings: Settings,
@@ -83,4 +96,21 @@ class ConversationMetaGenerator(
         )
         return result.message.toText()
     }
+}
+
+/**
+ * 纯函数版本的本地标题：取第一条用户消息压成一行后截断。
+ * 网关模式下不请求模型，靠它保证新会话也有可读标题。
+ */
+internal fun localTitleFrom(
+    messages: List<UIMessage>,
+    fallback: String,
+): String {
+    val text = messages
+        .firstOrNull { it.role == MessageRole.USER }
+        ?.toText()
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        .orEmpty()
+    return text.take(24).ifBlank { fallback }
 }

@@ -13,6 +13,8 @@ internal val DEFAULT_ASSISTANTS = listOf(
         id = DEFAULT_ASSISTANT_ID,
         name = "李鱼",
         chatModelId = MATE_MODEL_ID,
+        avatar = me.rerere.rikkahub.data.model.Avatar.Emoji("🐟"),
+        useAssistantAvatar = true,
         systemPrompt = ""
     ),
 )
