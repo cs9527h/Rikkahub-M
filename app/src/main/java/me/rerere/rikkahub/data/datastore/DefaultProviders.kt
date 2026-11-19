@@ -1,10 +1,7 @@
 package me.rerere.rikkahub.data.datastore
 
-import androidx.compose.ui.res.stringResource
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.QuotaQuery
-import me.rerere.rikkahub.R
-import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import kotlin.uuid.Uuid
 
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
@@ -33,14 +30,6 @@ val DEFAULT_PROVIDERS = listOf(
         baseUrl = "https://api.siliconflow.cn/v1",
         apiKey = "",
         builtIn = true,
-        description = {
-            MarkdownBlock(
-                content = """
-                    ${stringResource(R.string.silicon_flow_description)}
-                    ${stringResource(R.string.silicon_flow_website)}
-                """.trimIndent()
-            )
-        },
     ),
     ProviderSetting.OpenAI(
         id = DEEPSEEK_PROVIDER_ID,
