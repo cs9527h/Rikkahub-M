@@ -80,7 +80,7 @@ jobs:
       - name: Unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testGithubReleaseUnitTest --stacktrace --no-daemon
+          ./gradlew :app:testGithubDebugUnitTest --stacktrace --no-daemon
       - name: Build signed release APK
         run: ./gradlew :app:assembleGithubRelease --stacktrace --no-daemon
       - name: Verify signature, package and checksum
