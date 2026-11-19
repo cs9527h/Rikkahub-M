@@ -108,7 +108,7 @@ fun MateConnectionPage() {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Mate · 连接李鱼") },
+    Scaffold(topBar = { TopAppBar(title = { Text("Mate · 服务器连接") },
         navigationIcon = { BackButton() }) }) { insets ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -117,7 +117,7 @@ fun MateConnectionPage() {
         ) {
             item {
                 Text("AstrBot 私人服务器", style = MaterialTheme.typography.titleMedium)
-                Text("此连接使用 Mate 网关协议 3，不是普通 OpenAI API。配对不会修改原 AstrBot、QQ 或李鱼记忆。",
+                Text("此连接使用 Mate 网关协议 3，不是普通 OpenAI API。配对不会修改原有 AstrBot 机器人或服务器记忆。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
@@ -186,7 +186,7 @@ fun MateConnectionPage() {
                     Button(
                         enabled = !busy, modifier = Modifier.fillMaxWidth(),
                         onClick = { navController.navigate(Screen.MateChat) }
-                    ) { Text("进入李鱼聊天") }
+                    ) { Text("进入聊天") }
                 }
                 item {
                     Button(
@@ -238,7 +238,7 @@ fun MateConnectionPage() {
             }
             item {
                 Text(
-                    "Mate V1 预览：提供独立李鱼聊天、请求恢复、本机历史、设备列表与配对二维码。远端记忆仅只读检索；跨设备历史同步、旧 Mate 数据导入和正式签名发布仍在开发。",
+                    "Mate V1 预览：提供独立服务端聊天、请求恢复、本机历史、设备列表与配对二维码。远端记忆仅只读检索；跨设备历史同步、旧 Mate 数据导入和正式签名发布仍在开发。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
