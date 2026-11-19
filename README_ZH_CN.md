@@ -1,63 +1,59 @@
 <div align="center">
-  <img src="docs/icon.png" alt="App 图标" width="100" />
-  <h1>RikkaHub</h1>
-
-一个原生Android LLM 聊天客户端，支持切换不同的供应商进行聊天 🤖💬
-
-[English](README.md) | [繁體中文](README_ZH_TW.md) | 简体中文
-
-
+  <h1>Rikkahub-M · Mate</h1>
+  <p><strong>保留 RikkaHub 的好体验，让李鱼成为真正融入 App 的伙伴。</strong></p>
+  <p>原生 Android AI 客户端 · 自由模型配置 · AstrBot／李鱼专属连接</p>
+  <p>简体中文 · <a href="README_ZH_TW.md">繁體中文</a> · <a href="README.md">English</a></p>
 </div>
-
-<div align="center">
-  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
-</div>
-
-
-## ✨ 功能特色
-
-- 🎨 现代化安卓APP设计（Material 3 Expressive / 预测性返回）
-- 📦 工作区：基于 proot 的 Linux 智能体环境
-- 📱 Phone Use：让 AI 操控手机
-- 🎬 媒体生成（图片、视频）
-- 🔄 多种类型的供应商支持，自定义 API / URL / 模型（目前支持 OpenAI、Google、Anthropic）
-- 🖥️ Web多端访问支持
-- 🛠️ MCP 与 Skills 支持
-- 📝 Markdown 渲染（支持代码高亮、数学公式、表格、Mermaid）
-- 🔍 搜索功能（Exa、Tavily、Zhipu、LinkUp、Brave、Perplexity、..）
-- 🧩 Prompt 变量（模型名称、时间等）
-- 🤳 二维码导出和导入提供商
-- 🤖 智能体自定义
-- 🧠 基于文件的记忆
-- 📝 AI翻译
-- 🌐 自定义HTTP请求头和请求体
-- 💌 SillyTavern 角色卡导入
-
-## ✨ 开发
 
 > [!IMPORTANT]
-> 本项目不接受 Pull Request（PR）。
+> **项目仍在重构。** Mate 专属「连接李鱼」入口、一次性配对和网关验证目前已提交至集成分支，但**尚未接入李鱼实际聊天**。服务器记忆、跨设备同步、旧 Mate 数据导入和可安装稳定 APK 均未完成。请不要卸载旧 Mate。
 
-本项目使用[Android Studio](https://developer.android.com/studio)开发。
+## Mate 是什么？
 
-技术栈文档:
+**Mate 是 App 名称，Rikkahub-M 是开发仓库名称。** 项目以 [RikkaHub](https://github.com/rikkahub/rikkahub) 的 Kotlin / Jetpack Compose 架构为基础，保留其原生 UI、自然动画、聊天管理、模型配置及丰富的工具能力，再逐步整合旧 Mate 的 **AstrBot 私人连接、李鱼人格、长期记忆、历史同步与设备管理**。
 
-- [Kotlin](https://kotlinlang.org/) (开发语言)
-- [Koin](https://insert-koin.io/) (依赖注入)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI 框架)
-- [DataStore](https://developer.android.com/topic/libraries/architecture/datastore?hl=zh-cn#preferences-datastore) (
-  偏好数据存储)
-- [Room](https://developer.android.com/training/data-storage/room) (数据库)
-- [Coil](https://coil-kt.github.io/coil/) (图片加载)
-- [Material 3 Expressive](https://m3.material.io/) (UI 设计)
-- [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) (导航)
-- [Okhttp](https://square.github.io/okhttp/) (HTTP 客户端)
-- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (Json序列化)
+目标不是给 RikkaHub 换一个名字，而是让 **独立模型聊天** 与 **李鱼服务器聊天** 共存，互不干扰。
 
-> [!TIP]
-> 你需要在 `app` 文件夹下添加 `google-services.json` 文件才能构建应用。
+## 功能介绍
 
+### 原生聊天体验（继承 RikkaHub）
 
----
+- **自然、流畅的聊天：** Material 3 Expressive、深浅色主题、页面过渡和长聊天列表。
+- **自由选择模型：** 配置自己的 AI 提供商、API 地址和模型；保留独立 API 模式。
+- **完整消息表达：** Markdown、代码、公式、图片、文件与多轮会话。
+- **实用工具：** 搜索、模型助手、MCP、Skills、语音、工作区与备份等上游功能，具体以已配置能力为准。
 
-本仓库是基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的独立 AGPL-3.0 分支，保留原作者版权与 [许可证](LICENSE)。本分支不展示赞助广告和捐赠入口。
+### 李鱼与 Mate（逐步迁移）
+
+| 功能 | 当前状态 |
+|---|---|
+| 设置 → **连接李鱼服务器** | 开发分支已实现源码入口 |
+| 一次性配对、协议 3 验证、设备凭据加密保存 | 已提交源码；尚未完成编译和联调 |
+| 在 RikkaHub 聊天界面中直接与李鱼对话 | 待接入 |
+| 李鱼人格、服务器记忆与渐进式成长 | 待接入，不会擅自修改服务器记忆 |
+| 历史聊天、图片附件、删除同步和跨端备份 | 待接入 |
+| 配对二维码、可视化设备管理 | 待接入 |
+| 旧 Mate 聊天记录与设置迁移 | 待实现无损导入和回滚 |
+| 真机流畅度验收、签名 APK、Release | 尚未完成 |
+
+**两套记忆不能混为一谈：** RikkaHub 的本地文件记忆与李鱼的 AstrBot 服务器记忆属于不同系统，迁移时必须验证归属、权限和同步边界。
+
+## 第一次使用
+
+1. **想使用自己的 API：** 打开「快速开始 → 独立 API」，先配置提供商和默认模型。
+2. **想连接李鱼：** 打开「快速开始 → 李鱼 · Mate」或「设置 → 连接李鱼服务器」，使用服务端生成的一次性配对码。**当前仅支持授权与连接验证，配对成功不代表已经可以聊天。**
+3. **已经在用旧 Mate：** 暂时继续保留旧 App。新旧数据库并不兼容，验证完成之前不能直接覆盖安装。
+
+## 我们坚持的体验
+
+**不靠删除动画换流畅，不靠堆叠设置充功能。** 页面简洁，消息清晰，功能好找；不添加广告、赞助名单、返佣推荐或捐赠弹窗。所有重大更新需要有源码记录、构建测试、数据兼容性验证与更新日志。
+
+## 开发与版权
+
+项目采用 Kotlin、Jetpack Compose、Room、Koin、Navigation 3。当前仍使用上游构建体系；如需构建，应配置自己的 `app/google-services.json`，不要复用不属于本项目的生产配置。
+
+- [Mate 集成与迁移记录](docs/MATE_FORK_MIGRATION.md)
+- [Mate 使用指南与开发状态](docs/MATE_USER_GUIDE.md)
+- [仓库源码](https://github.com/cs9527h/Rikkahub-M)
+
+本项目为 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方独立 Fork**，遵循 **AGPL-3.0**。保留原作者署名及 [许可证](LICENSE)，不冒充官方版本。
