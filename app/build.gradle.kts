@@ -23,11 +23,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "me.rerere.rikkahub"
+        applicationId = "com.dafayu.rikkahubm.preview"
         minSdk = 26
         targetSdk = 37
-        versionCode = 197
-        versionName = "3.3.0"
+        versionCode = 1
+        versionName = "0.1.0-mate-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
