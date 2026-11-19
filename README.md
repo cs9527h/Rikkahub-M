@@ -1,62 +1,59 @@
 <div align="center">
-  <img src="docs/icon.png" alt="App Icon" width="100" />
-  <h1>RikkaHub</h1>
-
-A native Android LLM chat client that supports switching between different providers for
-conversations 🤖💬
-
-
-[简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md) | English
+  <h1>Rikkahub-M · Mate</h1>
+  <p><strong>An expressive Android AI client with a dedicated path to Li Yu (李鱼).</strong></p>
+  <p>RikkaHub's native experience × Mate's personal AstrBot connection and memory roadmap.</p>
+  <p><a href="README_ZH_CN.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · English</p>
 </div>
-
-<div align="center">
-  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
-</div>
-
-## ✨ Features
-
-- 🎨 Material 3 Expressive design
-- 📦 Workspace: a proot-based Linux agent environment
-- 📱 Phone Use: let the AI operate your phone
-- 🎬 Media generation (image and video)
-- 🔄 Multiple AI Provider Support: custom API / URL / models (all OpenAI, Google, Anthropic compatible api)
-- 🖥️ Web access for multi-platform use
-- 🛠️ MCP and Skills support
-- 📝 Markdown Rendering (with code highlighting, Latex formulas, tables, Mermaid)
-- 🔍 Search capabilities (Exa, Tavily, Zhipu, LinkUp, Brave, Perplexity, etc.)
-- 🧩 Prompt variables (model name, time, etc.)
-- 🤳 QR code export and import for providers
-- 🤖 Agent customization
-- 🧠 File-based memory
-- 📝 AI Translation
-- 🌐 Custom HTTP request headers and request bodies
-- 💌 Silly Tavern character card import
-
-## ✨ Development
 
 > [!IMPORTANT]
-> This project does not accept pull requests (PRs).
+> **In development.** This fork currently has an experimental Mate gateway pairing and verification screen **on its integration branch**. Pairing is not yet connected to chat generation; server memories, cross-device synchronization, legacy Mate import, and a verified installable Mate release are **not complete**. Do not uninstall the old Mate app.
 
-This project is developed using [Android Studio](https://developer.android.com/studio).
+## What is Mate?
 
-Technology stack documentation:
+**Mate** is the app identity. **Rikkahub-M** is the repository, based on the [RikkaHub](https://github.com/rikkahub/rikkahub) open-source Android client. The goal is to retain RikkaHub's Compose UI, responsive navigation, native animations and flexible LLM capabilities while adding the personal Mate experience around **Li Yu / 李鱼** and an existing AstrBot deployment.
 
-- [Kotlin](https://kotlinlang.org/) (Development language)
-- [Koin](https://insert-koin.io/) (Dependency Injection)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI framework)
-- [DataStore](https://developer.android.com/topic/libraries/architecture/datastore) (Preference data
-  storage)
-- [Room](https://developer.android.com/training/data-storage/room) (Database)
-- [Coil](https://coil-kt.github.io/coil/) (Image loading)
-- [Material 3 Expressive](https://m3.material.io/) (UI design)
-- [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) (Navigation)
-- [Okhttp](https://square.github.io/okhttp/) (HTTP client)
-- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (JSON serialization)
+### What works in the upstream-based client
 
-> [!TIP]
-> You need a `google-services.json` file at `app` folder to build the app.
+- Chat with separately configured AI providers and models, streaming responses and searchable conversation history.
+- Compose / Material 3 Expressive interface, dark and light themes, adaptive layouts and transitions.
+- Markdown, code, equations, images, files, search, assistants and model settings.
+- Additional upstream modules such as MCP, Skills, workspace, voice and backup features (availability depends on configuration).
 
+### Mate-specific work
 
----
+| Capability | Current integration status |
+|---|---|
+| Always-visible **Connect Li Yu** entry | Source implemented on the Mate integration branch |
+| One-time pairing, HTTPS gateway protocol v3 verification, encrypted local device credentials | Source implemented; build and server test pending |
+| Send/receive Li Yu chat through AstrBot | Not yet integrated |
+| Remote persona, verified memory ownership, gradual growth | Planned; server authorization required |
+| Server chat history, media, tombstones, cross-device sync and backup | Planned |
+| Pairing QR / server device administration | Planned |
+| Import old Mate chat and settings without data loss | Planned, no destructive migration |
+| Signed APK, performance benchmarks and GitHub Release | Pending |
 
-This is an independent AGPL-3.0 fork of [RikkaHub](https://github.com/rikkahub/rikkahub). Original copyright notices and the [license](LICENSE) are retained. No sponsor promotions or donations are solicited by this fork.
+**Important:** RikkaHub's local file memory is distinct from the AstrBot server's memory. This fork does not silently mix or delete either.
+
+## Getting started (development preview)
+
+1. For ordinary AI chat, go to **Quick start → Independent API** and configure a provider and a model.
+2. For Li Yu, go to **Quick start → Li Yu (Mate)** or **Settings → Connect Li Yu server**. Pairing is an experimental device-authorization feature, **not yet a working Li Yu chat mode**.
+3. Existing Mate users should keep their current app and data until a tested import/upgrade is released.
+
+## UI and product principles
+
+No advertisements, sponsor lists, affiliate recommendations or donation prompts. Keep meaningful animations rather than removing them to disguise jank. Minimize layout noise, retain accessible controls, do not overwrite personal data, and verify real-device performance before release.
+
+## Development and release
+
+- Kotlin, Jetpack Compose, Material 3 Expressive, Koin, Room and Navigation 3.
+- Build commands from the upstream project: `./gradlew assembleGithubDebug` and `./gradlew test`.
+- The upstream project expects `app/google-services.json` in its configured build environment; use a properly configured own project file instead of the upstream production config.
+- Review `docs/MATE_FORK_MIGRATION.md` and `docs/MATE_USER_GUIDE.md` for migration scope and current limitations.
+- This fork's package name and signing strategy for test releases must be verified before publishing. Never replace the existing Mate installation with an unverified APK.
+
+## Origin and license
+
+Independent fork of [RikkaHub](https://github.com/rikkahub/rikkahub), licensed under **AGPL-3.0**. The original author's copyright and licensing notices are preserved; this fork is not an official RikkaHub release. See [LICENSE](LICENSE) and the upstream source for attribution. No sponsorship or donation is requested by this fork.
+
+Source: https://github.com/cs9527h/Rikkahub-M

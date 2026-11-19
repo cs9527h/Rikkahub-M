@@ -7,7 +7,7 @@
   <string name="about_page_version">Версия</string>
   <string name="about_page_website">Веб-сайт</string>
   <string name="add">Добавить</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Mate</string>
   <string name="asr_button_content_description">Распознавание речи</string>
   <string name="asr_button_stop">Стоп</string>
   <string name="assistant_detail_basic_desc">Настройте имя, аватар, модель и параметры</string>
@@ -735,7 +735,7 @@
   <string name="setting_model_page_translate_model_desc">Модель, используемая для функций перевода</string>
   <string name="setting_model_page_translate_prompt_vars">Переменные: Исходный текст: {source_text}, Целевой язык: {target_lang}</string>
   <string name="setting_page_about">О приложении</string>
-  <string name="setting_page_about_desc">Об этом приложении</string>
+  <string name="setting_page_about_desc">About Mate, development progress and licenses</string>
   <string name="setting_page_assistant">Ассистент</string>
   <string name="setting_page_assistant_desc">Настроить персонализированных ассистентов (агентов)</string>
   <string name="setting_page_built_in_tools">Встроенные инструменты</string>
@@ -764,7 +764,7 @@
   <string name="setting_page_display_setting">Настройки отображения</string>
   <string name="setting_page_display_setting_desc">Управление настройками отображения</string>
   <string name="setting_page_documentation">Документация</string>
-  <string name="setting_page_documentation_desc">Просмотрите инструкции по использованию приложения и справочную документацию</string>
+  <string name="setting_page_documentation_desc">View the Mate user guide and feature status</string>
   <string name="setting_page_dynamic_color">Динамический цвет</string>
   <string name="setting_page_dynamic_color_desc">Динамически создавать цвета темы приложения на основе обоев</string>
   <string name="setting_page_extensions">Расширения</string>
@@ -1872,15 +1872,15 @@
   <string name="backup_page_import_deepseek_summary">Импортировано бесед: %1$d\nПропущено существующих бесед: %2$d\nПропущено пустых бесед: %3$d\nВложений, отсутствующих в экспорте или не импортированных: %4$d. Их имена файлов сохранены как заполнители.</string>
   <string name="backup_page_import_deepseek_missing_attachment">[Вложение отсутствует в экспорте или его не удалось импортировать: %1$s]</string>
   <string name="quick_start_page_title">Быстрый старт</string>
-  <string name="quick_start_page_tab_general">Общие</string>
+  <string name="quick_start_page_tab_general">Independent API</string>
   <string name="quick_start_page_tab_deepseek">Переход с DeepSeek</string>
   <string name="quick_start_page_step_done">Готово</string>
   <string name="quick_start_page_step_todo">Сделать</string>
   <string name="quick_start_page_step_optional">Необязательно</string>
   <string name="quick_start_page_ready_title">Всё готово</string>
-  <string name="quick_start_page_ready_desc">Теперь можно начать общение. Необязательные функции ниже можно настроить в любое время.</string>
+  <string name="quick_start_page_ready_desc">Independent AI chat is ready. Li Yu server chat is still in development.</string>
   <string name="quick_start_page_setup_title">Настройка за несколько минут</string>
-  <string name="quick_start_page_setup_desc">RikkaHub сам не предоставляет модели, поэтому нужно подключить провайдера моделей. Выполните два обязательных шага ниже, чтобы начать общение.</string>
+  <string name="quick_start_page_setup_desc">For independent AI chat, connect a model provider and select a model. Li Yu server chat is still in development.</string>
   <string name="quick_start_page_model_locked">Доступно здесь после завершения предыдущего шага и добавления моделей.</string>
   <string name="quick_start_page_optional_features">Дополнительные функции</string>
   <string name="quick_start_page_search_title">Веб-поиск</string>
@@ -1908,9 +1908,9 @@
   <string name="quick_start_page_deepseek_get_key">Получить API-ключ</string>
   <string name="quick_start_page_deepseek_configure">Настроить DeepSeek</string>
   <string name="quick_start_card_title">Модели пока недоступны</string>
-  <string name="quick_start_card_desc">Для чата RikkaHub нужен провайдер моделей. Следуйте инструкции быстрого старта, чтобы настроить провайдера и модель по умолчанию, или перенесите историю чатов из DeepSeek.</string>
+  <string name="quick_start_card_desc">Configure an independent AI provider to chat in Mate. Li Yu server chat is still in development.</string>
   <string name="setting_page_quick_start">Быстрый старт</string>
-  <string name="setting_page_quick_start_desc">Пошаговая настройка провайдеров и моделей или перенос из DeepSeek</string>
+  <string name="setting_page_quick_start_desc">Set up an independent API, Li Yu pairing or DeepSeek import</string>
   <string name="quick_start_page_deepseek_title">Переход с DeepSeek</string>
   <string name="quick_start_page_deepseek_desc">Импортируйте историю чатов с сайта или из приложения DeepSeek в RikkaHub, затем подключите API DeepSeek, чтобы продолжить общение.</string>
   <string name="quick_start_page_deepseek_migrate_chats">Перенести историю чатов</string>
@@ -1922,4 +1922,15 @@
   <string name="quick_start_page_deepseek_importing">Импорт…</string>
   <string name="quick_start_page_deepseek_import_another">Импортировать другой ZIP</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
+  <string name="mate_intro_title">Meet Mate: native AI chat and Li Yu</string>
+  <string name="mate_intro_summary">RikkaHub's native Android chat and independent models, with Mate's private AstrBot connection under development.</string>
+  <string name="mate_intro_connection_heading">Connect Li Yu</string>
+  <string name="mate_intro_connection_detail">Enter the HTTPS gateway and a one-time code from your server. Device pairing is experimental; Li Yu chat is not yet connected.</string>
+  <string name="mate_intro_connect_button">Open pairing</string>
+  <string name="mate_intro_progress_heading">Migration progress</string>
+  <string name="mate_intro_progress_detail">RikkaHub chat works with your configured models. Li Yu chat, server memory, history sync, device administration and old Mate import are still pending.</string>
+  <string name="mate_intro_old_app_heading">Keep your old Mate app</string>
+  <string name="mate_intro_old_app_detail">Do not delete the old Mate app. Safe data migration and a signed release are not yet verified.</string>
+  <string name="mate_intro_origin">Independent AGPL-3.0 fork of RikkaHub, not the official app.</string>
+  <string name="mate_intro_tab">Li Yu · Mate</string>
 </resources>

@@ -166,10 +166,34 @@ fun SettingAboutPage() {
                         )
 
                         Text(
-                            text = "RikkaHub",
+                            text = "Mate",
                             style = MaterialTheme.typography.headlineLargeEmphasized.copy(
                                 fontWeight = FontWeight.Black,
                             ),
+                        )
+                        Text(
+                            text = stringResource(R.string.mate_intro_summary),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                item {
+                    val containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    CardGroup {
+                        item(
+                            onClick = { navController.navigate(Screen.QuickStart) },
+                            leadingContent = { CardGroupIcon(HugeIcons.Earth, containerColor = containerColor, contentColor = contentColor) },
+                            supportingContent = { Text(stringResource(R.string.mate_intro_progress_detail)) },
+                            headlineContent = { Text(stringResource(R.string.mate_intro_progress_heading)) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.MateConnection) },
+                            leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
+                            supportingContent = { Text(stringResource(R.string.mate_intro_connection_detail)) },
+                            headlineContent = { Text(stringResource(R.string.mate_intro_connect_button)) },
                         )
                     }
                 }
