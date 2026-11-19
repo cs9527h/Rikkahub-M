@@ -69,7 +69,26 @@ fun ChatMessageNerdLine(
 ) {
     val settings = LocalSettings.current
     val usage = message.usage
-    if (!settings.displaySetting.showTokenUsage || usage == null) return
+    if (!settings.displaySetting.showTokenUsage) return
+    if (usage == null) {
+        // 网关没有返回准确 usage 时仍显示可从消息时间戳计算的真实耗时。
+        // 不将未提供的 Token 数量伪装成 0 或估算计费。
+        val durationMillis = message.finishedAt?.let { finished ->
+            message.generationTimeMs ?: Duration.between(
+                message.createdAt.toJavaLocalDateTime(),
+                finished.toJavaLocalDateTime()
+            ).toMillis()
+        }?.takeIf { it > 0 }
+        if (durationMillis != null) {
+            Text(
+                text = "耗时 " + (durationMillis / 1000f).toFixed(1) + "s · Token 未提供",
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                modifier = modifier,
+            )
+        }
+        return
+    }
 
     val stats = remember(message) { message.nerdStats(usage) }
     // 消息里的模型快照不带上下文窗口，只能从设置里按 ID 找；模型被删了就不显示窗口大小

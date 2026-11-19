@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <resources>
   <string name="about_page_github">Github</string>
-  <string name="about_page_license">License</string>
+  <string name="about_page_license">开源许可</string>
   <string name="about_page_system">系统</string>
   <string name="about_page_title">关于</string>
   <string name="about_page_version">版本</string>
@@ -781,7 +781,7 @@
   <string name="setting_page_about">关于</string>
   <string name="setting_page_about_desc">Mate 介绍、版本、版权与迁移进度</string>
   <string name="setting_page_assistant">助手</string>
-  <string name="setting_page_assistant_desc">设置个性化助手 (智能体)</string>
+  <string name="setting_page_assistant_desc">设置个性化助手</string>
   <string name="setting_page_built_in_tools">内置工具</string>
   <string name="setting_page_built_in_tools_desc">选择模型支持的内置工具, 这些工具直接由API内置，无需APP提供，当前这个功能仅支持Gemini官方API。</string>
   <string name="setting_page_built_in_tools_image_generation">图像生成</string>
@@ -1922,4 +1922,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="mate_settings_group">连接与设备</string>
   <string name="mate_connection_title">连接服务器</string>
   <string name="mate_connection_desc">首次配对、连接检测、重新授权</string>
+  <string name="mate_intro_title">Rikkahub-M · 自然流畅的 AI 聊天</string>
+  <string name="mate_intro_summary">Rikkahub-M 将原生聊天与私人云服务器连接起来。连接服务器后，即可使用默认助手进行对话。</string>
+  <string name="mate_intro_connection_heading">连接云服务器</string>
+  <string name="mate_intro_connection_detail">首次使用请填写服务器地址并完成设备配对，已配对的设备无需重复配置。</string>
+  <string name="mate_intro_connect_button">连接服务器</string>
+  <string name="mate_intro_progress_heading">开发进度</string>
+  <string name="mate_intro_progress_detail">部分服务器高级能力仍需验证，未提供的功能不会显示虚假数据。</string>
+  <string name="mate_intro_old_app_heading">迁移提醒</string>
+  <string name="mate_intro_old_app_detail">旧版数据尚未完成兼容迁移，请妥善保留原有安装和备份。</string>
+  <string name="mate_intro_origin">本项目基于开源 RikkaHub 开发，遵守 AGPL-3.0 许可证。</string>
+  <string name="mate_intro_tab">云服务器</string>
 </resources>

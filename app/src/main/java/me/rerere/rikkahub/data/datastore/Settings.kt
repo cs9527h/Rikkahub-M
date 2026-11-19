@@ -203,4 +203,6 @@ data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
+    // 用户主动开启后，在应用进入前台和退到后台时安排完整备份。
+    val autoBackupOnAppLifecycle: Boolean = false,
 )

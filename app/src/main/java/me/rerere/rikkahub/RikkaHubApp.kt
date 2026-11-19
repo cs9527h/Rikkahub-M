@@ -34,6 +34,7 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.skills.SkillManager
 import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.data.sync.RestoreFailedException
+import me.rerere.rikkahub.mate.MateAutoBackupWorker
 import me.rerere.rikkahub.di.appModule
 import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
@@ -115,6 +116,7 @@ class RikkaHubApp : Application() {
         // Resume media generations interrupted by the last process death
         resumeMediaCreations()
         resumeMemoryConsolidation()
+        observeMateAutoBackup()
 
         // Increment launch count
         incrementLaunchCount()
@@ -146,6 +148,23 @@ class RikkaHubApp : Application() {
                 Log.e(TAG, "resumeMemoryConsolidation failed", it)
             }
         }
+    }
+
+    /**
+     * ON_STOP means the app goes to background (not necessarily a guaranteed process exit).
+     * WorkManager persists pending work even if Android stops the app shortly afterward.
+     */
+    private fun observeMateAutoBackup() {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_STOP) {
+                    val settings = get<SettingsStore>().settingsFlow.value
+                    if (!settings.init && settings.backupReminderConfig.autoBackupOnAppLifecycle) {
+                        MateAutoBackupWorker.schedule(this@RikkaHubApp)
+                    }
+                }
+            }
+        )
     }
 
     private fun incrementLaunchCount() {

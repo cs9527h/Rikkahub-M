@@ -19,7 +19,7 @@ import me.rerere.rikkahub.utils.plus
 @Composable
 fun MateChangelogPage() {
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Mate · 更新日志") }, navigationIcon = { BackButton() })
+        TopAppBar(title = { Text("Rikkahub-M 更新日志") }, navigationIcon = { BackButton() })
     }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -29,8 +29,19 @@ fun MateChangelogPage() {
             item {
                 Text("当前源码版本 · " + BuildConfig.VERSION_NAME,
                     style = MaterialTheme.typography.titleLarge)
-                Text("V1 预览功能；以 GitHub Actions 编译和真机验收结果为准。",
+                Text("正式签名版本，可直接覆盖旧版安装。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            item {
+                Text("2026.11.19 · 0.2 服务端状态与界面整理", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 精简侧栏、设置、关于和连接页面，整理中文显示名称\n" +
+                    "• 云服务器状态及 DeepSeek 余额接入顶部，缺少数据时明确标注未知\n" +
+                    "• 连接检测和二维码失败提供更具体的错误分类\n" +
+                    "• 新增可选的打开及退出时云端完整备份，复用 WebDAV / S3\n" +
+                    "• 网关未提供 Token 时仍显示消息实际耗时，自动备份与状态联动仍需实机验收",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
             item {
                 Text("2026.11.19 · 0.1.3 助手身份与标题修复", style = MaterialTheme.typography.titleMedium)

@@ -47,11 +47,24 @@ internal fun Settings.withBuiltInDefaults(): Settings {
     providers = providers.map { provider ->
         val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }
         when {
-            defaultProvider != null -> provider.copyProvider(
-                builtIn = defaultProvider.builtIn,
-                description = defaultProvider.description,
-                shortDescription = defaultProvider.shortDescription,
-            )
+            defaultProvider != null -> {
+                val updated = provider.copyProvider(
+                    builtIn = defaultProvider.builtIn,
+                    description = defaultProvider.description,
+                    shortDescription = defaultProvider.shortDescription,
+                )
+                // 仅迁移原始内置名称；不覆盖自定义名称或头像。
+                if (provider.id == MATE_PROVIDER_ID && updated is ProviderSetting.OpenAI) {
+                    updated.copy(
+                        name = if (updated.name == "Mate 服务端") "云服务器" else updated.name,
+                        models = updated.models.map { model ->
+                            if (model.id == MATE_MODEL_ID && model.displayName == "Mate 网关") {
+                                model.copy(displayName = "云服务器")
+                            } else model
+                        },
+                    )
+                } else updated
+            }
 
             else -> provider
         }
