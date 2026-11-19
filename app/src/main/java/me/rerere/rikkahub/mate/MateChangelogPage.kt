@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.19 · 0.1.2 修复默认模型解析", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 内置 Mate 服务端进入默认服务商列表，李鱼助手能真正解析到模型\n" +
+                    "• 升级用户缺失内置服务商时自动补回，不覆盖用户自己的配置\n" +
+                    "• 应用名统一 Rikkahub-M，入口文案按命名规则整理",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.19 · 0.1.1 服务端接入原生聊天", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• Mate 网关成为内置模型后端，走原生聊天页面、会话库、搜索与删除\n" +
