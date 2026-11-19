@@ -14,6 +14,33 @@ class MateDefaultsTest {
         assertEquals(DEFAULT_ASSISTANT_ID, DEFAULT_ASSISTANTS.single().id)
     }
 
+    @Test fun defaultLiYuAssistantHasResolvableModel() {
+        val settings = Settings().normalized()
+        val model = settings.getCurrentChatModel()
+        assertEquals("李鱼", settings.getCurrentAssistant().name)
+        assertEquals(MATE_MODEL_ID, model?.id)
+        assertEquals("liyu", model?.modelId)
+        assertEquals(
+            MATE_PROVIDER_ID,
+            settings.providers.single { provider ->
+                provider.models.any { it.id == MATE_MODEL_ID }
+            }.id,
+        )
+        assertFalse(settings.isNotConfigured())
+    }
+
+    @Test fun upgradingSettingsRecoversMissingMateProvider() {
+        val legacySettings = Settings(
+            providers = DEFAULT_PROVIDERS.filterNot { it.id == MATE_PROVIDER_ID },
+            assistants = DEFAULT_ASSISTANTS,
+        )
+        assertTrue(legacySettings.getCurrentChatModel() == null)
+        val normalized = legacySettings.normalized()
+        assertEquals(MATE_MODEL_ID, normalized.getCurrentChatModel()?.id)
+        assertEquals(1, normalized.providers.count { it.id == MATE_PROVIDER_ID })
+        assertFalse(normalized.isNotConfigured())
+    }
+
     @Test fun noAffiliateAggregatorInDefaultProviders() {
         val urls = DEFAULT_PROVIDERS.filterIsInstance<ProviderSetting.OpenAI>().map { it.baseUrl }
         assertFalse(urls.any { it.contains("302.ai") || it.contains("openrouter.ai") ||
