@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.mate
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -46,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.utils.plus
 
 /** Separate Mate conversation, implemented with native Compose and gateway v3.
@@ -72,6 +75,11 @@ fun MateChatPage() {
     var memoryQuery by remember { mutableStateOf("") }
     var memoryResult by remember { mutableStateOf("") }
     var toolsVisible by remember { mutableStateOf(false) }
+    var searchVisible by remember { mutableStateOf(false) }
+    var searchText by remember { mutableStateOf("") }
+    var pendingDeleteId by remember { mutableStateOf<String?>(null) }
+    var hasOlder by remember { mutableStateOf(false) }
+    var loadingOlder by remember { mutableStateOf(false) }
 
     DisposableEffect(journal) { onDispose { journal.close() } }
 
@@ -84,6 +92,7 @@ fun MateChatPage() {
             }
             connection = saved
             messages = journal.recent(saved.instanceId)
+            hasOlder = journal.count(saved.instanceId) > messages.size
             draft = journal.draft(saved.instanceId)
             // Read-only verification. Do not send messages or auto-retry interrupted requests.
             val caps = transport.capabilities(saved)
@@ -104,15 +113,11 @@ fun MateChatPage() {
         }
     }
 
-    // The scroll index is updated only when the message count changes.
-    LaunchedEffect(messages.size) {
+    // Loading older rows must not yank the scroll position back to the bottom.
+    LaunchedEffect(messages.lastOrNull()?.id) {
         if (messages.isNotEmpty() && !listState.isScrollInProgress) {
             listState.animateScrollToItem(messages.lastIndex)
         }
-    }
-
-    fun refreshLocal(instance: String) {
-        scope.launch { messages = journal.recent(instance) }
     }
 
     fun queryExistingRequest(id: String, current: MateConnection) {
@@ -123,14 +128,17 @@ fun MateChatPage() {
                 transport.capabilities(current)
                 val snapshot = transport.requestResult(current, id)
                 journal.updateReply(current.instanceId, id, snapshot.text, snapshot.state)
-                messages = journal.recent(current.instanceId)
+                messages = messages.map { row ->
+                    if (row.id == id + "_reply") row.copy(body = snapshot.text, state = snapshot.state)
+                    else row
+                }
                 status = when (snapshot.state) {
                     "done" -> "原请求已经完成"
                     "running" -> "原请求仍在服务器处理中；请稍后查询"
                     else -> "原请求状态：" + snapshot.state + "（不会自动重新发送）"
                 }
                 if (snapshot.state in listOf("done", "expired", "failed", "uncertain", "error")) {
-                    lastRequestId = if (snapshot.state == "uncertain") id else null
+                    lastRequestId = journal.unresolved(current.instanceId).lastOrNull()
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -151,26 +159,34 @@ fun MateChatPage() {
         // Do not show an optimistic sent state until local persistence succeeds.
         busy = true
         activeJob = scope.launch {
+            var latestText = ""
+            var lastState = "running"
+            var persistedAt = 0L
             try {
                 // Verify server identity before accepting a new request.
                 val caps = transport.capabilities(current)
                 if (!caps.optBoolean("text")) error("服务端未提供文字聊天")
                 journal.savePair(current.instanceId, id, body)
                 journal.saveDraft(current.instanceId, "")
-                messages = journal.recent(current.instanceId)
+                messages = messages + journal.recent(current.instanceId, 2)
                 draft = ""
                 lastRequestId = id
                 status = "李鱼正在回复…"
-                var latestText = ""
-                var latestState = "running"
                 var shownAt = 0L
                 transport.stream(current, id, body) { snapshot ->
                     latestText = snapshot.text
-                    latestState = snapshot.state
+                    lastState = snapshot.state
                     val now = android.os.SystemClock.elapsedRealtime()
+                    if (snapshot.terminal || now - persistedAt >= 500L) {
+                        journal.updateReply(current.instanceId, id, latestText, lastState)
+                        persistedAt = now
+                    }
                     if (snapshot.terminal || now - shownAt >= 120L) {
-                        journal.updateReply(current.instanceId, id, latestText, latestState)
-                        messages = journal.recent(current.instanceId)
+                        messages = messages.map { row ->
+                            if (row.id == id + "_reply")
+                                row.copy(body = latestText, state = lastState)
+                            else row
+                        }
                         shownAt = now
                     }
                     if (snapshot.terminal) {
@@ -187,11 +203,14 @@ fun MateChatPage() {
                 try {
                     // The interrupted request stays queryable even after client/network errors.
                     if (lastRequestId == id) {
-                        journal.updateReply(current.instanceId, id,
-                            journal.recent(current.instanceId).lastOrNull { it.id == id + "_reply" }?.body.orEmpty(),
-                            "uncertain")
+                        val finalState = if (lastState == "running") "uncertain" else lastState
+                        journal.updateReply(current.instanceId, id, latestText, finalState)
+                        messages = messages.map { row ->
+                            if (row.id == id + "_reply")
+                                row.copy(body = latestText, state = finalState)
+                            else row
+                        }
                     }
-                    messages = journal.recent(current.instanceId)
                 } catch (_: Exception) { }
                 busy = false
                 activeJob = null
@@ -212,6 +231,11 @@ fun MateChatPage() {
                 )
             }
         }, navigationIcon = { BackButton() }, actions = {
+            if (!toolsVisible) {
+                TextButton(onClick = { searchVisible = !searchVisible }) {
+                    Text(if (searchVisible) "关闭检索" else "检索")
+                }
+            }
             TextButton(onClick = { toolsVisible = !toolsVisible }) {
                 Text(if (toolsVisible) "聊天" else "状态")
             }
@@ -295,6 +319,15 @@ fun MateChatPage() {
                     }
                 }
             } else {
+                if (searchVisible) {
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = { searchText = it.take(120) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        singleLine = true,
+                        label = { Text("搜索已加载的本机记录") }
+                    )
+                }
                 LazyColumn(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     state = listState,
@@ -309,7 +342,33 @@ fun MateChatPage() {
                             }
                         }
                     }
-                    items(messages, key = { it.id }) { item ->
+                    if (hasOlder && searchText.isBlank()) {
+                        item(key = "load_more_mate") {
+                            FilledTonalButton(
+                                enabled = !loadingOlder && connection != null,
+                                onClick = {
+                                    val current = connection ?: return@FilledTonalButton
+                                    val first = messages.firstOrNull() ?: return@FilledTonalButton
+                                    loadingOlder = true
+                                    scope.launch {
+                                        try {
+                                            val older = journal.olderThan(current.instanceId, first.createdAt)
+                                            messages = older + messages
+                                            hasOlder = older.isNotEmpty() &&
+                                                journal.count(current.instanceId) > messages.size
+                                        } catch (_: Exception) {
+                                            status = "加载旧记录失败"
+                                        } finally { loadingOlder = false }
+                                    }
+                                }
+                            ) { Text(if (loadingOlder) "加载中…" else "加载更早记录") }
+                        }
+                    }
+                    items(
+                        if (searchText.isBlank()) messages
+                        else messages.filter { it.body.contains(searchText, ignoreCase = true) },
+                        key = { it.id }
+                    ) { item ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement =
@@ -323,10 +382,24 @@ fun MateChatPage() {
                                         else MaterialTheme.colorScheme.surfaceContainer,
                                         RoundedCornerShape(18.dp)
                                     )
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = {
+                                            if (!busy && item.state !in setOf("running", "uncertain")) {
+                                                pendingDeleteId = item.requestId
+                                            }
+                                        }
+                                    )
                                     .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(item.body.ifBlank { if (item.state == "running") "正在回复…" else "暂无回复" })
+                                    if (item.role == "bot" && item.state == "done" && item.body.isNotBlank()) {
+                                        MarkdownBlock(content = item.body)
+                                    } else {
+                                        Text(item.body.ifBlank {
+                                            if (item.state == "running") "正在回复…" else "暂无回复"
+                                        })
+                                    }
                                     if (item.role == "bot" && item.state != "done") {
                                         Text(
                                             if (item.state == "uncertain") "结果待核对" else item.state,
@@ -392,6 +465,29 @@ fun MateChatPage() {
                     }
                 }
             }
+        }
+        if (pendingDeleteId != null) {
+            val current = connection
+            AlertDialog(
+                onDismissRequest = { pendingDeleteId = null },
+                title = { Text("仅删除本机消息") },
+                text = { Text("将删除这条提问和对应的李鱼回复。不会删除服务器端记录，也不会影响其他设备。") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val id = pendingDeleteId ?: return@TextButton
+                        pendingDeleteId = null
+                        if (current != null) scope.launch {
+                            try {
+                                journal.deletePairLocally(current.instanceId, id)
+                                messages = messages.filterNot { it.requestId == id }
+                            } catch (_: Exception) { status = "本机删除失败" }
+                        }
+                    }) { Text("删除本机记录") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteId = null }) { Text("取消") }
+                }
+            )
         }
     }
 }
