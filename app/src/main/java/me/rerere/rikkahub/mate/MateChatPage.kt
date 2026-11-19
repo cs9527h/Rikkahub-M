@@ -42,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -81,11 +83,22 @@ fun MateChatPage() {
     var hasOlder by remember { mutableStateOf(false) }
     var loadingOlder by remember { mutableStateOf(false) }
 
-    DisposableEffect(journal, transport) {
-        onDispose {
-            transport.cancelStreaming()
-            journal.close()
+    DisposableEffect(transport) {
+        onDispose { transport.cancelStreaming() }
+    }
+    LaunchedEffect(journal) {
+        try {
+            awaitCancellation()
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { journal.close() }
         }
+    }
+    LaunchedEffect(draft, connection?.instanceId) {
+        val instance = connection?.instanceId ?: return@LaunchedEffect
+        delay(450)
+        try {
+            journal.saveDraft(instance, draft)
+        } catch (_: Exception) { /* A failed draft write cannot block chat scrolling. */ }
     }
 
     LaunchedEffect(Unit) {
@@ -436,15 +449,7 @@ fun MateChatPage() {
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { next ->
-                        if (next.length <= 6000) {
-                            draft = next
-                            connection?.let { current ->
-                                scope.launch {
-                                    delay(400)
-                                    if (draft == next) journal.saveDraft(current.instanceId, next)
-                                }
-                            }
-                        }
+                        if (next.length <= 6000) draft = next
                     },
                     enabled = connection != null && !checking,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
