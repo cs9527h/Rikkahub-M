@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.19 · 0.1.1 李鱼并入原生聊天", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 李鱼成为内置模型后端，走原生聊天页面、会话库、搜索与删除\n" +
+                    "• 全新安装默认助手就是李鱼，打开即进聊天\n" +
+                    "• 应用名改为 Mate，设置页合并为「连接与设备」单个入口",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.19 · 第一版整合", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• RikkaHub 原生聊天及动画继续保留\n" +
