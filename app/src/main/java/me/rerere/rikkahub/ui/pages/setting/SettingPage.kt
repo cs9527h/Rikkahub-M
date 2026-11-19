@@ -324,7 +324,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = {
-                            context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/feat/mate-introduction-rewrite-20261119/docs/MATE_USER_GUIDE.md")
+                            context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/feat/mate-gateway-foundation-20261119/docs/MATE_USER_GUIDE.md")
                         },
                         leadingContent = { CardGroupIcon(HugeIcons.Book01, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_documentation_desc)) },
