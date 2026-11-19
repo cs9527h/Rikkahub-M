@@ -33,6 +33,17 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.19 · 0.2 服务端状态与界面整理", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 精简侧栏、设置、关于和连接页面，整理中文显示名称\n" +
+                    "• 云服务器状态及 DeepSeek 余额接入顶部，缺少数据时明确标注未知\n" +
+                    "• 连接检测和二维码失败提供更具体的错误分类\n" +
+                    "• 新增可选的打开及退出时云端完整备份，复用 WebDAV / S3\n" +
+                    "• 网关未提供 Token 时仍显示消息实际耗时，自动备份与状态联动仍需实机验收",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.19 · 0.1.3 助手身份与标题修复", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• AI 发言者统一显示助手「李鱼」和它的头像，不再显示模型名「Mate 网关」\n" +
