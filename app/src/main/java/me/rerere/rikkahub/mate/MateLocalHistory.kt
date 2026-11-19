@@ -103,11 +103,11 @@ internal class MateLocalHistory(context: Context) :
         try {
             db.execSQL(
                 "INSERT INTO messages(id,instance,request_id,role,body,state,created_at) VALUES(?,?,?,?,?,?,?)",
-                arrayOf(id, instance, id, "me", prompt, "sent", now)
+                arrayOf<Any?>(id, instance, id, "me", prompt, "sent", now)
             )
             db.execSQL(
                 "INSERT INTO messages(id,instance,request_id,role,body,state,created_at) VALUES(?,?,?,?,?,?,?)",
-                arrayOf(id + "_reply", instance, id, "bot", "", "running", now + 1L)
+                arrayOf<Any?>(id + "_reply", instance, id, "bot", "", "running", now + 1L)
             )
             db.setTransactionSuccessful()
         } finally {
