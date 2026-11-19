@@ -228,6 +228,18 @@ fun SettingAboutPage() {
                     val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
                     CardGroup {
                         item(
+                            onClick = { navController.navigate(Screen.MateChangelog) },
+                            leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
+                            supportingContent = { Text("查看每一版实际更改与尚未完成的功能") },
+                            headlineContent = { Text("Mate 更新日志") },
+                        )
+                        item(
+                            onClick = { context.openUrl("https://qm.qq.com/q/Yvc3ugiCoE") },
+                            leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
+                            supportingContent = { Text("联系开发者反馈使用问题") },
+                            headlineContent = { Text("问题反馈") },
+                        )
+                        item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M") },
                             leadingContent = { CardGroupIcon(HugeIcons.Earth, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("github.com/cs9527h/Rikkahub-M") },
