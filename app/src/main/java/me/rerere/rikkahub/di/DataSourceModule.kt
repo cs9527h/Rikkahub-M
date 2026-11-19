@@ -254,6 +254,7 @@ val dataSourceModule = module {
 
     single {
         ProviderManager(client = get(), context = get(), accountCredentials = get<ProviderAccountManager>())
+            .also { it.registerProvider("mate", me.rerere.rikkahub.mate.MateChatProvider(get())) }
     }
 
     single { BackupManager(context = get(), database = get(), settingsStore = get(), json = get()) }

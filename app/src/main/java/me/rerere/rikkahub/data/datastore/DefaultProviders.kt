@@ -6,8 +6,29 @@ import kotlin.uuid.Uuid
 
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
 
+/** 李鱼走 Mate 网关，不走普通 OpenAI 接口；路径标记决定 ProviderManager 路由到网关实现 */
+val MATE_PROVIDER_ID = Uuid.parse("2f0c4d5e-6a7b-4c8d-9e0f-1a2b3c4d5e6f")
+val MATE_MODEL_ID = Uuid.parse("3a1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d")
+
 /** 内置 DeepSeek 提供商，快速入门页的迁移流程会直接跳到它 */
 val DEEPSEEK_PROVIDER_ID = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b")
+
+/** 内置的李鱼网关提供商：地址与令牌在运行时从加密存储读取，不落设置库 */
+val MATE_PROVIDER = ProviderSetting.OpenAI(
+    id = MATE_PROVIDER_ID,
+    name = "李鱼服务器",
+    baseUrl = "",
+    apiKey = "",
+    builtIn = true,
+    chatCompletionsPath = me.rerere.ai.provider.MATE_GATEWAY_CHAT_PATH,
+    models = listOf(
+        me.rerere.ai.provider.Model(
+            modelId = "liyu",
+            displayName = "李鱼",
+            id = MATE_MODEL_ID,
+        )
+    ),
+)
 
 val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(

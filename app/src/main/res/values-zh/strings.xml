@@ -7,7 +7,7 @@
   <string name="about_page_version">版本</string>
   <string name="about_page_website">官网</string>
   <string name="add">添加</string>
-  <string name="app_name">Rikkahub-M</string>
+  <string name="app_name">Mate</string>
   <string name="asr_button_content_description">语音识别</string>
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">配置名称、头像、模型和参数</string>
@@ -1919,4 +1919,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_quick_start">快速入门</string>
   <string name="setting_page_quick_start_desc">配置独立 API、了解李鱼连接及 DeepSeek 记录导入</string>
   <string name="setting_page_share_text">Rikkahub-M · 开源 Android AI 客户端\n源码：https://github.com/cs9527h/Rikkahub-M</string>
+  <string name="mate_settings_group">连接与设备</string>
+  <string name="mate_connection_title">连接李鱼服务器</string>
+  <string name="mate_connection_desc">首次配对、连接检测、重新授权</string>
 </resources>

@@ -6,6 +6,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
+/**
+ * Mate 网关的聊天路径。
+ *
+ * OpenAI 设置里的 [ProviderSetting.OpenAI.chatCompletionsPath] 指向这个值时，
+ * 说明后端是 Mate 网关（协议 v3），而不是真正的 OpenAI 接口。
+ */
+const val MATE_GATEWAY_CHAT_PATH = "/chat/stream"
+
 /** 账号登录得到的 OAuth 凭据 */
 @Serializable
 data class OAuthCredential(

@@ -59,6 +59,14 @@ internal fun Settings.withBuiltInDefaults(): Settings {
     // 内置助手可以删除，只在一个都不剩时补回，不按 id 逐个补齐
     val assistants = this.assistants.ifEmpty { DEFAULT_ASSISTANTS }
         .filterNot { it.isUnusedLegacySecondaryAssistant() }
+        .map { assistant ->
+            // 升级用户那个从没动过的空白默认助手，直接补成李鱼，避免首屏继续弹"没有可用模型"
+            if (assistant.id == DEFAULT_ASSISTANT_ID && assistant.name.isBlank() && assistant.chatModelId == null) {
+                assistant.copy(name = "李鱼", chatModelId = MATE_MODEL_ID)
+            } else {
+                assistant
+            }
+        }
         .ifEmpty { DEFAULT_ASSISTANTS }
     val ttsProviders = this.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }
         .filterNot { it is me.rerere.tts.provider.TTSProviderSetting.OpenAI &&

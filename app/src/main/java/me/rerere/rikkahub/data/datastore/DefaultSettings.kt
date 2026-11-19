@@ -11,7 +11,8 @@ internal val DEFAULT_ASSISTANT_ID = Uuid.parse("0950e2dc-9bd5-4801-afa3-aa887aa3
 internal val DEFAULT_ASSISTANTS = listOf(
     Assistant(
         id = DEFAULT_ASSISTANT_ID,
-        name = "",
+        name = "李鱼",
+        chatModelId = MATE_MODEL_ID,
         systemPrompt = ""
     ),
 )

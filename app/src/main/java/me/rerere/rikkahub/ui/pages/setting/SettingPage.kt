@@ -204,18 +204,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             item("mateGateway") {
                 val containerColor = MaterialTheme.colorScheme.secondaryContainer
                 val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                CardGroup(title = { Text("李鱼 · AstrBot") }) {
+                CardGroup(title = { Text(stringResource(R.string.mate_settings_group)) }) {
                     item(
                         onClick = { navController.navigate(Screen.MateConnection) },
                         leadingContent = { CardGroupIcon(HugeIcons.ServerStack01, containerColor = containerColor, contentColor = contentColor) },
-                        headlineContent = { Text("连接李鱼服务器") },
-                        supportingContent = { Text("首次配对、连接检测、重新授权") },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.MateChat) },
-                        leadingContent = { CardGroupIcon(HugeIcons.MessageAdd01, containerColor = containerColor, contentColor = contentColor) },
-                        headlineContent = { Text("与李鱼聊天") },
-                        supportingContent = { Text("独立服务器聊天 · 本机历史 · 流式回复") },
+                        headlineContent = { Text(stringResource(R.string.mate_connection_title)) },
+                        supportingContent = { Text(stringResource(R.string.mate_connection_desc)) },
                     )
                 }
             }
