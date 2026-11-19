@@ -45,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.AiMagic
 import me.rerere.hugeicons.stroke.Alert01
 import me.rerere.hugeicons.stroke.Book01
@@ -209,6 +210,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { CardGroupIcon(HugeIcons.ServerStack01, containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text("连接李鱼服务器") },
                         supportingContent = { Text("首次配对、连接检测、重新授权") },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.MateChat) },
+                        leadingContent = { CardGroupIcon(HugeIcons.MessageAdd01, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text("与李鱼聊天") },
+                        supportingContent = { Text("独立服务器聊天 · 本机历史 · 流式回复") },
                     )
                 }
             }
