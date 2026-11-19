@@ -49,7 +49,7 @@ fun MateChangelogPage() {
                 Text("仍需完成", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "旧 Mate 无损数据导入、服务器记忆读写、人格自然成长、" +
-                        "多设备同步、真实设备性能验收及稳定签名 APK，均不能因为已有界面就视为完成。",
+                        "多设备同步和真实设备性能验收，均不能因为已有界面就视为完成。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
