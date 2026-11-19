@@ -31,6 +31,8 @@ val MATE_PROVIDER = ProviderSetting.OpenAI(
 )
 
 val DEFAULT_PROVIDERS = listOf(
+    // 默认李鱼助手必须能够在模型目录中找到这一项，否则新聊天会显示没有模型。
+    MATE_PROVIDER,
     ProviderSetting.OpenAI(
         id = Uuid.parse("1eeea727-9ee5-4cae-93e6-6fb01a4d051e"),
         name = "OpenAI",
