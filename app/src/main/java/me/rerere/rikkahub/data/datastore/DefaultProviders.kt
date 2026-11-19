@@ -16,7 +16,7 @@ val DEEPSEEK_PROVIDER_ID = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b")
 /** 内置的李鱼网关提供商：地址与令牌在运行时从加密存储读取，不落设置库 */
 val MATE_PROVIDER = ProviderSetting.OpenAI(
     id = MATE_PROVIDER_ID,
-    name = "Mate 服务端",
+    name = "云服务器",
     baseUrl = "",
     apiKey = "",
     builtIn = true,
@@ -24,7 +24,7 @@ val MATE_PROVIDER = ProviderSetting.OpenAI(
     models = listOf(
         me.rerere.ai.provider.Model(
             modelId = "liyu",
-            displayName = "Mate 网关",
+            displayName = "云服务器",
             id = MATE_MODEL_ID,
         )
     ),
