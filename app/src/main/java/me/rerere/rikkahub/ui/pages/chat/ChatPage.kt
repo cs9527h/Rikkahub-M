@@ -63,6 +63,9 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
@@ -76,6 +79,9 @@ import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.MATE_MODEL_ID
+import me.rerere.rikkahub.mate.MateGatewayStore
+import me.rerere.rikkahub.mate.MateChatTransport
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
@@ -653,6 +659,64 @@ private fun TopBar(
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
+    // 在同一个聊天顶部展示服务端的真实峰谷状态和 DeepSeek 余额。
+    // 仅 Mate 网关助手订阅；失败时显示未知，不将余额失败解释为 0。
+    val context = LocalContext.current
+    val gatewayStore = remember(context) { MateGatewayStore(context) }
+    val gatewayTransport = remember { MateChatTransport() }
+    var peakLabel by remember { mutableStateOf<String?>(null) }
+    var deepSeekBalance by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(chatModel?.id) {
+        if (chatModel?.id != MATE_MODEL_ID) return@LaunchedEffect
+        while (true) {
+            val connection = withContext(Dispatchers.IO) { gatewayStore.load() }
+            peakLabel = null
+            deepSeekBalance = null
+            if (connection != null) {
+                val status = try {
+                    gatewayTransport.get(connection, "/status")
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                // 网关只在状态仍有效时返回有效峰谷字段。
+                if (status?.optString("instance_id") == connection.instanceId &&
+                    status.optInt("valid_for_seconds", 0) > 0) {
+                    peakLabel = when (status.optString("peak_state")) {
+                        "peak" -> "峰段"
+                        "valley" -> "谷段"
+                        "flat" -> "平段"
+                        else -> null
+                    }
+                }
+                val billing = try {
+                    gatewayTransport.get(connection, "/billing/deepseek")
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
+                }
+                if (billing?.optString("provider") == "deepseek") {
+                    val balances = billing.optJSONArray("balances")
+                    if (balances != null) {
+                        for (index in 0 until balances.length()) {
+                            val item = balances.optJSONObject(index) ?: continue
+                            val currency = item.optString("currency")
+                            val total = item.optString("total")
+                            if (currency in setOf("CNY", "USD") &&
+                                total.matches(Regex("[0-9]{1,10}(\\.[0-9]{1,8})?"))) {
+                                deepSeekBalance = "DeepSeek " +
+                                    (if (currency == "CNY") "¥" else "$") + total
+                                if (currency == "CNY") break
+                            }
+                        }
+                    }
+                }
+            }
+            delay(60_000)
+        }
+    }
 
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -695,7 +759,15 @@ private fun TopBar(
                     )
                     // 第二行只放助手身份，模型和供应商名称移到设置和连接详情里
                     Text(
-                        text = assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) },
+                        text = buildString {
+                            append(assistant.name.ifBlank { context.getString(R.string.assistant_page_default_assistant) })
+                            if (chatModel?.id == MATE_MODEL_ID) {
+                                append(" · ")
+                                append(peakLabel ?: "峰谷未知")
+                                append(" · ")
+                                append(deepSeekBalance ?: "余额不可用")
+                            }
+                        },
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
                         color = LocalContentColor.current.copy(0.65f),
