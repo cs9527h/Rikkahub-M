@@ -153,8 +153,20 @@ fun MateDevicesPage() {
                                 status = "配对码已生成，有效期十分钟且只能使用一次"
                             } catch (error: CancellationException) {
                                 throw error
-                            } catch (_: Exception) {
-                                status = "生成失败，当前服务器可能未允许设备邀请"
+                            } catch (error: Exception) {
+                                // 提供不包含授权凭据的错误分类
+                                status = when (error) {
+                                    is java.net.UnknownHostException -> "服务器地址无法解析"
+                                    is java.net.SocketTimeoutException -> "服务器连接超时"
+                                    is javax.net.ssl.SSLException -> "HTTPS 证书验证失败"
+                                    is java.io.IOException -> when {
+                                        error.message?.contains("HTTP 404") == true -> "服务器不支持设备邀请接口"
+                                        error.message?.contains("HTTP 401") == true -> "设备授权失效，请重新配对"
+                                        error.message?.contains("HTTP 403") == true -> "当前设备没有邀请权限"
+                                        else -> "生成失败：服务器未返回有效配对信息"
+                                    }
+                                    else -> "二维码生成失败，请检查网关设备邀请功能"
+                                }
                             } finally {
                                 busy = false
                             }
