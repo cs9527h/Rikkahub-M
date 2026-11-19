@@ -206,8 +206,11 @@ class SettingsStoreTest {
     @Test
     fun `a deleted built-in assistant stays deleted and the selection moves to a remaining one`() = runBlocking {
         val store = open().store
-        val (removed, kept) = DEFAULT_ASSISTANTS
         store.awaitLoaded()
+        // Mate 只保留一个内置助手，这里临时加一个，验证删除后选择会落到剩下的助手
+        val kept = DEFAULT_ASSISTANTS.single()
+        val removed = kept.copy(id = Uuid.random(), name = "temp")
+        store.update { it.copy(assistants = it.assistants + removed, assistantId = removed.id) }
         store.selectAssistant(removed.id)
 
         store.update { settings -> settings.copy(assistants = settings.assistants.filter { it.id != removed.id }) }
