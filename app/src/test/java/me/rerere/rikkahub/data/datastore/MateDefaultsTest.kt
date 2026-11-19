@@ -41,6 +41,35 @@ class MateDefaultsTest {
         assertFalse(normalized.isNotConfigured())
     }
 
+    @Test fun normalizedSettingsKeepUserProvidersAndAssistants() {
+        val customProvider = ProviderSetting.OpenAI(
+            id = Uuid.parse("aa11bb22-cc33-dd44-ee55-ff6677889900"),
+            name = "我的服务",
+            baseUrl = "https://api.example.net/v1",
+            apiKey = "user-key",
+            models = listOf(me.rerere.ai.provider.Model(modelId = "my-model", displayName = "我的模型")),
+        )
+        val customAssistant = Assistant(
+            id = Uuid.parse("bb22cc33-dd44-ee55-ff66-77889900aabb"),
+            name = "我的助手",
+            chatModelId = customProvider.models.single().id,
+        )
+        val settings = Settings(
+            providers = listOf(customProvider),
+            assistants = listOf(customAssistant),
+            assistantId = customAssistant.id,
+            chatModelId = customProvider.models.single().id,
+        ).normalized()
+
+        // 用户自己的服务商与助手原样保留，不被内置项覆盖
+        assertTrue(settings.providers.any { it.id == customProvider.id })
+        assertTrue(settings.assistants.any { it.id == customAssistant.id })
+        assertEquals(customAssistant.id, settings.getCurrentAssistant().id)
+        assertEquals("我的服务", settings.providers.single { it.id == customProvider.id }.name)
+        // 同时把缺失的内置 Mate 服务端补回来，且只补一次
+        assertEquals(1, settings.providers.count { it.id == MATE_PROVIDER_ID })
+    }
+
     @Test fun noAffiliateAggregatorInDefaultProviders() {
         val urls = DEFAULT_PROVIDERS.filterIsInstance<ProviderSetting.OpenAI>().map { it.baseUrl }
         assertFalse(urls.any { it.contains("302.ai") || it.contains("openrouter.ai") ||

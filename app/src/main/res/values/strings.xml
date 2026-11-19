@@ -7,7 +7,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
-  <string name="app_name">Mate</string>
+  <string name="app_name">Rikkahub-M</string>
   <string name="asr_button_content_description">Speech Recognition</string>
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>
@@ -1875,7 +1875,7 @@
   <string name="quick_start_page_ready_title">All set</string>
   <string name="quick_start_page_ready_desc">The default assistant is ready. Pair your server to chat, or configure independent API models if needed.</string>
   <string name="quick_start_page_setup_title">Set up in a few minutes</string>
-  <string name="quick_start_page_setup_desc">Mate includes a default assistant. Pair your server under Connection & devices. Independent API models are optional.</string>
+  <string name="quick_start_page_setup_desc">Mate includes a default assistant. Pair your server under Connection &amp; devices. Independent API models are optional.</string>
   <string name="quick_start_page_start_chat">Start chatting</string>
   <string name="quick_start_page_required_steps">Required steps</string>
   <string name="quick_start_page_provider_title">Set up a provider</string>
