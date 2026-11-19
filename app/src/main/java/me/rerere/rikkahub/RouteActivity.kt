@@ -61,6 +61,7 @@ import me.rerere.ui.toast.rememberToasterState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.mate.MateConnectionPage
+import me.rerere.rikkahub.mate.MateChatPage
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
@@ -488,6 +489,10 @@ class RouteActivity : ComponentActivity() {
                                 MateConnectionPage()
                             }
 
+                            entry<Screen.MateChat> {
+                                MateChatPage()
+                            }
+
                             entry<Screen.SettingProviderDetail> { key ->
                                 val id = Uuid.parse(key.providerId)
                                 SettingProviderDetailPage(id = id)
@@ -752,6 +757,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object MateConnection : Screen
+
+    @Serializable
+    data object MateChat : Screen
 
     @Serializable
     data class SettingProviderDetail(val providerId: String) : Screen
