@@ -81,7 +81,12 @@ fun MateChatPage() {
     var hasOlder by remember { mutableStateOf(false) }
     var loadingOlder by remember { mutableStateOf(false) }
 
-    DisposableEffect(journal) { onDispose { journal.close() } }
+    DisposableEffect(journal, transport) {
+        onDispose {
+            transport.cancelStreaming()
+            journal.close()
+        }
+    }
 
     LaunchedEffect(Unit) {
         try {
@@ -453,7 +458,10 @@ fun MateChatPage() {
                     horizontalArrangement = Arrangement.End
                 ) {
                     if (busy) {
-                        FilledTonalButton(onClick = { activeJob?.cancel() }) {
+                        FilledTonalButton(onClick = {
+                            transport.cancelStreaming()
+                            activeJob?.cancel()
+                        }) {
                             Text("停止等待")
                         }
                     } else {
