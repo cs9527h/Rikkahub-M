@@ -40,3 +40,13 @@
 - 命名按最新规则：应用名 `Rikkahub-M`，内置服务商 `Mate 服务端`，模型 `Mate 网关`，
   设置入口 `Connect to server / 连接服务器`。默认助手仍叫李鱼。
 - Release：https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.1.2-preview.1
+
+
+## 0.1.3-preview.1（2026-11-19）
+
+- 助手身份：`Assistant.useAssistantAvatar` 默认改为 true；默认助手带 `🐟` 头像与「李鱼」名称；
+  `ChatMessageAssistantAvatar` 对 Mate 网关强制使用助手身份，不再把「Mate 网关」和 `liyu` 字母图标当 AI。
+- 聊天顶部：去掉 `李鱼 / Mate 网关 (Mate 服务端)` 的拼接，第二行只显示助手名。
+- 标题生成：快速模型丢失时退回当前会话模型；网关模式改为本地标题（`localTitleFrom`），
+  不再向服务器发元数据请求，避免污染对话与记忆。
+- 单测：`LocalTitleTest`（取首条用户消息、压空白、截断、空值兜底）+ 助手身份与默认快速模型断言。
