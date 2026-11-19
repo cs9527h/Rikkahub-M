@@ -40,3 +40,11 @@
 2. 真机性能数据（冷启动、长列表、SSE 抖动、输入法）未采集，无 Android 设备可用。
 3. 真实 AstrBot 服务器联调、配对、记忆查询未做，仅本地模拟。
 4. 旧 Mate 数据迁移、长期记忆增删改、WebDAV/S3 与 QQ/飞书共享记忆未实现。
+
+
+## 0.1.1-preview.1（2026-11-19）
+
+- 李鱼并入 RikkaHub 原生聊天栈（`MateChatProvider` + Provider 路由），不再靠独立聊天页当默认。
+- 首次安装默认助手为「李鱼」，应用名改为 Mate，设置页合并重复入口。
+- Release：https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.1.1-preview.1
+- 详见 `docs/MATE_V2_REFACTOR.md`。
