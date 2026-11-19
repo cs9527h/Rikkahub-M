@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -20,7 +21,6 @@ import me.rerere.ai.provider.TextGenerationResult
 import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.ai.util.json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,6 +41,7 @@ import java.util.concurrent.TimeUnit
 class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
 
     private val store = MateGatewayStore(context.applicationContext)
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val client = OkHttpClient.Builder()
         .followRedirects(false)
