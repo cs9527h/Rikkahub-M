@@ -78,3 +78,17 @@
 
 未完成：Token 统计（依赖网关 usage）、附件上传（依赖 `/chat/stream` attachments 协议）、
 第二套聊天页迁移删除、自动备份实机验证、性能量化测试。
+
+
+## 0.2.2（2026-11-20）
+
+- 删除第二套聊天：`MateChatPage.kt`、`MateLocalHistory.kt`、`Screen.MateChat` 路由一并移除；
+  聊天只剩 RikkaHub 原生会话库 + `MateChatProvider` 一个后端入口
+- 旧库 `mate_liyu_v1.db` 首次启动归档到 `files/legacy-mate-backup/mate_liyu_v1-<时间>.db`，
+  归档文件非空才删除原 db（含 -wal/-shm），归档失败保留原库
+- 云服务器附件：图片/文件/语音先 `POST /media`（multipart: `kind` + `file`）换取附件 ID，
+  再随 `/chat/stream` 的 `attachments` 数组提交；>20MB 直接拒绝；读取/上传失败抛错不静默丢
+- `versionCode = 8`、`versionName = "0.2.2"`，仍只发布一个通用 APK
+
+未验证：`/media` 的真实字段名与响应结构（按 `id`/`file_id`/`media_id` 兼容解析），
+需真实网关联调确认；Token usage 与长期记忆管理仍未接入。
