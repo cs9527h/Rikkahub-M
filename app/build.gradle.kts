@@ -353,6 +353,8 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    // Real JSON parser for Mate protocol tests; Android SDK JSON is only a stub on the JVM.
+    testImplementation("org.json:json:20240303")
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
