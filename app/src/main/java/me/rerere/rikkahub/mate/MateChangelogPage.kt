@@ -19,7 +19,7 @@ import me.rerere.rikkahub.utils.plus
 @Composable
 fun MateChangelogPage() {
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Mate · 更新日志") }, navigationIcon = { BackButton() })
+        TopAppBar(title = { Text("Rikkahub-M 更新日志") }, navigationIcon = { BackButton() })
     }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

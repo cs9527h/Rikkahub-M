@@ -12,6 +12,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -32,8 +34,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.QRCodeScannerDialog
-import me.rerere.rikkahub.ui.context.LocalNavController
-import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.utils.plus
 
 /**
@@ -46,7 +46,7 @@ fun MateConnectionPage() {
     val store = remember(context) { MateGatewayStore(context) }
     val gateway = remember { MateGatewayClient() }
     val scope = rememberCoroutineScope()
-    val navController = LocalNavController.current
+    val snackbarHostState = remember { SnackbarHostState() }
     var address by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("Mate Android") }
@@ -108,8 +108,10 @@ fun MateConnectionPage() {
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Mate · 服务器连接") },
-        navigationIcon = { BackButton() }) }) { insets ->
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("云服务器连接") }, navigationIcon = { BackButton() }) },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) { insets ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = insets + PaddingValues(horizontal = 16.dp, vertical = 12.dp),
@@ -117,7 +119,7 @@ fun MateConnectionPage() {
         ) {
             item {
                 Text("AstrBot 私人服务器", style = MaterialTheme.typography.titleMedium)
-                Text("此连接使用 Mate 网关协议 3，不是普通 OpenAI API。配对不会修改原有 AstrBot 机器人或服务器记忆。",
+                Text("独立连接云服务器，不会修改原有机器人或服务器记忆。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
@@ -127,7 +129,7 @@ fun MateConnectionPage() {
                 OutlinedTextField(
                     value = address, onValueChange = { address = it },
                     modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("HTTPS 网关地址") },
+                    label = { Text("服务器地址（HTTPS）") },
                     placeholder = { Text("https://your-gateway.example") },
                     enabled = !busy
                 )
@@ -185,12 +187,6 @@ fun MateConnectionPage() {
                 item {
                     Button(
                         enabled = !busy, modifier = Modifier.fillMaxWidth(),
-                        onClick = { navController.navigate(Screen.MateChat) }
-                    ) { Text("进入聊天") }
-                }
-                item {
-                    Button(
-                        enabled = !busy, modifier = Modifier.fillMaxWidth(),
                         onClick = { navController.navigate(Screen.MateDevices) }
                     ) { Text("设备管理 · 生成配对二维码") }
                 }
@@ -202,11 +198,18 @@ fun MateConnectionPage() {
                             scope.launch {
                                 try {
                                     gateway.verify(paired!!)
-                                    message = "连接已验证 · 协议 3"
+                                    message = "服务器连接正常 · 授权有效"
+                                    snackbarHostState.showSnackbar(message)
                                 } catch (error: CancellationException) {
                                     throw error
-                                } catch (_: Exception) {
-                                    message = "连接检测失败；本机授权已保留"
+                                } catch (error: Exception) {
+                                    message = when (error) {
+                                        is java.net.UnknownHostException -> "无法解析服务器地址"
+                                        is java.net.SocketTimeoutException -> "连接超时，请检查网络或服务器"
+                                        is javax.net.ssl.SSLException -> "HTTPS 证书验证失败"
+                                        else -> "服务器验证失败，请检查连接及设备授权"
+                                    }
+                                    snackbarHostState.showSnackbar(message)
                                 } finally {
                                     busy = false
                                 }
@@ -235,13 +238,6 @@ fun MateConnectionPage() {
                         }
                     ) { Text("移除本机授权并重新配对") }
                 }
-            }
-            item {
-                Text(
-                    "Mate V1 预览：提供独立服务端聊天、请求恢复、本机历史、设备列表与配对二维码。远端记忆仅只读检索；跨设备历史同步、旧 Mate 数据导入和正式签名发布仍在开发。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }

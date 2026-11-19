@@ -40,22 +40,11 @@ internal fun QuickStartMateTab() {
             formItem {
                 Text(stringResource(R.string.mate_intro_connection_detail))
                 Button(
-                    onClick = { nav.navigate(Screen.MateChat) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("进入聊天")
-                }
-                Button(
                     onClick = { nav.navigate(Screen.MateConnection) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.mate_intro_connect_button))
                 }
-            }
-        }
-        CardGroup(title = { Text(stringResource(R.string.mate_intro_progress_heading)) }) {
-            formItem {
-                Text(stringResource(R.string.mate_intro_progress_detail))
             }
         }
         CardGroup(title = { Text(stringResource(R.string.mate_intro_old_app_heading)) }) {
