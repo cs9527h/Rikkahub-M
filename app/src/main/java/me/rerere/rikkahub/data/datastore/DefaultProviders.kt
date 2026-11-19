@@ -1,13 +1,6 @@
 package me.rerere.rikkahub.data.datastore
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.QuotaQuery
 import me.rerere.rikkahub.R
@@ -75,31 +68,6 @@ val DEFAULT_PROVIDERS = listOf(
         )
     ),
     ProviderSetting.OpenAI(
-        id = Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e"),
-        name = "OpenRouter",
-        baseUrl = "https://openrouter.ai/api/v1",
-        apiKey = "",
-        builtIn = true,
-        quotaQuery = QuotaQuery(
-            enabled = true,
-            url = "{{baseUrl}}/credits",
-            resultPath = "data.total_credits - data.total_usage",
-        )
-    ),
-    ProviderSetting.OpenAI(
-        id = Uuid.parse("386e0f29-8228-4512-affe-8fd8add82d88"),
-        name = "Vercel AI Gateway",
-        baseUrl = "https://ai-gateway.vercel.sh/v1",
-        apiKey = "",
-        enabled = true,
-        builtIn = true,
-        quotaQuery = QuotaQuery(
-            enabled = true,
-            url = "{{baseUrl}}/credits",
-            resultPath = "balance",
-        )
-    ),
-    ProviderSetting.OpenAI(
         id = Uuid.parse("f76cae46-069a-4334-ab8e-224e4979e58c"),
         name = "阿里云百炼",
         baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -130,26 +98,6 @@ val DEFAULT_PROVIDERS = listOf(
         apiKey = "",
         enabled = true,
         builtIn = true
-    ),
-    ProviderSetting.OpenAI(
-        id = Uuid.parse("da93779f-3956-48cc-82ef-67bb482eaaf7"),
-        name = "302.AI",
-        baseUrl = "https://api.302.ai/v1",
-        apiKey = "",
-        enabled = true,
-        builtIn = true,
-        description = {
-            Text(
-                text = buildAnnotatedString {
-                    append("企业级AI服务, 官网：")
-                    withLink(LinkAnnotation.Url("https://302.ai/")) {
-                        withStyle(SpanStyle(MaterialTheme.colorScheme.primary)) {
-                            append("https://302.ai/")
-                        }
-                    }
-                }
-            )
-        }
     ),
     ProviderSetting.OpenAI(
         id = Uuid.parse("ef5d149b-8e34-404b-818c-6ec242e5c3c5"),
