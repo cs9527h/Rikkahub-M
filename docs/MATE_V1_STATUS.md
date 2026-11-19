@@ -24,3 +24,19 @@
 - WebDAV/S3 双设备恢复：未实测。
 - 旧 Mate 数据库迁移器：未实现（新工程 schema 不同，需要独立的可预览迁移流程）。
 - 多语言文案：基础 Mate 文案已本地化，其余沿用上游翻译。
+
+## 0.1.0-preview.1 交付记录（2026-11-19）
+
+- Release：https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.1.0-preview.1（Pre-release）
+- 发布工作流：`.github/workflows/release.yml`，`workflow_dispatch` 且 `publish_release=true` 时 build→publish 全自动
+- 安装包：`Rikkahub-M-v0.1.0-preview.1-arm64-v8a.apk`（只含 arm64-v8a）、`Rikkahub-M-v0.1.0-preview.1-universal.apk`（arm64-v8a + x86_64）
+- SHA-256 以 Release 内 `SHA256SUMS.txt` 为准；签名证书 SHA-256 见 `APK_SIGNING.txt`，必须为 `e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a`
+- 包名 `com.rikkahub.mate`，versionName `0.1.0-preview.1`，显示名 `Rikkahub-M`
+- ABI、包名、签名、校验值由 CI 逐包断言，x86_64 单 ABI 包只进 Actions artifact，不发给手机用户
+
+### 仍然未完成（不得视为已交付）
+
+1. 李鱼聊天与 RikkaHub 原生 `ChatService`/`ConversationRepository`/`ChatVM` 的架构融合：目前仍是 `MateChatPage` + `MateLocalHistory` 独立一套，P1 未开始。
+2. 真机性能数据（冷启动、长列表、SSE 抖动、输入法）未采集，无 Android 设备可用。
+3. 真实 AstrBot 服务器联调、配对、记忆查询未做，仅本地模拟。
+4. 旧 Mate 数据迁移、长期记忆增删改、WebDAV/S3 与 QQ/飞书共享记忆未实现。
