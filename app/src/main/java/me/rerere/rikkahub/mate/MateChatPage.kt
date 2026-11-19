@@ -76,6 +76,7 @@ fun MateChatPage() {
     var serverInfo by remember { mutableStateOf("") }
     var memoryQuery by remember { mutableStateOf("") }
     var memoryResult by remember { mutableStateOf("") }
+    var memoryRows by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var toolsVisible by remember { mutableStateOf(false) }
     var searchVisible by remember { mutableStateOf(false) }
     var searchText by remember { mutableStateOf("") }
@@ -322,13 +323,37 @@ fun MateChatPage() {
                                         } else {
                                             val result = transport.memorySearch(current, memoryQuery)
                                             // Show only counts and ownership metadata; never persist sensitive results.
-                                            val count = result.optJSONArray("items")?.length() ?: 0
-                                            "服务器已响应：本页返回 " + count + " 条。当前首版暂不导入或改写私人记忆。"
+                                            require(result.optBoolean("read_only") &&
+                                                result.optString("scope") == "configured_owner_only") {
+                                                "记忆读取未通过所有者权限校验"
+                                            }
+                                            val items = result.optJSONArray("items")
+                                            memoryRows = (0 until (items?.length() ?: 0)).mapNotNull { index ->
+                                                val row = items?.optJSONObject(index) ?: return@mapNotNull null
+                                                row.optString("id") to row.optString("content")
+                                            }.filter { it.first.isNotBlank() }.take(30)
+                                            "已返回 " + memoryRows.size + " 条服务器记忆（只读）。当前不会导入或删除。"
                                         }
                                     } catch (_: Exception) { memoryResult = "记忆检索不可用或无权限" }
                                 }
                             }) { Text("只读检索") }
                         if (memoryResult.isNotBlank()) Text(memoryResult)
+                    }
+                    items(memoryRows, key = { "memory_" + it.first }) { row ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceContainer,
+                                    RoundedCornerShape(14.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("记忆 #" + row.first, style = MaterialTheme.typography.labelSmall)
+                            Text(row.second.take(2000), style = MaterialTheme.typography.bodyMedium)
+                            if (row.second.length > 2000) Text(
+                                "内容较长，此处只展示前 2000 字；不会自动同步到本机数据库。",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     }
                     item {
                         Text("旧 Mate 与新聊天数据库独立；此页面不会修改 AstrBot 人格、生产记忆或 QQ/飞书/钉钉机器人配置。",
