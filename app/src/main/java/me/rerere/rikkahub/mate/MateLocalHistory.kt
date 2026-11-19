@@ -59,6 +59,41 @@ internal class MateLocalHistory(context: Context) :
         result.asReversed()
     }
 
+    suspend fun olderThan(instance: String, before: Long, limit: Int = 100): List<MateMessage> =
+        withContext(Dispatchers.IO) {
+            require(instance.matches(Regex("[0-9a-f]{32}")) && before > 0)
+            val result = ArrayList<MateMessage>()
+            readableDatabase.rawQuery(
+                "SELECT id,request_id,role,body,state,created_at FROM messages " +
+                    "WHERE instance=? AND created_at<? ORDER BY created_at DESC LIMIT ?",
+                arrayOf(instance, before.toString(), limit.coerceIn(1, 200).toString())
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    result += MateMessage(
+                        cursor.getString(0), cursor.getString(1), cursor.getString(2),
+                        cursor.getString(3), cursor.getString(4), cursor.getLong(5)
+                    )
+                }
+            }
+            result.asReversed()
+        }
+
+    suspend fun count(instance: String): Int = withContext(Dispatchers.IO) {
+        require(instance.matches(Regex("[0-9a-f]{32}")))
+        readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM messages WHERE instance=?", arrayOf(instance)
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+    }
+
+    suspend fun deletePairLocally(instance: String, id: String): Unit = withContext(Dispatchers.IO) {
+        require(instance.matches(Regex("[0-9a-f]{32}")))
+        require(id.matches(Regex("[A-Za-z0-9_-]{8,80}")))
+        writableDatabase.execSQL(
+            "DELETE FROM messages WHERE instance=? AND request_id=? AND state NOT IN ('running','uncertain')",
+            arrayOf(instance, id)
+        )
+    }
+
     suspend fun savePair(instance: String, id: String, prompt: String): Unit = withContext(Dispatchers.IO) {
         require(instance.matches(Regex("[0-9a-f]{32}")))
         require(id.matches(Regex("[A-Za-z0-9_-]{8,80}")))
