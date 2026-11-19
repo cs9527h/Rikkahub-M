@@ -1929,6 +1929,6 @@
   <string name="mate_intro_origin">本项目基于开源 RikkaHub 开发，遵守 AGPL-3.0 许可证。</string>
   <string name="mate_intro_tab">云服务器</string>
   <string name="mate_settings_group">Connection &amp; devices</string>
-  <string name="mate_connection_title">Connect to server</string>
+  <string name="mate_connection_title">Cloud server</string>
   <string name="mate_connection_desc">First-time pairing, connection check, re-authorization</string>
 </resources>

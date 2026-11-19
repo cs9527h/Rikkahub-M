@@ -225,7 +225,7 @@ fun SettingAboutPage() {
                             onClick = { navController.navigate(Screen.MateChangelog) },
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("查看每一版实际更改与尚未完成的功能") },
-                            headlineContent = { Text("Rikkahub-M 更新日志") },
+                            headlineContent = { Text("更新日志") },
                         )
                         item(
                             onClick = { context.openUrl("https://qm.qq.com/q/Yvc3ugiCoE") },

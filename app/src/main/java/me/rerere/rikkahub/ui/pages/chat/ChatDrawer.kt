@@ -420,8 +420,6 @@ fun ChatDrawerContent(
                     },
                 )
 
-                Spacer(Modifier.weight(1f))
-
                 DrawerAction(
                     icon = {
                         Icon(HugeIcons.Settings03, null)

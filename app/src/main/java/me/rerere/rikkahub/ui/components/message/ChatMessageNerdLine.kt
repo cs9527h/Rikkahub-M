@@ -81,7 +81,7 @@ fun ChatMessageNerdLine(
         }?.takeIf { it > 0 }
         if (durationMillis != null) {
             Text(
-                text = "耗时 " + (durationMillis / 1000f).toFixed(1) + "s · Token 未提供",
+                text = "耗时 " + (durationMillis / 1000f).toFixed(1) + "s",
                 style = MaterialTheme.typography.labelSmall,
                 color = color,
                 modifier = modifier,

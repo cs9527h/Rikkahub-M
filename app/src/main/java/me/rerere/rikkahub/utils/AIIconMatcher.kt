@@ -8,6 +8,9 @@ fun computeAIIconByName(name: String): String? {
 
     val lowerName = name.lowercase()
     val result = when {
+        // 云服务器不是模型品牌，用统一的自有图标，避免回退成首字母头像
+        lowerName == "liyu" || lowerName == "云服务器" || lowerName == "mate 网关" ||
+            lowerName == "mate gateway" || lowerName == "mate 服务端" -> "mate-cloud.svg"
         PATTERN_OPENAI.containsMatchIn(lowerName) -> "openai.svg"
         PATTERN_GEMINI.containsMatchIn(lowerName) -> "gemini-color.svg"
         PATTERN_GOOGLE.containsMatchIn(lowerName) -> "google-color.svg"

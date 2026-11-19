@@ -185,7 +185,7 @@ data class WebDavConfig(
     val url: String = "",
     val username: String = "",
     val password: String = "",
-    val path: String = "rikkahub_backups",
+    val path: String = "Rikkahub-M_backups",
     val items: List<BackupItem> = listOf(
         BackupItem.DATABASE,
         BackupItem.FILES
