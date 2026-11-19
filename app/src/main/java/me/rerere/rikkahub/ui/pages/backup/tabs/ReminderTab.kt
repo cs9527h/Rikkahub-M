@@ -47,6 +47,16 @@ fun ReminderTab(vm: BackupVM) {
     ) {
         CardGroup {
             switchItem(
+                checked = config.autoBackupOnAppLifecycle,
+                onCheckedChange = {
+                    updateConfig(config.copy(autoBackupOnAppLifecycle = it))
+                },
+                headlineContent = { Text("打开及退出时自动备份") },
+                supportingContent = {
+                    Text("开启后使用已配置的 HTTPS WebDAV 或 S3，自动保存全部设置、昵称、头像、聊天记录和附件。云端备份包含敏感资料，请使用可信服务。")
+                },
+            )
+            switchItem(
                 checked = config.enabled,
                 onCheckedChange = { updateConfig(config.copy(enabled = it)) },
                 headlineContent = { Text(stringResource(R.string.backup_page_reminder_enable)) },
