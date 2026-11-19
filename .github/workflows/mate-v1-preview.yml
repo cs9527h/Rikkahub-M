@@ -62,7 +62,7 @@ jobs:
               "client_info": {
                 "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef012345",
                 "android_client_info": {
-                  "package_name": "com.dafayu.rikkahubm.preview.debug"
+                  "package_name": "com.rikkahub.mate.debug"
                 }
               },
               "api_key": [{"current_key": "CI_ONLY_INVALID_API_KEY_DO_NOT_USE"}]
