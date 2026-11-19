@@ -523,7 +523,6 @@
   <string name="regenerate">再生成</string>
   <string name="regenerate_confirm_message">このメッセージを再生成してもよろしいですか？このメッセージより下のメッセージはすべて削除されます。</string>
   <string name="render_with_webview">WebViewで表示</string>
-  <string name="rikkahub_provider_description">公式の無料AIサービスです。ユーザーのスポンサー資金を使い、新規ユーザーのためのフォールバック用の一部無料モデルを提供します。APIキーは不要です。厳しいレート制限があります。独自のプロバイダーを購入済みの場合は、可能な限りそちらをご利用ください。</string>
   <string name="safe_mode_assistants">アシスタント</string>
   <string name="safe_mode_copy">コピー</string>
   <string name="safe_mode_crash_report">クラッシュレポート</string>
@@ -958,8 +957,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="share">共有</string>
   <string name="share_handler_page_title">共有を処理するアシスタントを選択</string>
   <string name="shortcut_take_picture">写真で質問</string>
-  <string name="silicon_flow_description">**世界をリードするAI能力プロバイダー、AGIの普及を加速して人類に貢献。**</string>
-  <string name="silicon_flow_website">公式サイト: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
   <string name="skill_detail_page_content">コンテンツ</string>
   <string name="skill_detail_page_create">作成</string>
   <string name="skill_detail_page_delete_confirm">ファイル"%s"を削除してもよろしいですか？</string>
