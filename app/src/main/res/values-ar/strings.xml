@@ -496,7 +496,7 @@
   <string name="mcp_picker_syncing">جارٍ مزامنة خوادم MCP...</string>
   <string name="mcp_picker_title">خوادم MCP</string>
   <string name="menu">القائمة</string>
-  <string name="menu_page_afternoon_greeting">مساء الخير\uD83D\uDC4B</string>
+  <string name="menu_page_afternoon_greeting">مساء الخير👋</string>
   <string name="menu_page_evening_greeting">مساء الخير👋</string>
   <string name="menu_page_morning_greeting">صباح الخير👋</string>
   <string name="menu_page_night_greeting">لقد تأخر الوقت، اعتنِ بنفسك👋</string>
