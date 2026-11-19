@@ -27,6 +27,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.ui.components.nav.BackButton
 
 /**
@@ -39,25 +41,36 @@ fun MateConnectionPage() {
     val store = remember(context) { MateGatewayStore(context) }
     val gateway = remember { MateGatewayClient() }
     val scope = rememberCoroutineScope()
-    val saved = remember { store.load() }
-    var address by remember { mutableStateOf(saved?.baseUrl ?: store.savedAddress()) }
+    var address by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var deviceName by remember { mutableStateOf("Mate Android") }
-    var paired by remember { mutableStateOf(saved) }
+    var paired by remember { mutableStateOf<MateConnection?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf(
-        if (saved == null) "尚未连接服务器" else "已保存设备授权，正在验证连接"
-    ) }
+    var message by remember { mutableStateOf("正在读取本机连接…") }
+    var restoring by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
-        val current = saved ?: return@LaunchedEffect
         try {
-            gateway.verify(current)
-            message = "连接已验证 · 协议 3"
+            val current = withContext(Dispatchers.IO) { store.load() }
+            address = withContext(Dispatchers.IO) { current?.baseUrl ?: store.savedAddress() }
+            paired = current
+            message = if (current == null) "尚未连接服务器" else "已保存授权，正在验证连接"
+            if (current != null) {
+                try {
+                    gateway.verify(current)
+                    message = "连接已验证 · 协议 3"
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    message = "已保存授权，但当前无法验证连接；可重试，不会清除聊天记录"
+                }
+            }
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
-            message = "已保存授权，但当前无法验证连接；可重试，不会清除聊天记录"
+            message = "读取本机授权失败；请检查设备密钥与备份恢复状态"
+        } finally {
+            restoring = false
         }
     }
 
@@ -85,7 +98,7 @@ fun MateConnectionPage() {
                     enabled = !busy
                 )
             }
-            if (paired == null) {
+            if (!restoring && paired == null) {
                 item {
                     OutlinedTextField(
                         value = code, onValueChange = { code = it },
@@ -114,7 +127,7 @@ fun MateConnectionPage() {
                             scope.launch {
                                 try {
                                     val connection = gateway.pair(address, code, deviceName)
-                                    store.save(connection)
+                                    withContext(Dispatchers.IO) { store.save(connection) }
                                     paired = connection
                                     code = ""
                                     message = "配对成功 · 连接已验证"
@@ -129,7 +142,7 @@ fun MateConnectionPage() {
                         }
                     ) { Text(if (busy) "正在连接…" else "配对并连接") }
                 }
-            } else {
+            } else if (!restoring) {
                 item {
                     Button(
                         enabled = !busy, modifier = Modifier.fillMaxWidth(),
@@ -153,13 +166,20 @@ fun MateConnectionPage() {
                 item {
                     TextButton(
                         enabled = !busy, onClick = {
-                            try {
-                                store.forgetLocal()
-                                paired = null
-                                code = ""
-                                message = "本机授权已移除；服务端设备授权仍需在后台撤销"
-                            } catch (error: Exception) {
-                                message = error.message ?: "移除失败"
+                            busy = true
+                            scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) { store.forgetLocal() }
+                                    paired = null
+                                    code = ""
+                                    message = "本机授权已移除；服务端设备授权仍需在后台撤销"
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Exception) {
+                                    message = error.message ?: "移除失败"
+                                } finally {
+                                    busy = false
+                                }
                             }
                         }
                     ) { Text("移除本机授权并重新配对") }
