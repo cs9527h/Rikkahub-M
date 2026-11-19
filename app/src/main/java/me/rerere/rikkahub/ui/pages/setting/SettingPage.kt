@@ -56,7 +56,6 @@ import me.rerere.hugeicons.stroke.Database02
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.ImageUpload
-import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LookTop
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Megaphone01
@@ -69,7 +68,6 @@ import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.Sun01
 import me.rerere.hugeicons.stroke.Tiktok
-import me.rerere.hugeicons.stroke.WavingHand01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.isNotConfigured
@@ -87,12 +85,9 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.CustomColors
-import me.rerere.rikkahub.utils.joinQQGroup
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.writeClipboardText
-import me.rerere.ui.icons.DiscordIcon
-import me.rerere.ui.icons.TencentQQIcon
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -101,36 +96,9 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
-    val launchCount by vm.launchCount.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
     val localNetworkPermission = rememberLocalNetworkPermissionState()
     val notificationPermission = rememberNotificationPermissionState()
-
-    if (!settings.init && launchCount > 100 && (launchCount - settings.sponsorAlertDismissedAt) >= 50) {
-        AlertDialog(
-            onDismissRequest = {
-                vm.updateSettings { it.copy(sponsorAlertDismissedAt = launchCount) }
-            },
-            icon = { Icon(HugeIcons.WavingHand01, null) },
-            title = { Text(stringResource(R.string.setting_page_sponsor_alert_title)) },
-            text = { Text(stringResource(R.string.setting_page_sponsor_alert_desc)) },
-            confirmButton = {
-                Button(onClick = {
-                    vm.updateSettings { it.copy(sponsorAlertDismissedAt = launchCount) }
-                    navController.navigate(Screen.SettingDonate)
-                }) {
-                    Text(stringResource(R.string.setting_page_sponsor_alert_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    vm.updateSettings { it.copy(sponsorAlertDismissedAt = launchCount) }
-                }) {
-                    Text(stringResource(R.string.setting_page_sponsor_alert_dismiss))
-                }
-            },
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -346,39 +314,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         onClick = { navController.navigate(Screen.SettingAbout) },
                         leadingContent = { CardGroupIcon(HugeIcons.Clapping01, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_about_desc)) },
-                        trailingContent = {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                var showQQGroupSheet by remember { mutableStateOf(false) }
-                                IconButton(
-                                    onClick = { showQQGroupSheet = true }
-                                ) {
-                                    Icon(
-                                        imageVector = TencentQQIcon,
-                                        contentDescription = "QQ",
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                                if (showQQGroupSheet) {
-                                    QQGroupBottomSheet(
-                                        onDismiss = { showQQGroupSheet = false }
-                                    )
-                                }
-                                IconButton(
-                                    onClick = {
-                                        context.openUrl("https://discord.gg/9weBqxe5c4")
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = DiscordIcon,
-                                        contentDescription = "Discord",
-                                        tint = MaterialTheme.colorScheme.secondary
-                                    )
-                                }
-                            }
-                        },
                         headlineContent = { Text(stringResource(R.string.setting_page_about)) },
                     )
                     item(
@@ -405,12 +340,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { CardGroupIcon(HugeIcons.Bookshelf01, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_request_logs_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_request_logs)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingDonate) },
-                        leadingContent = { CardGroupIcon(HugeIcons.InLove, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_donate_desc)) },
-                        headlineContent = { Text(stringResource(R.string.setting_page_donate)) },
                     )
                     item(
                         onClick = {
