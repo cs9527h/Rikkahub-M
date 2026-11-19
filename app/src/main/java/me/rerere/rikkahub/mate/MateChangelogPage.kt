@@ -33,6 +33,17 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.20 · 0.2.1", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 云服务器没有真实 Token 数据时只显示耗时，不再出现「Token 未提供」\n" +
+                    "• 云服务器改用统一云图标，聊天与模型列表不再出现首字母 L\n" +
+                    "• 侧边栏底部设置按钮左移；关于页入口改名「更新日志」\n" +
+                    "• 新装用户 WebDAV 默认路径改为 Rikkahub-M_backups；设置项改名「云服务器」\n" +
+                    "• 本版只发布一个通用安装包，可直接覆盖 0.2.0 升级",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.19 · 0.2 服务端状态与界面整理", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 精简侧栏、设置、关于和连接页面，整理中文显示名称\n" +

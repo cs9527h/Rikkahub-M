@@ -63,3 +63,18 @@
 - 发布工作流：产物命名固定，新增脚本语法自检；`bash -n` 校验通过后才推 master
 
 仍未完成：Token/耗时统计、`getQuota()`、附件传输、配对二维码失败根因、自动备份落盘验证、旧 Mate 数据迁移。
+
+
+## 0.2.1（2026-11-20）
+
+- `versionCode = 7`、`versionName = "0.2.1"`，tag `v0.2.1`
+- 只发布一个通用 APK：`Rikkahub-M-0.2.1.apk`（arm64-v8a + x86_64，发布前校验两个 ABI 都在包内）
+- 云服务器无 usage 时不再显示「Token 未提供」，仅保留实际耗时；独立 API 模型的 usage 展示不变
+- `AIIconMatcher` 为 `liyu` / 云服务器相关名称返回统一 `mate-cloud.svg`，消除首字母头像
+- 侧边栏底栏去掉把设置按钮推到右侧的占位 Spacer
+- 关于页与更新日志标题改为「更新日志」
+- `WebDavConfig.path` 默认值改为 `Rikkahub-M_backups`（已存过配置的老用户路径不覆盖）
+- 设置页入口「连接服务器」改为「云服务器」
+
+未完成：Token 统计（依赖网关 usage）、附件上传（依赖 `/chat/stream` attachments 协议）、
+第二套聊天页迁移删除、自动备份实机验证、性能量化测试。
