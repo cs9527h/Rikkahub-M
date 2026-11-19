@@ -1917,15 +1917,4 @@
   <string name="quick_start_page_deepseek_importing">匯入中…</string>
   <string name="quick_start_page_deepseek_import_another">匯入另一個 ZIP</string>
   <string name="setting_page_share_text">Rikkahub-M · 開源 Android AI 用戶端\n原始碼：https://github.com/cs9527h/Rikkahub-M</string>
-  <string name="mate_intro_title">Mate · 讓聊天與李魚自然相處</string>
-  <string name="mate_intro_summary">保留 RikkaHub 原生聊天、動畫與多模型功能，逐步整合 Mate 的 AstrBot 私人連接與李魚。李魚聊天功能仍在開發中。</string>
-  <string name="mate_intro_connection_heading">連接李魚伺服器</string>
-  <string name="mate_intro_connection_detail">填入 HTTPS 網關位址及伺服器產生的一次性配對碼。目前只可驗證裝置授權，尚無法透過此入口與李魚聊天。</string>
-  <string name="mate_intro_connect_button">開啟伺服器配對</string>
-  <string name="mate_intro_progress_heading">功能整合進度</string>
-  <string name="mate_intro_progress_detail">原生聊天與獨立 API 可使用 RikkaHub 現有功能；Mate 配對原始碼已接入。李魚聊天、伺服器記憶、歷史同步、裝置管理與舊資料遷移仍待完成。</string>
-  <string name="mate_intro_old_app_heading">保留舊 Mate</string>
-  <string name="mate_intro_old_app_detail">舊 Mate 的資料庫尚不能直接遷移。請保留原 App 與聊天記錄，等待測試完成的遷移與簽名 APK。</string>
-  <string name="mate_intro_origin">基於 RikkaHub 的獨立 AGPL-3.0 Fork，並非官方版本。</string>
-  <string name="mate_intro_tab">李魚 · Mate</string>
 </resources>
