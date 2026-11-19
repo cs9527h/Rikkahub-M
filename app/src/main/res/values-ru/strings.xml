@@ -523,7 +523,6 @@
   <string name="regenerate">Сгенерировать заново</string>
   <string name="regenerate_confirm_message">Вы уверены, что хотите заново сгенерировать это сообщение? Все сообщения ниже этого будут удалены.</string>
   <string name="render_with_webview">Отображать в WebView</string>
-  <string name="rikkahub_provider_description">Официальный бесплатный AI-сервис, использующий средства спонсоров для предоставления новым пользователям бесплатных моделей в качестве резерва; API-ключ не требуется. Действуют строгие ограничения по частоте запросов. Если у вас есть собственный провайдер, используйте его по возможности.</string>
   <string name="safe_mode_assistants">Помощники</string>
   <string name="safe_mode_copy">Копировать</string>
   <string name="safe_mode_crash_report">Отчёт о сбое</string>
@@ -958,8 +957,6 @@
   <string name="share">Поделиться</string>
   <string name="share_handler_page_title">Выбрать ассистента</string>
   <string name="shortcut_take_picture">Сделать фото и спросить</string>
-  <string name="silicon_flow_description">**Ведущий мировой поставщик ИИ-возможностей, ускоряющий AGI на благо человечества.**</string>
-  <string name="silicon_flow_website">Веб-сайт: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
   <string name="skill_detail_page_content">Контент</string>
   <string name="skill_detail_page_create">Создать</string>
   <string name="skill_detail_page_delete_confirm">Вы уверены, что хотите удалить файл "%s"?</string>
