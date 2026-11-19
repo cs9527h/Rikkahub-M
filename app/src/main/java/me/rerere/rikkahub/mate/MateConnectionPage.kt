@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.utils.plus
 
 /**
  * Deliberately separate from provider configuration: protocol-v3 is not an
