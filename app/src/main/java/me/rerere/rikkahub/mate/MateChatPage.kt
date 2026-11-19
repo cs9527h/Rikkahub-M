@@ -70,7 +70,7 @@ fun MateChatPage() {
     var draft by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(true) }
-    var status by remember { mutableStateOf("正在连接李鱼…") }
+    var status by remember { mutableStateOf("正在连接服务器…") }
     var lastRequestId by remember { mutableStateOf<String?>(null) }
     var activeJob by remember { mutableStateOf<Job?>(null) }
     var serverInfo by remember { mutableStateOf("") }
@@ -106,7 +106,7 @@ fun MateChatPage() {
         try {
             val saved = withContext(Dispatchers.IO) { credentials.load() }
             if (saved == null) {
-                status = "尚未配对，请先进入设置 → 连接李鱼服务器"
+                status = "尚未配对，请先进入设置 → 连接服务器"
                 return@LaunchedEffect
             }
             connection = saved
@@ -115,7 +115,7 @@ fun MateChatPage() {
             draft = journal.draft(saved.instanceId)
             // Read-only verification. Do not send messages or auto-retry interrupted requests.
             val caps = transport.capabilities(saved)
-            status = if (caps.optBoolean("text")) "服务器已连接 · 李鱼" else "服务器未开放文字聊天"
+            status = if (caps.optBoolean("text")) "服务器已连接" else "服务器未开放文字聊天"
             serverInfo = "协议 3 · " + (caps.optString("version").ifBlank { "版本未知" }) +
                 if (caps.optBoolean("memory_read")) " · 可只读检索记忆" else " · 记忆不可读"
             val unresolved = journal.unresolved(saved.instanceId)
@@ -190,7 +190,7 @@ fun MateChatPage() {
                 messages = messages + journal.recent(current.instanceId, 2)
                 draft = ""
                 lastRequestId = id
-                status = "李鱼正在回复…"
+                status = "正在回复…"
                 var shownAt = 0L
                 transport.stream(current, id, body) { snapshot ->
                     latestText = snapshot.text
@@ -209,7 +209,7 @@ fun MateChatPage() {
                         shownAt = now
                     }
                     if (snapshot.terminal) {
-                        status = if (snapshot.state == "done") "李鱼 · 已回复" else "服务器返回错误：" + snapshot.error
+                        status = if (snapshot.state == "done") "已回复" else "服务器返回错误：" + snapshot.error
                         lastRequestId = if (snapshot.state == "done") null else id
                     }
                 }
@@ -240,7 +240,7 @@ fun MateChatPage() {
     Scaffold(topBar = {
         TopAppBar(title = {
             Column {
-                Text("李鱼", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Normal)
+                Text("Mate 聊天", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Normal)
                 Text(
                     if (checking) "连接中" else status,
                     style = MaterialTheme.typography.labelSmall,
@@ -287,7 +287,7 @@ fun MateChatPage() {
                         ) { Text("刷新服务器状态") }
                     }
                     item {
-                        Text("李鱼人格（仅服务端授权可读取）", style = MaterialTheme.typography.titleSmall)
+                        Text("服务端人格（需要授权）", style = MaterialTheme.typography.titleSmall)
                         FilledTonalButton(enabled = connection != null, onClick = {
                             val current = connection ?: return@FilledTonalButton
                             scope.launch {
@@ -302,7 +302,7 @@ fun MateChatPage() {
                                     }
                                 } catch (_: Exception) { serverInfo = "人格读取失败或未授权" }
                             }
-                        }) { Text("检查李鱼人格") }
+                        }) { Text("检查服务端人格") }
                     }
                     item {
                         Text("服务器记忆检索", style = MaterialTheme.typography.titleSmall)
@@ -380,7 +380,7 @@ fun MateChatPage() {
                     if (messages.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                Text("这里是李鱼的独立聊天记录。首次使用请先完成服务器配对。",
+                                Text("这里是旧版独立聊天记录。首次使用请先完成服务器配对。",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
@@ -478,7 +478,7 @@ fun MateChatPage() {
                     },
                     enabled = connection != null && !checking,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                    label = { Text("发送给李鱼") },
+                    label = { Text("发送消息") },
                     minLines = 1,
                     maxLines = 5,
                 )
@@ -509,7 +509,7 @@ fun MateChatPage() {
             AlertDialog(
                 onDismissRequest = { pendingDeleteId = null },
                 title = { Text("仅删除本机消息") },
-                text = { Text("将删除这条提问和对应的李鱼回复。不会删除服务器端记录，也不会影响其他设备。") },
+                text = { Text("将删除这条提问和对应回复。不会删除服务器端记录，也不会影响其他设备。") },
                 confirmButton = {
                     TextButton(onClick = {
                         val id = pendingDeleteId ?: return@TextButton
