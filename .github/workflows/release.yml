@@ -145,7 +145,7 @@ jobs:
             fi
             cp "$apk" "$out"
             sha256sum "$out" >> dist/SHA256SUMS.txt
-            { echo "== $(basename "$out"); echo "package: $pkg"; echo "abis: $abis"; cat /tmp/sig.txt; echo; } >> dist/APK_SIGNING.txt
+            { echo "== $(basename "$out")"; echo "package: $pkg"; echo "abis: $abis"; cat /tmp/sig.txt; echo; } >> dist/APK_SIGNING.txt
             packaged=$((packaged+1))
           done
           [ "$packaged" -ge 1 ] || { echo "::error::No publishable APK"; exit 1; }
