@@ -17,7 +17,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Hinzufügen</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Mate</string>
   <string name="asr_button_content_description">Spracherkennung</string>
   <string name="asr_button_stop">Stopp</string>
   <string name="assistant_page_image_url">Bild-URL</string>
@@ -1920,4 +1920,15 @@
   <string name="setting_page_quick_start">Schnellstart</string>
   <string name="setting_page_quick_start_desc">Richte Anbieter und Modelle Schritt für Schritt ein oder migriere von DeepSeek</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
+  <string name="mate_intro_title">Meet Mate: native AI chat and Li Yu</string>
+  <string name="mate_intro_summary">RikkaHub's native Android chat and independent models, with Mate's private AstrBot connection under development.</string>
+  <string name="mate_intro_connection_heading">Connect Li Yu</string>
+  <string name="mate_intro_connection_detail">Enter the HTTPS gateway and a one-time code from your server. Device pairing is experimental; Li Yu chat is not yet connected.</string>
+  <string name="mate_intro_connect_button">Open pairing</string>
+  <string name="mate_intro_progress_heading">Migration progress</string>
+  <string name="mate_intro_progress_detail">RikkaHub chat works with your configured models. Li Yu chat, server memory, history sync, device administration and old Mate import are still pending.</string>
+  <string name="mate_intro_old_app_heading">Keep your old Mate app</string>
+  <string name="mate_intro_old_app_detail">Do not delete the old Mate app. Safe data migration and a signed release are not yet verified.</string>
+  <string name="mate_intro_origin">Independent AGPL-3.0 fork of RikkaHub, not the official app.</string>
+  <string name="mate_intro_tab">Li Yu · Mate</string>
 </resources>
