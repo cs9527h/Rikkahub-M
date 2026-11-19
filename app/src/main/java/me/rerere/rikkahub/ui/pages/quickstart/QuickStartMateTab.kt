@@ -43,7 +43,7 @@ internal fun QuickStartMateTab() {
                     onClick = { nav.navigate(Screen.MateChat) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("进入李鱼聊天")
+                    Text("进入聊天")
                 }
                 Button(
                     onClick = { nav.navigate(Screen.MateConnection) },
