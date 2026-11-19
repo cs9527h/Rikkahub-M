@@ -7,7 +7,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Add</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">Mate</string>
   <string name="asr_button_content_description">Speech Recognition</string>
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>
@@ -1920,4 +1920,15 @@
   <string name="setting_page_quick_start">Quick Start</string>
   <string name="setting_page_quick_start_desc">Set up providers and models step by step, or migrate from DeepSeek</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
+  <string name="mate_intro_title">Mate · an AI space made for everyday conversations</string>
+  <string name="mate_intro_summary">RikkaHub's native Android chat and flexible models, with a dedicated path to Li Yu through Mate's AstrBot gateway. The Li Yu connection is still in development.</string>
+  <string name="mate_intro_connection_heading">Connect Li Yu</string>
+  <string name="mate_intro_connection_detail">Enter the HTTPS gateway address and a server-issued one-time pairing code. The current implementation verifies device authorization only; it does not yet send Li Yu chat messages.</string>
+  <string name="mate_intro_connect_button">Open server pairing</string>
+  <string name="mate_intro_progress_heading">Development progress</string>
+  <string name="mate_intro_progress_detail">Native chat and model settings come from RikkaHub. Mate pairing source is present; Li Yu chats, server memory, history sync, QR administration and migration are not integrated yet.</string>
+  <string name="mate_intro_old_app_heading">Keep the old Mate app</string>
+  <string name="mate_intro_old_app_detail">Old Mate data is not yet compatible with this fork. Keep your original app and records until a tested migration and signed APK are available.</string>
+  <string name="mate_intro_origin">An independent AGPL-3.0 fork of RikkaHub; not an official RikkaHub build.</string>
+  <string name="mate_intro_tab">Li Yu · Mate</string>
 </resources>
