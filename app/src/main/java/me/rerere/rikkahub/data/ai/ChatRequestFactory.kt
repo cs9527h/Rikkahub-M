@@ -16,6 +16,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.MATE_GATEWAY_CHAT_PATH
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
@@ -55,6 +56,13 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatRequestFactory"
+
+/**
+ * The Mate adapter is a text conversation gateway, not an OpenAI function-calling API.
+ * AstrBot-side tools run on the server and are not controlled by the app's MCP/search switches.
+ */
+internal fun ProviderSetting.isMateGateway(): Boolean =
+    this is ProviderSetting.OpenAI && chatCompletionsPath == MATE_GATEWAY_CHAT_PATH
 
 /**
  * 一轮对话的请求上下文，按会话固定的配置解析一次。
@@ -116,13 +124,19 @@ class ChatRequestFactory(
             conversationSystemPrompt = conversation.customSystemPrompt,
             workspaceCwd = conversation.workspaceCwd,
             memories = if (assistant.enableMemory) memoryRepository.getFiles(assistant.memoryId) else emptyList(),
-            tools = chatToolFactory.createTools(
-                settings = settings,
-                assistant = assistant,
-                model = model,
-                conversationId = conversation.id,
-                workspaceCwd = conversation.workspaceCwd,
-            ),
+            tools = if (provider.isMateGateway()) {
+                // Do not discover or attach unsupported local/MCP tools to cloud-gateway requests.
+                // Server-side AstrBot tools remain independently available to the server.
+                emptyList()
+            } else {
+                chatToolFactory.createTools(
+                    settings = settings,
+                    assistant = assistant,
+                    model = model,
+                    conversationId = conversation.id,
+                    workspaceCwd = conversation.workspaceCwd,
+                )
+            },
         )
     }
 

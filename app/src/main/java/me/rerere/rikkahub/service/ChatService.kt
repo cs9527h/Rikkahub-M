@@ -46,6 +46,7 @@ import me.rerere.rikkahub.data.ai.ChatTurnContext
 import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.TranslationHandler
+import me.rerere.rikkahub.data.ai.isMateGateway
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
@@ -830,9 +831,10 @@ class ChatService(
         }
     }
 
-    // 模型不支持工具调用时，搜索和 MCP 工具都不会生效，提醒一下
+    // 仅普通直连模型显示工具能力警告。Mate 云端网关由 AstrBot 自己执行服务端工具，
+    // 不使用客户端 MCP/Search 工具；正常对话不应反复出现红色“工具不可用”卡片。
     private fun warnIfToolsUnavailable(turn: ChatTurnContext, conversationId: Uuid) {
-        if (ModelAbility.TOOL in turn.model.abilities) return
+        if (turn.providerSetting.isMateGateway() || ModelAbility.TOOL in turn.model.abilities) return
         if (shouldUseExternalWebSearch(turn.assistant, turn.model) ||
             mcpManager.getAllAvailableTools(turn.assistant).isNotEmpty()
         ) {
