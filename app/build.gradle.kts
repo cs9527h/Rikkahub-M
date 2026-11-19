@@ -27,7 +27,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0-mate-preview"
+        versionName = "0.1.0-preview"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -50,25 +50,23 @@ android {
 
     signingConfigs {
         create("release") {
+            // 1) 开发者本机 local.properties；2) CI 注入的环境变量。两种都不入库。
             val localProperties = Properties()
             val localPropertiesFile = rootProject.file("local.properties")
-
             if (localPropertiesFile.exists()) {
                 localProperties.load(FileInputStream(localPropertiesFile))
-
-                val storeFilePath = localProperties.getProperty("storeFile")
-                val storePasswordValue = localProperties.getProperty("storePassword")
-                val keyAliasValue = localProperties.getProperty("keyAlias")
-                val keyPasswordValue = localProperties.getProperty("keyPassword")
-
-                if (storeFilePath != null && storePasswordValue != null &&
-                    keyAliasValue != null && keyPasswordValue != null
-                ) {
-                    storeFile = file(storeFilePath)
-                    storePassword = storePasswordValue
-                    keyAlias = keyAliasValue
-                    keyPassword = keyPasswordValue
-                }
+            }
+            val storePath = localProperties.getProperty("storeFile") ?: System.getenv("MATE_KEYSTORE_PATH")
+            val storePasswordValue = localProperties.getProperty("storePassword") ?: System.getenv("MATE_KEYSTORE_PASSWORD")
+            val keyAliasValue = localProperties.getProperty("keyAlias") ?: System.getenv("MATE_KEY_ALIAS")
+            val keyPasswordValue = localProperties.getProperty("keyPassword") ?: System.getenv("MATE_KEY_PASSWORD")
+            if (storePath != null && storePasswordValue != null &&
+                keyAliasValue != null && keyPasswordValue != null
+            ) {
+                storeFile = file(storePath)
+                storePassword = storePasswordValue
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
             }
         }
     }
