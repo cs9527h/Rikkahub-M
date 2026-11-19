@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.1.2-preview.1'
+  VERSION: '0.1.3-preview.1'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -178,7 +178,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="v0.1.2-preview.1"
+          TAG="v0.1.3-preview.1"
           ls -lh dist
           cat dist/SHA256SUMS.txt
           NOTES=$(cat <<'EOF'
@@ -199,5 +199,5 @@ jobs:
           else
             gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
               --repo "$GITHUB_REPOSITORY" --prerelease \
-              --title "Rikkahub-M 0.1.2-preview.1" --notes "$NOTES"
+              --title "Rikkahub-M 0.1.3-preview.1" --notes "$NOTES"
           fi

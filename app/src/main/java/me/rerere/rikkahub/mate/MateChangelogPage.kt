@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.19 · 0.1.3 助手身份与标题修复", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• AI 发言者统一显示助手「李鱼」和它的头像，不再显示模型名「Mate 网关」\n" +
+                    "• 顶部只保留会话标题与助手名，模型和供应商名称移出\n" +
+                    "• 快速模型失效时不再报错，网关模式改用本地标题，避免污染服务器对话",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.19 · 0.1.2 修复默认模型解析", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 内置 Mate 服务端进入默认服务商列表，李鱼助手能真正解析到模型\n" +
