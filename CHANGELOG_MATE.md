@@ -6,7 +6,7 @@
 
 ### 已提交源码
 - 基于 RikkaHub 原生 Kotlin／Compose UI：保留独立 AI 模型聊天、Markdown、动画、主题、语音、工具与原有功能。
-- 独立 App 标识 `com.dafayu.rikkahubm.preview`，与旧 Mate 和官方 RikkaHub 并存。
+- 独立 App 标识 `com.rikkahub.mate`，与旧 Mate 和官方 RikkaHub 并存。
 - Mate / 李鱼专属导航、快速入门、关于页面和多语言名称。
 - AstrBot 协议 3：HTTPS 配对码兑换、证书正常校验、网关身份验证、Keystore AES-GCM 加密设备 Token。
 - 李鱼原生聊天：SSE 快照流式更新、明确取消、持久请求 ID、断网后查询原请求，不自动生成重复请求。
