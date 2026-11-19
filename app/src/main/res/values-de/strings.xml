@@ -1918,7 +1918,7 @@
   <string name="setting_page_quick_start_desc">Set up an independent API, Li Yu pairing or DeepSeek import</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
   <string name="mate_intro_title">Meet Mate: native AI chat and Li Yu</string>
-  <string name="mate_intro_summary">RikkaHub's native Android chat and independent models, with Mate's private AstrBot connection under development.</string>
+  <string name="mate_intro_summary">RikkaHub\'s native Android chat and independent models, with Mate\'s private AstrBot connection under development.</string>
   <string name="mate_intro_connection_heading">Connect Li Yu</string>
   <string name="mate_intro_connection_detail">Enter the HTTPS gateway and a one-time code from your server. Device pairing is experimental; Li Yu chat is not yet connected.</string>
   <string name="mate_intro_connect_button">Open pairing</string>
