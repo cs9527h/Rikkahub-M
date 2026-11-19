@@ -46,6 +46,14 @@ jobs:
           yes | "$SDK_MANAGER" --licenses >/dev/null || true
           "$SDK_MANAGER" --channel=3 --list | grep -E 'platforms;android-37|build-tools;37' || true
           "$SDK_MANAGER" --channel=3 "platform-tools" "platforms;android-37.2" "build-tools;37.0.0" || "$SDK_MANAGER" --channel=3 "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare web-ui build tools
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.15.0 --activate
+          pnpm --dir web-ui install --frozen-lockfile
       - name: Generate CI-only Firebase placeholder
         # This is not a production Firebase project. Never upload real secrets.
         # Placeholder allows Kotlin/Compose build checks without borrowing upstream keys.
