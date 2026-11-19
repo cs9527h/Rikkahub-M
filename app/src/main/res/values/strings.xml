@@ -1918,7 +1918,7 @@
   <string name="setting_page_quick_start_desc">Configure independent APIs, server pairing, or import DeepSeek chats</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
   <string name="mate_intro_title">Mate · an AI space made for everyday conversations</string>
-  <string name="mate_intro_summary">Mate combines RikkaHub's native Android chat with a private AstrBot gateway. Pairing is required to use the server.</string>
+  <string name="mate_intro_summary">Mate combines RikkaHub\'s native Android chat with a private AstrBot gateway. Pairing is required to use the server.</string>
   <string name="mate_intro_connection_heading">Connect server</string>
   <string name="mate_intro_connection_detail">Enter the HTTPS gateway address and a server-issued one-time pairing code. Chats use the built-in gateway provider after pairing; real-server interoperability still needs verification.</string>
   <string name="mate_intro_connect_button">Open server pairing</string>
