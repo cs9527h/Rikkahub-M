@@ -33,10 +33,10 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
-                Text("2026.11.19 · 0.1.1 李鱼并入原生聊天", style = MaterialTheme.typography.titleMedium)
+                Text("2026.11.19 · 0.1.1 服务端接入原生聊天", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "• 李鱼成为内置模型后端，走原生聊天页面、会话库、搜索与删除\n" +
-                    "• 全新安装默认助手就是李鱼，打开即进聊天\n" +
+                    "• Mate 网关成为内置模型后端，走原生聊天页面、会话库、搜索与删除\n" +
+                    "• 全新安装只提供一个默认助手，打开即进聊天\n" +
                     "• 应用名改为 Mate，设置页合并为「连接与设备」单个入口",
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -45,7 +45,7 @@ fun MateChangelogPage() {
                 Text("2026.11.19 · 第一版整合", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• RikkaHub 原生聊天及动画继续保留\n" +
-                    "• 独立李鱼聊天、流式响应和断线查询\n" +
+                    "• 服务器聊天、流式响应和断线查询\n" +
                     "• 本机历史、分页、搜索和消息删除\n" +
                     "• AstrBot 配对、扫码、设备管理\n" +
                     "• 服务器状态、人格与记忆只读入口\n" +
