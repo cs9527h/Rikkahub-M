@@ -84,9 +84,13 @@ internal class MateChatTransport {
         .callTimeout(30, TimeUnit.SECONDS)
         .build()
     private val streamHttp = http.newBuilder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
-        .callTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(35, TimeUnit.SECONDS)
+        .callTimeout(190, TimeUnit.SECONDS)
         .build()
+    @Volatile private var activeCall: okhttp3.Call? = null
+
+    /** Explicit user cancellation must interrupt blocking SSE reads immediately. */
+    fun cancelStreaming() { activeCall?.cancel() }
 
     private fun request(connection: MateConnection, path: String, data: JSONObject? = null): Request {
         val base = MateGatewayAddress.normalize(connection.baseUrl)
@@ -160,6 +164,7 @@ internal class MateChatTransport {
         val body = JSONObject().put("request_id", requestId).put("message", message)
             .put("attachments", org.json.JSONArray())
         val call = streamHttp.newCall(request(connection, "/chat/stream", body))
+        activeCall = call
         val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
         try {
             call.execute().use { response ->
@@ -183,6 +188,7 @@ internal class MateChatTransport {
                 if (!terminal) throw IOException("网络中断；请查询原请求状态，不要重复发送")
             }
         } finally {
+            activeCall = null
             handle.dispose()
         }
     }
