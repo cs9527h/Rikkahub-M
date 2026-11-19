@@ -29,7 +29,7 @@ fun MateChangelogPage() {
             item {
                 Text("当前源码版本 · " + BuildConfig.VERSION_NAME,
                     style = MaterialTheme.typography.titleLarge)
-                Text("V1 预览功能；以 GitHub Actions 编译和真机验收结果为准。",
+                Text("正式签名版本，可直接覆盖旧版安装。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {

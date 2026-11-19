@@ -761,11 +761,10 @@ private fun TopBar(
                     Text(
                         text = buildString {
                             append(assistant.name.ifBlank { context.getString(R.string.assistant_page_default_assistant) })
+                            // 只追加服务器真实返回的状态，查不到就不写，避免出现一堆"未知"
                             if (chatModel?.id == MATE_MODEL_ID) {
-                                append(" · ")
-                                append(peakLabel ?: "峰谷未知")
-                                append(" · ")
-                                append(deepSeekBalance ?: "余额不可用")
+                                peakLabel?.let { append(" · ").append(it) }
+                                deepSeekBalance?.let { append(" · ").append(it) }
                             }
                         },
                         overflow = TextOverflow.Ellipsis,
