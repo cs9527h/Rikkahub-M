@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Publish a GitHub Release with the signed APK'
+        description: 'Publish a GitHub Release with the signed APKs'
         type: boolean
         default: false
   push:
@@ -14,9 +14,13 @@ on:
 permissions:
   contents: read
 
+env:
+  VERSION: '0.1.0-preview.1'
+  EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
+
 jobs:
   build:
-    name: Build signed Rikkahub-M APK
+    name: Build signed Rikkahub-M APKs
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
@@ -86,40 +90,71 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew :app:testGithubDebugUnitTest --stacktrace --no-daemon
-      - name: Build signed release APK
+      - name: Build signed release APKs
         run: ./gradlew :app:assembleGithubRelease --stacktrace --no-daemon
-      - name: Verify signature, package and checksum
+      - name: Verify every APK: ABI, package, signature, checksum
         run: |
           set -euo pipefail
-          APK=$(find app/build/outputs/apk/github/release -name '*.apk' | head -1)
-          test -n "$APK"
+          APK_DIR=app/build/outputs/apk/github/release
           SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           APKSIGNER=$(find "$SDK_ROOT/build-tools" -name apksigner | sort | tail -1)
-          test -x "$APKSIGNER"
-          "$APKSIGNER" verify --print-certs "$APK" | tee APK_SIGNING.txt
-          # 包名必须真的是 com.rikkahub.mate，不能用脚本自说自话
           APKANALYZER=$(find "$SDK_ROOT" -name apkanalyzer | sort | tail -1)
-          if [ -x "$APKANALYZER" ]; then
-            PKG=$("$APKANALYZER" manifest application-id "$APK")
-          elif command -v aapt >/dev/null; then
-            PKG=$(aapt dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)
-          else
-            PKG=$(unzip -p "$APK" AndroidManifest.xml | strings | grep -o "com.rikkahub.mate" | head -1)
-          fi
-          echo "APK package: $PKG"
-          test "$PKG" = "com.rikkahub.mate" || { echo "::error::Unexpected package id: $PKG"; exit 1; }
-          sha256sum "$APK" | tee SHA256SUMS.txt
-          cp "$APK" Rikkahub-M-0.1.0-preview.apk
-          sha256sum Rikkahub-M-0.1.0-preview.apk > SHA256SUMS.txt
-          ls -lh
-      - name: Upload verified APK
+          test -x "$APKSIGNER"
+          echo "== produced APKs =="
+          ls -1 "$APK_DIR"/*.apk
+          mkdir -p dist
+          : > dist/APK_SIGNING.txt
+          : > dist/SHA256SUMS.txt
+          packaged=0
+          for apk in "$APK_DIR"/*.apk; do
+            base=$(basename "$apk")
+            abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
+            echo "--- $base abis: $abis"
+            target=""
+            case "$abis" in
+              *"arm64-v8a x86_64 "*) target="universal" ;;
+              *"x86_64 arm64-v8a "*) target="universal" ;;
+              *"arm64-v8a x86_64"*) target="universal" ;;
+              *"arm64-v8a "*) target="arm64-v8a" ;;
+              *"x86_64 "*) target="x86_64" ;;
+            esac
+            [ -n "$target" ] || { echo "::error::Cannot determine ABI for $base"; exit 1; }
+            if [ "$target" = "x86_64" ]; then
+              echo "skip $base (x86_64 emulator build is not shipped to phones)"
+              continue
+            fi
+            if [ "$target" = "arm64-v8a" ]; then
+              case "$abis" in *x86_64*) echo "::error::$base claims arm64 but contains x86_64"; exit 1;; esac
+            fi
+            if [ -x "$APKANALYZER" ]; then
+              pkg=$("$APKANALYZER" manifest application-id "$apk")
+            elif command -v aapt >/dev/null; then
+              pkg=$(aapt dump badging "$apk" | sed -n "s/package: name='\\([^']*\\)'.*/\\1/p" | head -1)
+            else
+              pkg=$(unzip -p "$apk" AndroidManifest.xml | strings | grep -o 'com.rikkahub.mate' | head -1)
+            fi
+            [ "$pkg" = "com.rikkahub.mate" ] || { echo "::error::$base package=$pkg"; exit 1; }
+            "$APKSIGNER" verify --print-certs "$apk" > /tmp/sig.txt
+            cert=$(grep 'certificate SHA-256 digest' /tmp/sig.txt | head -1 | awk '{print $NF}' | tr -d ':' | tr 'A-F' 'a-f')
+            [ "$cert" = "$EXPECTED_CERT_SHA256" ] || { echo "::error::$base cert=$cert != expected"; exit 1; }
+            out="dist/Rikkahub-M-v${VERSION}-${target}.apk"
+            cp "$apk" "$out"
+            sha256sum "$out" >> dist/SHA256SUMS.txt
+            { echo "== Rikkahub-M-v${VERSION}-${target}.apk"; echo "package: $pkg"; echo "abis: $abis"; cat /tmp/sig.txt; echo; } >> dist/APK_SIGNING.txt
+            packaged=$((packaged+1))
+          done
+          [ "$packaged" -ge 1 ] || { echo "::error::No publishable APK"; exit 1; }
+          echo "== dist =="
+          ls -lh dist
+          cat dist/SHA256SUMS.txt
+      - name: Upload verified APKs
         uses: actions/upload-artifact@v4
         with:
           name: Rikkahub-M-signed-apk
           path: |
-            Rikkahub-M-0.1.0-preview.apk
-            SHA256SUMS.txt
-            APK_SIGNING.txt
+            dist/*.apk
+            dist/SHA256SUMS.txt
+            dist/APK_SIGNING.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -131,30 +166,37 @@ jobs:
     permissions:
       contents: write
     steps:
+      # gh CLI 在没有 .git 的目录里无法推断仓库，必须 checkout（或显式 --repo）
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: Rikkahub-M-signed-apk
       - name: Create or update preview release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG="v0.1.0-preview.1"
+          ls -lh
+          cat SHA256SUMS.txt
           NOTES=$(cat <<'EOF'
           Rikkahub-M 0.1.0-preview.1
 
           以 RikkaHub 原生架构为底座，整合 Mate 的 AstrBot 网关、设备配对与李鱼服务器入口。
-          - 包名 com.rikkahub.mate，显示名 Rikkahub-M
-          - 全新安装只有一个默认助手；原有 RikkaHub 聊天、模型与服务商功能保留
+          - 包名 com.rikkahub.mate，显示名 Rikkahub-M，Kotlin namespace 保持上游不变
+          - 全新安装只有一个默认助手；RikkaHub 原有聊天、模型、MCP/工作区、主题与动画保留
           - 已移除赞助、捐赠与推广入口；联系作者统一指向指定 QQ
-          - APK 使用长期发布密钥签名（密钥仅存于 GitHub Actions Secrets）
+          - APK 使用长期发布密钥签名，私钥仅存于 GitHub Actions Secrets
+          - 附 arm64-v8a 与 universal 两个安装包，各自校验 ABI、包名、签名与 SHA-256
 
-          已知问题与未完成项见仓库 docs/MATE_V1_STATUS.md。
+          已知问题与未完成项见 docs/MATE_V1_STATUS.md。真机与时服务器联调尚未验证。
           EOF
           )
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" Rikkahub-M-0.1.0-preview.apk SHA256SUMS.txt APK_SIGNING.txt --clobber
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.apk SHA256SUMS.txt APK_SIGNING.txt --clobber --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" Rikkahub-M-0.1.0-preview.apk SHA256SUMS.txt APK_SIGNING.txt \
-              --prerelease --title "Rikkahub-M 0.1.0-preview.1" --notes "$NOTES"
+            gh release create "$TAG" dist/*.apk SHA256SUMS.txt APK_SIGNING.txt \
+              --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "Rikkahub-M 0.1.0-preview.1" --notes "$NOTES"
           fi
