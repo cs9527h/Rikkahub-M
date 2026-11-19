@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.20 · 0.2.2", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 删除旧的独立 Mate 聊天页与私有聊天库，聊天只保留原生一套\n" +
+                    "• 旧库 mate_liyu_v1.db 先归档到 files/legacy-mate-backup 再清理，不影响原生会话\n" +
+                    "• 云服务器聊天支持发送图片、文件、语音：先上传 /media 换取附件 ID，再随消息提交；上传失败会明确报错，不再静默丢弃",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.20 · 0.2.1", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 云服务器没有真实 Token 数据时只显示耗时，不再出现「Token 未提供」\n" +

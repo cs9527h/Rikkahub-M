@@ -51,6 +51,9 @@ import org.koin.android.ext.koin.androidLogger
 import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val TAG = "RikkaHubApp"
 
@@ -82,6 +85,9 @@ class RikkaHubApp : Application() {
             modules(appModule, viewModelModule, dataSourceModule, repositoryModule)
         }
         this.createNotificationChannel()
+
+        // 旧的 Mate 独立聊天库已经废弃：先备份，再从数据库目录移除，避免残留与误读
+        retireLegacyMateChatDatabase()
 
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
@@ -196,6 +202,33 @@ class RikkaHubApp : Application() {
                 Log.e(TAG, "checkWorkspaceIntegrity failed", it)
             }
         }
+    }
+
+    /**
+     * mate_liyu_v1.db 是 0.1.x 时代独立 Mate 聊天页的私有库。
+     * 0.2.2 起聊天统一走 RikkaHub 原生会话库，这里只做一次性归档：
+     * 复制到 files/legacy-mate-backup/ 保留证据，再移除 databases 下的原文件（含 -wal/-shm）。
+     * 归档失败就不删原库，宁可留着也不丢数据。
+     */
+    private fun retireLegacyMateChatDatabase() {
+        runCatching {
+            val dbDir = File(dataDir, "databases")
+            val db = File(dbDir, "mate_liyu_v1.db")
+            if (!db.exists()) return
+            val backupDir = File(filesDir, "legacy-mate-backup").apply { mkdirs() }
+            val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+            val target = File(backupDir, "mate_liyu_v1-$stamp.db")
+            db.copyTo(target, overwrite = true)
+            // 只有备份确实存在且非空才清理原库
+            if (target.length() <= 0) {
+                Log.w(TAG, "legacy mate db backup is empty, keeping original")
+                return
+            }
+            listOf("", "-wal", "-shm").forEach { suffix ->
+                File(dbDir, "mate_liyu_v1.db$suffix").delete()
+            }
+            Log.i(TAG, "legacy mate chat database archived to ${target.name}")
+        }.onFailure { Log.w(TAG, "retire legacy mate db failed", it) }
     }
 
     private fun deleteTempFiles() {

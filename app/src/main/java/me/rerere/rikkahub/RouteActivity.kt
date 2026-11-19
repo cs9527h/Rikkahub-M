@@ -61,7 +61,6 @@ import me.rerere.ui.toast.rememberToasterState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.mate.MateConnectionPage
-import me.rerere.rikkahub.mate.MateChatPage
 import me.rerere.rikkahub.mate.MateDevicesPage
 import me.rerere.rikkahub.mate.MateChangelogPage
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -491,10 +490,6 @@ class RouteActivity : ComponentActivity() {
                                 MateConnectionPage()
                             }
 
-                            entry<Screen.MateChat> {
-                                MateChatPage()
-                            }
-
                             entry<Screen.MateDevices> {
                                 MateDevicesPage()
                             }
@@ -767,9 +762,6 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object MateConnection : Screen
-
-    @Serializable
-    data object MateChat : Screen
 
     @Serializable
     data object MateDevices : Screen

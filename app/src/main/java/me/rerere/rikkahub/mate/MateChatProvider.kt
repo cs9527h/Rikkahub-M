@@ -24,6 +24,7 @@ import me.rerere.ai.ui.UIMessagePart
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.UUID
@@ -40,7 +41,8 @@ import java.util.concurrent.TimeUnit
  */
 class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
 
-    private val store = MateGatewayStore(context.applicationContext)
+    private val appContext = context.applicationContext
+    private val store = MateGatewayStore(appContext)
     private val json = Json { ignoreUnknownKeys = true }
 
     private val client = OkHttpClient.Builder()
@@ -65,18 +67,27 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         val connection = store.load()
             ?: throw IOException("还没有连接服务器，请先在「连接与设备」里完成配对")
 
-        val userText = messages.lastOrNull { it.role == MessageRole.USER }
+        val lastUser = messages.lastOrNull { it.role == MessageRole.USER }
+        val userText = lastUser
             ?.parts
             ?.filterIsInstance<UIMessagePart.Text>()
             ?.joinToString("\n") { it.text }
             ?.trim()
             .orEmpty()
-        require(userText.isNotEmpty()) { "没有可以发送的内容" }
         require(userText.length <= 6000) { "单条消息不能超过 6000 字" }
+
+        // 附件先上传换服务端 id，再随消息一起提交；上传失败直接报错，不静默丢弃
+        val attachmentIds = lastUser?.parts.orEmpty()
+            .mapNotNull { part -> part.toUploadPayload() }
+            .map { payloadItem ->
+                uploadMedia(connection, payloadItem)
+            }
+        require(userText.isNotEmpty() || attachmentIds.isNotEmpty()) { "没有可以发送的内容" }
 
         val requestId = UUID.randomUUID().toString()
         val partId = "mate-" + requestId
-        val payload = """{"request_id":"$requestId","message":${jsonString(userText)},"attachments":[]}"""
+        val attachmentsJson = attachmentIds.joinToString(",", "[", "]") { jsonString(it) }
+        val payload = """{"request_id":"$requestId","message":${jsonString(userText)},"attachments":$attachmentsJson}"""
         val request = Request.Builder()
             .url(connection.baseUrl.trimEnd('/') + "/chat/stream")
             .header("Authorization", "Bearer " + connection.token)
@@ -193,4 +204,109 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         }
         append('"')
     }
+
+    /** 聊天里能带出去的附件种类；语音按音频上传，服务端按自身能力决定是否处理。 */
+    private data class UploadPayload(val bytes: ByteArray, val fileName: String, val mime: String, val kind: String)
+
+    private fun UIMessagePart.toUploadPayload(): UploadPayload? = when (this) {
+        is UIMessagePart.Image -> decodeSource(url).let { (bytes, mime) ->
+            UploadPayload(bytes, "image-" + bytes.size + guessExt(mime), mime, "image")
+        }
+        is UIMessagePart.Audio -> decodeSource(url).let { (bytes, mime) ->
+            UploadPayload(bytes, "audio-" + bytes.size + guessExt(mime), mime, "audio")
+        }
+        is UIMessagePart.Video -> decodeSource(url).let { (bytes, mime) ->
+            UploadPayload(bytes, "video-" + bytes.size + guessExt(mime), mime, "video")
+        }
+        is UIMessagePart.Document -> decodeSource(url).let { (bytes, mime) ->
+            UploadPayload(bytes, fileName.ifBlank { "document" + guessExt(mime) }, mime, "file")
+        }
+        else -> null
+    }
+
+    private fun guessExt(mime: String): String = when {
+        mime.contains("png") -> ".png"
+        mime.contains("jpeg") || mime.contains("jpg") -> ".jpg"
+        mime.contains("webp") -> ".webp"
+        mime.contains("gif") -> ".gif"
+        mime.contains("pdf") -> ".pdf"
+        mime.contains("mpeg") || mime.contains("mp3") -> ".mp3"
+        mime.contains("wav") -> ".wav"
+        mime.contains("m4a") || mime.contains("mp4a") -> ".m4a"
+        else -> ""
+    }
+
+    /** 把 data: / content: / file: 的引用读成字节；读取失败一律抛出，不静默丢弃附件。 */
+    private fun decodeSource(url: String): Pair<ByteArray, String> = try {
+        when {
+            url.startsWith("data:") -> {
+                val header = url.substringAfter("data:").substringBefore(',')
+                val mime = header.substringBefore(';').ifBlank { "application/octet-stream" }
+                val body = url.substringAfter(',')
+                val bytes = if ("base64" in header) {
+                    android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+                } else {
+                    java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
+                }
+                bytes to mime
+            }
+            url.startsWith("content:") || url.startsWith("file:") -> {
+                val parsed = android.net.Uri.parse(url)
+                val resolver = appContext.contentResolver
+                val mime = resolver.getType(parsed) ?: "application/octet-stream"
+                val bytes = resolver.openInputStream(parsed)?.use { it.readBytes() }
+                    ?: throw IOException("附件读取为空")
+                bytes to mime
+            }
+            else -> throw IOException("暂不支持发送该来源的附件")
+        }
+    } catch (e: IOException) {
+        throw e
+    } catch (e: Exception) {
+        throw IOException("读取附件失败：" + (e.message ?: "未知错误"))
+    }
+
+    /**
+     * 上传到网关的 /media 换取附件 id。
+     * 契约：multipart 表单字段 file + kind，成功返回含 id 的 JSON。
+     * 任何一步不符合预期都直接失败，避免前端显示已发送、服务器却没收到附件。
+     */
+    private suspend fun uploadMedia(connection: MateConnection, payload: UploadPayload): String {
+        if (payload.bytes.size > 20 * 1024 * 1024) {
+            throw IOException("附件超过 20MB，无法发送")
+        }
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("kind", payload.kind)
+            .addFormDataPart(
+                "file",
+                payload.fileName,
+                payload.bytes.toRequestBody(payload.mime.toMediaTypeOrNull())
+            )
+            .build()
+        val request = Request.Builder()
+            .url(connection.baseUrl.trimEnd('/') + "/media")
+            .header("Authorization", "Bearer " + connection.token)
+            .post(body)
+            .build()
+        val call = client.newCall(request)
+        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+        try {
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("附件上传失败，网关返回 HTTP " + response.code)
+                }
+                val text = response.body?.string().orEmpty()
+                val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse {
+                    throw IOException("附件上传返回了无法解析的数据")
+                }
+                val id = listOf("id", "file_id", "media_id", "attachment_id")
+                    .firstNotNullOfOrNull { key -> obj[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } }
+                return id ?: throw IOException("附件上传成功但服务器没有返回附件标识")
+            }
+        } finally {
+            handle.dispose()
+        }
+    }
+
 }
