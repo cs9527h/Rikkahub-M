@@ -166,7 +166,7 @@ fun SettingAboutPage() {
                         )
 
                         Text(
-                            text = "Mate",
+                            text = "Rikkahub-M",
                             style = MaterialTheme.typography.headlineLargeEmphasized.copy(
                                 fontWeight = FontWeight.Black,
                             ),
@@ -183,12 +183,6 @@ fun SettingAboutPage() {
                     val containerColor = MaterialTheme.colorScheme.secondaryContainer
                     val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                     CardGroup {
-                        item(
-                            onClick = { navController.navigate(Screen.QuickStart) },
-                            leadingContent = { CardGroupIcon(HugeIcons.Earth, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text(stringResource(R.string.mate_intro_progress_detail)) },
-                            headlineContent = { Text(stringResource(R.string.mate_intro_progress_heading)) },
-                        )
                         item(
                             onClick = { navController.navigate(Screen.MateConnection) },
                             leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
@@ -231,25 +225,25 @@ fun SettingAboutPage() {
                             onClick = { navController.navigate(Screen.MateChangelog) },
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("查看每一版实际更改与尚未完成的功能") },
-                            headlineContent = { Text("Mate 更新日志") },
+                            headlineContent = { Text("Rikkahub-M 更新日志") },
                         )
                         item(
                             onClick = { context.openUrl("https://qm.qq.com/q/Yvc3ugiCoE") },
                             leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("通过 QQ 联系 Rikkahub-M 作者，反馈问题或提出建议") },
-                            headlineContent = { Text("联系作者 · 问题反馈") },
+                            supportingContent = { Text("通过QQ联系") },
+                            headlineContent = { Text("联系作者") },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M") },
                             leadingContent = { CardGroupIcon(HugeIcons.Earth, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("github.com/cs9527h/Rikkahub-M") },
-                            headlineContent = { Text("Rikkahub-M 项目主页") },
+                            headlineContent = { Text("Rikkahub-M") },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/rikkahub/rikkahub") },
                             leadingContent = { CardGroupIcon(HugeIcons.Github, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = { Text("https://github.com/rikkahub/rikkahub") },
-                            headlineContent = { Text("上游 RikkaHub · 开源署名") },
+                            headlineContent = { Text("RikkaHub") },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/master/LICENSE") },
