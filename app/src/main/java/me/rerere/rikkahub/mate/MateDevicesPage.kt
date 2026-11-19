@@ -201,7 +201,7 @@ fun MateDevicesPage() {
                 }
             }
             item {
-                Text("撤销操作由服务端执行，不能撤销 QQ、飞书或钉钉机器人，也不会修改李鱼记忆。撤销本机会失去当前连接权限。",
+                Text("撤销操作由服务端执行，不能撤销 QQ、飞书或钉钉机器人，也不会修改服务器记忆。撤销本机会失去当前连接权限。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall)
             }

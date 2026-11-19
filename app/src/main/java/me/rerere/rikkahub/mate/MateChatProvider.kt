@@ -63,7 +63,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         params: TextGenerationParams,
     ): Flow<StreamChunk> = flow {
         val connection = store.load()
-            ?: throw IOException("还没有连接李鱼服务器，请先在「连接与设备」里完成配对")
+            ?: throw IOException("还没有连接服务器，请先在「连接与设备」里完成配对")
 
         val userText = messages.lastOrNull { it.role == MessageRole.USER }
             ?.parts

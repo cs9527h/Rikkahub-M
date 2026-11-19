@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Rikkahub-M · Mate</h1>
-  <p><strong>An expressive Android AI client with a dedicated path to Li Yu (李鱼).</strong></p>
+  <p><strong>An expressive Android AI client with private server connectivity.</strong></p>
   <p>RikkaHub's native experience × Mate's personal AstrBot connection and memory roadmap.</p>
   <p><a href="README_ZH_CN.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · English</p>
 </div>
@@ -10,7 +10,7 @@
 
 ## What is Mate?
 
-**Mate** is the app identity. **Rikkahub-M** is the repository, based on the [RikkaHub](https://github.com/rikkahub/rikkahub) open-source Android client. The goal is to retain RikkaHub's Compose UI, responsive navigation, native animations and flexible LLM capabilities while adding the personal Mate experience around **Li Yu / 李鱼** and an existing AstrBot deployment.
+**Mate** is the app identity. **Rikkahub-M** is the repository, based on the [RikkaHub](https://github.com/rikkahub/rikkahub) open-source Android client. The goal is to retain RikkaHub's Compose UI, responsive navigation, native animations and flexible LLM capabilities while adding the personal Mate experience around an existing AstrBot deployment.
 
 ### What works in the upstream-based client
 
@@ -23,9 +23,9 @@
 
 | Capability | Current integration status |
 |---|---|
-| Always-visible **Connect Li Yu** entry | Source implemented on the Mate integration branch |
+| Always-visible **Connect server** entry | Source implemented on the Mate integration branch |
 | One-time pairing, HTTPS gateway protocol v3 verification, encrypted local device credentials | Source implemented; build and server test pending |
-| Send/receive Li Yu chat through AstrBot | Not yet integrated |
+| Send/receive server chat through AstrBot | Not yet integrated |
 | Remote persona, verified memory ownership, gradual growth | Planned; server authorization required |
 | Server chat history, media, tombstones, cross-device sync and backup | Planned |
 | Pairing QR / server device administration | Planned |
@@ -37,7 +37,7 @@
 ## Getting started (development preview)
 
 1. For ordinary AI chat, go to **Quick start → Independent API** and configure a provider and a model.
-2. For Li Yu, go to **Quick start → Li Yu (Mate)** or **Settings → Connect Li Yu server**. Pairing is an experimental device-authorization feature, **not yet a working Li Yu chat mode**.
+2. For the private server, go to **Quick start → Mate server** or **Settings → Connect server**. Pairing and the native provider need real-server end-to-end verification.
 3. Existing Mate users should keep their current app and data until a tested import/upgrade is released.
 
 ## UI and product principles

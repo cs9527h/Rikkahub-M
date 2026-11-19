@@ -14,7 +14,7 @@
 
 1. `mate/MateGateway.kt`: HTTPS-only URL normalization, pairing POST `/pair`, authenticated `/capabilities` protocol-3 + instance verification, bounded JSON, no redirects, Android Keystore AES-GCM credential storage.
 2. `mate/MateConnectionPage.kt`: pairing and manual health check in a native Compose page. Pairing codes are never intentionally persisted.
-3. `RouteActivity.kt` + `SettingPage.kt`: unconditional Settings → 李鱼 · AstrBot → 连接李鱼服务器 navigation, even when no chat history exists.
+3. `RouteActivity.kt` + `SettingPage.kt`: unconditional Settings → 连接与设备 → 连接服务器 navigation, even when no chat history exists.
 4. `MateGatewayAddressTest.kt`: basic URL security checks.
 
 **NOT implemented:** full chat integration, gateway SSE parsing, authenticated media/history, QR scanner, device issuance/revocation UI, AstrBot dashboard plugin, personas, peak/valley status, remote memories, backup/sync migration, old Mate data import, valid installable APK.

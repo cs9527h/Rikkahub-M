@@ -11,7 +11,7 @@
 | 默认助手 | 全新安装只创建一个内置助手；已删除的内置助手不会被恢复，选择会自动迁移到剩余助手 |
 | 广告与推广 | 赞助、捐赠、邀请返佣、聚合网关预设已移除；`SettingsNormalization` 只清理未配置的推广预设，带 token 的自建服务商不动 |
 | 联系方式 | 关于页、设置页统一指向 `https://qm.qq.com/q/Yvc3ugiCoE`；上游 RikkaHub 的 AGPL 许可与版权声明保留 |
-| 服务器入口 | 设置页可进入「连接李鱼服务器」，支持地址、配对码、二维码、设备名、状态与设备管理（见 `app/src/main/java/me/rerere/rikkahub/mate/`） |
+| 服务器入口 | 设置页可进入「连接服务器」，支持地址、配对码、二维码、设备名、状态与设备管理（见 `app/src/main/java/me/rerere/rikkahub/mate/`） |
 | 聊天 | Mate 网关作为独立后端接入，SSE 流式、历史持久化、请求 ID 断线恢复 |
 | 构建 | `Mate V1 preview build` 在 `feat/mate-v1-integration-20261119` 上全绿（含 553 项单测、web-ui 构建、APK 打包） |
 | 签名 | 发布 APK 用长期密钥签名，私钥只存在 GitHub Actions Secrets（`MATE_KEYSTORE_BASE64` 等 4 项），仓库内无任何密钥 |
@@ -36,7 +36,7 @@
 
 ### 仍然未完成（不得视为已交付）
 
-1. 李鱼聊天与 RikkaHub 原生 `ChatService`/`ConversationRepository`/`ChatVM` 的架构融合：目前仍是 `MateChatPage` + `MateLocalHistory` 独立一套，P1 未开始。
+1. 服务端聊天与 RikkaHub 原生 `ChatService`/`ConversationRepository`/`ChatVM` 的架构融合：目前仍是 `MateChatPage` + `MateLocalHistory` 独立一套，P1 未开始。
 2. 真机性能数据（冷启动、长列表、SSE 抖动、输入法）未采集，无 Android 设备可用。
 3. 真实 AstrBot 服务器联调、配对、记忆查询未做，仅本地模拟。
 4. 旧 Mate 数据迁移、长期记忆增删改、WebDAV/S3 与 QQ/飞书共享记忆未实现。
@@ -44,7 +44,7 @@
 
 ## 0.1.1-preview.1（2026-11-19）
 
-- 李鱼并入 RikkaHub 原生聊天栈（`MateChatProvider` + Provider 路由），不再靠独立聊天页当默认。
+- 服务端聊天并入 RikkaHub 原生聊天栈（`MateChatProvider` + Provider 路由），不再靠独立聊天页当默认。
 - 首次安装默认助手为「李鱼」，应用名改为 Mate，设置页合并重复入口。
 - Release：https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.1.1-preview.1
 - 详见 `docs/MATE_V2_REFACTOR.md`。
