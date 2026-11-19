@@ -627,7 +627,6 @@
   <string name="regenerate">إعادة التوليد</string>
   <string name="regenerate_confirm_message">هل أنت متأكد من إعادة توليد هذه الرسالة؟ سيتم حذف جميع الرسائل أسفل هذه الرسالة.</string>
   <string name="render_with_webview">العرض باستخدام WebView</string>
-  <string name="rikkahub_provider_description">خدمة ذكاء اصطناعي رسمية مجانية، تستخدم أموال رعاية المستخدمين لتوفير بعض النماذج المجانية للمستخدمين الجدد كخيار احتياطي، دون الحاجة إلى مفتاح API. لديها حدود صارمة على معدل الطلبات، وإذا كنت قد اشتريت مزوّدك الخاص، فيرجى استخدام مزوّدك الخاص قدر الإمكان.</string>
   <string name="safe_mode_assistants">المساعدون</string>
   <string name="safe_mode_copy">نسخ</string>
   <string name="safe_mode_crash_report">تقرير التعطل</string>
@@ -1163,8 +1162,6 @@
   <string name="share">مشاركة</string>
   <string name="share_handler_page_title">اختر مساعدًا</string>
   <string name="shortcut_take_picture">التقط صورة واسأل</string>
-  <string name="silicon_flow_description">**مزوّد عالمي رائد لقدرات الذكاء الاصطناعي، يسرّع AGI لخير البشرية.**</string>
-  <string name="silicon_flow_website">الموقع الإلكتروني: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
   <string name="skill_detail_page_content">المحتوى</string>
   <string name="skill_detail_page_create">إنشاء</string>
   <string name="skill_detail_page_delete_confirm">هل أنت متأكد من أنك تريد حذف الملف \"%s\"؟</string>
