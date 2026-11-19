@@ -193,6 +193,41 @@ internal class MateChatTransport {
         }
     }
 
+    private suspend fun postJson(
+        connection: MateConnection, path: String, body: JSONObject
+    ): JSONObject = withContext(Dispatchers.IO) {
+        require(path in setOf("/devices/pair-code", "/devices/revoke"))
+        capabilities(connection)
+        val call = http.newCall(request(connection, path, body))
+        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+        try {
+            call.execute().use { boundedJson(it) }
+        } finally {
+            handle.dispose()
+        }
+    }
+
+    suspend fun devices(connection: MateConnection): JSONObject {
+        capabilities(connection)
+        return get(connection, "/devices")
+    }
+
+    suspend fun createInvite(connection: MateConnection): JSONObject {
+        val result = postJson(connection, "/devices/pair-code", JSONObject().put("confirm", true))
+        val code = result.optString("code")
+        require(code.length in 24..80 && result.optInt("expires_in") in 60..600) {
+            "服务器返回的配对码无效"
+        }
+        return result
+    }
+
+    suspend fun revokeDevice(connection: MateConnection, deviceId: String): Boolean {
+        require(deviceId.matches(Regex("[0-9a-f]{24}"))) { "设备标识无效" }
+        val result = postJson(connection, "/devices/revoke",
+            JSONObject().put("device_id", deviceId))
+        return result.optBoolean("revoked")
+    }
+
     suspend fun memorySearch(connection: MateConnection, query: String): JSONObject {
         require(query.length <= 120) { "检索内容过长" }
         val address = (connection.baseUrl + "/memory/search").toHttpUrlOrNull()
