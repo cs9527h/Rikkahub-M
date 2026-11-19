@@ -330,6 +330,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.setting_page_quick_start)) },
                     )
                     item(
+                        onClick = { context.openUrl("https://qm.qq.com/q/Yvc3ugiCoE") },
+                        leadingContent = { CardGroupIcon(HugeIcons.Share04, containerColor = containerColor, contentColor = contentColor) },
+                        supportingContent = { Text("通过 QQ 直接联系 Rikkahub-M 作者") },
+                        headlineContent = { Text("联系作者 · 反馈建议") },
+                    )
+                    item(
                         onClick = {
                             context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/feat/mate-gateway-foundation-20261119/docs/MATE_USER_GUIDE.md")
                         },
