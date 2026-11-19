@@ -642,7 +642,6 @@
   <string name="regenerate">Neu generieren</string>
   <string name="regenerate_confirm_message">Bist du sicher, dass du diese Nachricht neu generieren möchtest? Alle Nachrichten unterhalb dieser Nachricht werden gelöscht.</string>
   <string name="render_with_webview">Mit WebView rendern</string>
-  <string name="rikkahub_provider_description">Offizieller kostenloser KI-Dienst, der mit Sponsorengeldern der Nutzer einige kostenlose Modelle als Fallback für neue Nutzer bereitstellt. Kein API-Schlüssel erforderlich. Es gelten strenge Ratenlimits; wenn du einen eigenen Anbieter erworben hast, nutze bitte möglichst deinen eigenen Anbieter.</string>
   <string name="safe_mode_assistants">Assistenten</string>
   <string name="menu_page_night_greeting">Es ist spät, pass auf dich auf\uD83D\uDC4B</string>
   <string name="mermaid_export">Export</string>
@@ -1028,8 +1027,6 @@
   <string name="stats_page_total_messages">Nachrichten insgesamt</string>
   <string name="stop">Stopp</string>
   <string name="shortcut_take_picture">Foto aufnehmen &amp; fragen</string>
-  <string name="silicon_flow_description">**Weltweit führender Anbieter von KI-Kapazitäten, der AGI beschleunigt, damit sie der Menschheit zugutekommt.**</string>
-  <string name="silicon_flow_website">Website: [https://cloud.siliconflow.cn/](https://cloud.siliconflow.cn/i/u1Ia4Ycf)</string>
   <string name="skill_detail_page_content">Inhalt</string>
   <string name="skill_detail_page_create">Erstellen</string>
   <string name="skill_detail_page_delete_confirm">Möchtest du die Datei „%s“ wirklich löschen?</string>
