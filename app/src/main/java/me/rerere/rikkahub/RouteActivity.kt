@@ -63,6 +63,7 @@ import kotlinx.serialization.Serializable
 import me.rerere.rikkahub.mate.MateConnectionPage
 import me.rerere.rikkahub.mate.MateChatPage
 import me.rerere.rikkahub.mate.MateDevicesPage
+import me.rerere.rikkahub.mate.MateChangelogPage
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.data.db.MigrationState
@@ -498,6 +499,10 @@ class RouteActivity : ComponentActivity() {
                                 MateDevicesPage()
                             }
 
+                            entry<Screen.MateChangelog> {
+                                MateChangelogPage()
+                            }
+
                             entry<Screen.SettingProviderDetail> { key ->
                                 val id = Uuid.parse(key.providerId)
                                 SettingProviderDetailPage(id = id)
@@ -768,6 +773,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object MateDevices : Screen
+
+    @Serializable
+    data object MateChangelog : Screen
 
     @Serializable
     data class SettingProviderDetail(val providerId: String) : Screen
