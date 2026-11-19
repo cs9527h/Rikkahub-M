@@ -1,12 +1,44 @@
 package me.rerere.rikkahub.data.datastore
 
+import me.rerere.ai.provider.ProviderSetting
+import me.rerere.rikkahub.data.model.Assistant
+import kotlin.uuid.Uuid
+
+/**
+ * Legacy sponsored/aggregator presets. Never delete an entry with a token,
+ * models, custom headers or an edited name/URL.
+ * The upstream provider catalog is no longer reintroduced in Mate.
+ */
+internal val LEGACY_PROMOTED_PRESETS = mapOf(
+    Uuid.parse("d5734028-d39b-4d41-9841-fd648d65440e") to ("OpenRouter" to "https://openrouter.ai/api/v1"),
+    Uuid.parse("386e0f29-8228-4512-affe-8fd8add82d88") to ("Vercel AI Gateway" to "https://ai-gateway.vercel.sh/v1"),
+    Uuid.parse("da93779f-3956-48cc-82ef-67bb482eaaf7") to ("302.AI" to "https://api.302.ai/v1")
+)
+
+internal fun ProviderSetting.isUnusedLegacyPromotion(): Boolean {
+    val expected = LEGACY_PROMOTED_PRESETS[id] ?: return false
+    return this is ProviderSetting.OpenAI &&
+        name == expected.first && baseUrl == expected.second &&
+        apiKey.isBlank() && models.isEmpty() && customHeaders.isEmpty()
+}
+
+/** Only prune the old second assistant if its settings match the untouched preset. */
+internal fun Assistant.isUnusedLegacySecondaryAssistant(): Boolean {
+    val legacyId = Uuid.parse("3d47790c-c415-4b90-9388-751128adb0a0")
+    return id == legacyId &&
+        systemPrompt.trim().startsWith("You are a helpful assistant, called {{char}}, based on model {{model_name}}.") &&
+        systemPrompt.contains("## Info") &&
+        systemPrompt.contains("## Hint") &&
+        copy(systemPrompt = "") == Assistant(id = legacyId, systemPrompt = "")
+}
+
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
 internal fun Settings.normalized(): Settings =
     withBuiltInDefaults().withoutInvalidReferences().withValuesInRange()
 
 // 补齐缺失的内置提供商/助手/TTS，内置提供商的描述信息以代码里的为准
 internal fun Settings.withBuiltInDefaults(): Settings {
-    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.toMutableList()
+    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.filterNot { it.isUnusedLegacyPromotion() }.toMutableList()
     DEFAULT_PROVIDERS.forEach { defaultProvider ->
         if (providers.none { it.id == defaultProvider.id }) {
             providers.add(defaultProvider.copyProvider())
@@ -26,7 +58,13 @@ internal fun Settings.withBuiltInDefaults(): Settings {
     }.toMutableList()
     // 内置助手可以删除，只在一个都不剩时补回，不按 id 逐个补齐
     val assistants = this.assistants.ifEmpty { DEFAULT_ASSISTANTS }
-    val ttsProviders = this.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }.toMutableList()
+        .filterNot { it.isUnusedLegacySecondaryAssistant() }
+        .ifEmpty { DEFAULT_ASSISTANTS }
+    val ttsProviders = this.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }
+        .filterNot { it is me.rerere.tts.provider.TTSProviderSetting.OpenAI &&
+            it.name == "AiHubMix" && it.baseUrl == "https://aihubmix.com/v1" &&
+            it.apiKey.isBlank() }
+        .toMutableList()
     DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
         if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
             ttsProviders.add(defaultTTSProvider.copyProvider())
