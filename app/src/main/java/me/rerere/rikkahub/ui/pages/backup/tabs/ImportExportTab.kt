@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ui.toast.ToastType
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.FileExport
 import me.rerere.hugeicons.stroke.FileImport
@@ -50,6 +52,7 @@ fun ImportExportTab(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val selectedBackupItems by vm.localBackupItems.collectAsStateWithLifecycle()
+    val encrypted by vm.encryptBackups.collectAsStateWithLifecycle()
     var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
@@ -60,7 +63,7 @@ fun ImportExportTab(
 
     // 创建文件保存的launcher
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip")
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         uri?.let { targetUri ->
             scope.launch {
@@ -69,15 +72,20 @@ fun ImportExportTab(
                     // 导出文件
                     val exportFile = vm.exportToFile()
 
-                    // 复制到用户选择的位置
-                    context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                        FileInputStream(exportFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
+                    try {
+                        withContext(Dispatchers.IO) {
+                            requireNotNull(context.contentResolver.openOutputStream(targetUri)) {
+                                "无法打开备份保存位置"
+                            }.use { outputStream ->
+                                FileInputStream(exportFile).use { inputStream ->
+                                    inputStream.copyTo(outputStream)
+                                }
+                            }
                         }
+                        vm.recordLocalExportSuccess()
+                    } finally {
+                        exportFile.delete()
                     }
-
-                    // 清理临时文件
-                    exportFile.delete()
 
                     toaster.show(
                         context.getString(R.string.backup_page_backup_success),
@@ -109,17 +117,21 @@ fun ImportExportTab(
                             val tempFile =
                                 File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
 
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    requireNotNull(context.contentResolver.openInputStream(sourceUri)) {
+                                        "无法读取备份文件"
+                                    }.use { inputStream ->
+                                        FileOutputStream(tempFile).use { outputStream ->
+                                            inputStream.copyTo(outputStream)
+                                        }
+                                    }
                                 }
+                                // The archive header, not its filename, decides whether a passphrase is required.
+                                vm.restoreFromLocalFile(tempFile)
+                            } finally {
+                                tempFile.delete()
                             }
-
-                            // 从临时文件恢复
-                            vm.restoreFromLocalFile(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
                         }
 
                         "chatbox" -> {
@@ -189,6 +201,8 @@ fun ImportExportTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        me.rerere.rikkahub.ui.pages.backup.components.BackupEncryptionOptions(vm)
+
         CardGroup(
             title = { Text(stringResource(R.string.backup_page_local_backup_export)) },
         ) {
@@ -207,7 +221,8 @@ fun ImportExportTab(
                     {
                         val timestamp = LocalDateTime.now()
                             .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-                        createDocumentLauncher.launch("rikkahub_backup_$timestamp.zip")
+                        val extension = if (encrypted) "rkmbak" else "zip"
+                        createDocumentLauncher.launch("rikkahub_backup_$timestamp.$extension")
                     }
                 } else null,
                 headlineContent = { Text(stringResource(R.string.backup_page_local_backup_export)) },
@@ -327,7 +342,7 @@ fun ImportExportTab(
                     onClick = {
                         showImportConfirmDialog = false
                         importType = "local"
-                        openDocumentLauncher.launch(arrayOf("application/zip"))
+                        openDocumentLauncher.launch(arrayOf("*/*"))
                     }
                 ) {
                     Text(stringResource(R.string.confirm))

@@ -170,6 +170,39 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
+    @Test fun plaintextExportCannotCarryCredentials() = runBlocking {
+        val failure = runCatching {
+            manager.createBackup(false, false, includeCredentials = true)
+        }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(context.cacheDir.listFiles().orEmpty().isEmpty())
+    }
+
+    @Test fun encryptedArchiveRestoresDatabaseOnlyAfterVerifiedStaging() = runBlocking {
+        val archive = manager.createBackup(true, false, "synthetic test password".toCharArray(), true)
+        assertEquals("rkmbak", archive.extension)
+        assertTrue(BackupCrypto.isEncrypted(archive))
+        liveDatabase.openHelper.writableDatabase.execSQL("UPDATE backup_probe SET text = 'changed'")
+        manager.stageRestore(archive, true, false, "synthetic test password".toCharArray())
+        assertEquals("changed", probe(liveDatabase))
+        assertTrue(File(context.noBackupFilesDir, "backup-restore/pending/settings.json").delete())
+        liveDatabase.close()
+        assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
+        liveDatabase = AppDatabaseFactory.create(context)
+        assertEquals("live", probe(liveDatabase))
+        assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("backup_decrypted_") })
+    }
+
+    @Test fun encryptedRestoreRejectsMissingOrWrongPasswordWithoutChangingLiveData() = runBlocking {
+        val archive = manager.createBackup(true, false, "synthetic password".toCharArray())
+        for (passphrase in listOf(null, "incorrect password".toCharArray())) {
+            assertTrue(runCatching { manager.stageRestore(archive, true, false, passphrase) }.isFailure)
+            assertEquals("live", probe(liveDatabase))
+            assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
+            assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("backup_decrypted_") })
+        }
+    }
+
     private fun probe(database: AppDatabase): String = database.openHelper.readableDatabase
         .query("SELECT text FROM backup_probe").use { check(it.moveToFirst()); it.getString(0) }
 

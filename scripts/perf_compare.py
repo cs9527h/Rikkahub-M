@@ -7,6 +7,7 @@
 """
 import glob
 import json
+import math
 import pathlib
 import sys
 
@@ -36,7 +37,7 @@ def load_results(paths):
                 if not isinstance(metric, dict):
                     continue
                 value = metric.get("median")
-                if isinstance(value, (int, float)):
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
                     found[f"{name}.{metric_name}"] = float(value)
     return found
 
@@ -45,9 +46,12 @@ def compare(label, baseline_metrics, current, threshold):
     failures = []
     for key, base in baseline_metrics.items():
         if key not in current:
-            print(f"[{label}] 缺少指标 {key}，跳过")
+            failures.append(f"缺少指标 {key}")
             continue
-        delta = (current[key] - float(base)) / float(base) * 100 if base else 0
+        if isinstance(base, bool) or not isinstance(base, (int, float)) or not math.isfinite(base) or base <= 0:
+            failures.append(f"基线指标无效 {key}")
+            continue
+        delta = (current[key] - float(base)) / float(base) * 100
         print(f"[{label}] {key}: {float(base):.1f} -> {current[key]:.1f} ({delta:+.1f}%)")
         if delta > threshold:
             failures.append(f"{key} 回退 {delta:.1f}%")
@@ -58,13 +62,16 @@ def main(argv):
     baseline = json.loads(BASELINE.read_text())
     threshold = float(baseline.get("thresholdPercent", 10))
     inputs = argv[1:] or glob.glob(str(ROOT / "**" / "*benchmarkData.json"), recursive=True)
+    if not math.isfinite(threshold) or threshold < 0:
+        print("性能回退阈值无效")
+        return 1
     if not inputs:
-        print("没有找到 benchmarkData.json，跳过对比")
-        return 0
+        print("没有找到 benchmarkData.json，性能验证未完成")
+        return 1
     current = load_results(inputs)
     if not current:
-        print("benchmarkData.json 无法解析，跳过对比")
-        return 0
+        print("benchmarkData.json 缺少有效测量值，性能验证未完成")
+        return 1
 
     failures = []
     if baseline.get("measured") and baseline.get("metrics"):
@@ -74,10 +81,12 @@ def main(argv):
         ci = baseline.get("ciEmulator") or {}
         if ci.get("metrics"):
             failures += compare("模拟器趋势", ci["metrics"], current, threshold)
+        else:
+            failures.append("没有可对照的真机或模拟器基线")
     if failures:
-        print("性能回退超阈值：" + "；".join(failures))
+        print("性能验证未通过：" + "；".join(failures))
         return 1
-    print("性能对比通过")
+    print("真机性能对比通过" if baseline.get("measured") else "模拟器趋势对比通过；真机验收仍未完成")
     return 0
 
 

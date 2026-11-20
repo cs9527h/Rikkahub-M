@@ -920,6 +920,11 @@
   <string name="setting_provider_page_avaliable_models">Avaliable Models</string>
   <string name="setting_provider_page_balance_info">"Get account balance "</string>
   <string name="setting_provider_page_balance_json_key">Result Json Key</string>
+  <string name="setting_provider_page_balance_divisor">Balance display divisor (e.g. 500000)</string>
+  <string name="setting_provider_page_balance_divisor_hint">Divide the raw API value for display only.</string>
+  <string name="setting_provider_page_balance_currency_symbol">Currency symbol (optional)</string>
+  <string name="setting_provider_page_balance_currency_hint">Display label only; exchange rates are not converted.</string>
+  <string name="provider_quota_unavailable">Balance unavailable</string>
   <string name="setting_provider_page_basic_settings">Basic Settings</string>
   <string name="setting_provider_page_chat_model">Chat</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">Prompt cache TTL</string>
@@ -1933,4 +1938,13 @@
   <string name="mate_memory_title">Memory center</string>
   <string name="mate_memory_desc">Browse, search, edit and restore memory</string>
   <string name="mate_connection_desc">Pair, check, re-authorize</string>
+  <string name="backup_page_security">Backup encryption</string>
+  <string name="backup_page_encrypt">Encrypt new backups</string>
+  <string name="backup_page_encryption_warning">Client-side encryption. Forgotten passphrases cannot be recovered. The passphrase is not saved or uploaded.</string>
+  <string name="backup_page_plaintext_warning">Unencrypted ZIP: credentials are removed, but chats and memories remain readable.</string>
+  <string name="backup_page_passphrase">Backup / restore passphrase</string>
+  <string name="backup_page_passphrase_hint">At least 8 characters for a new encrypted backup. Enter the original passphrase to restore.</string>
+  <string name="backup_page_confirm_passphrase">Confirm backup passphrase</string>
+  <string name="backup_page_include_credentials">Include API keys and connection credentials</string>
+  <string name="backup_page_credentials_warning">Only available in encrypted backups. Keep the passphrase separately.</string>
 </resources>

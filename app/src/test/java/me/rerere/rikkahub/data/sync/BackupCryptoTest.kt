@@ -69,6 +69,49 @@ class BackupCryptoTest {
     }
 
     @Test
+    fun encryptingInPlaceCannotDestroySource() {
+        val plain = payload()
+        val original = plain.readBytes()
+        try {
+            assertTrue(runCatching { BackupCrypto.encrypt(plain, plain, "password".toCharArray()) }.isFailure)
+            assertArrayEquals(original, plain.readBytes())
+        } finally {
+            plain.delete()
+        }
+    }
+
+    @Test
+    fun decryptingInPlaceCannotDestroyArchive() {
+        val plain = payload()
+        val encrypted = File.createTempFile("backup", ".rkmbak")
+        try {
+            BackupCrypto.encrypt(plain, encrypted, "password".toCharArray())
+            val original = encrypted.readBytes()
+            assertTrue(runCatching { BackupCrypto.decrypt(encrypted, encrypted, "password".toCharArray()) }.isFailure)
+            assertArrayEquals(original, encrypted.readBytes())
+        } finally {
+            plain.delete(); encrypted.delete()
+        }
+    }
+
+    @Test
+    fun freshSaltAndIvProduceDifferentArchivesForSameInput() {
+        val plain = payload(0)
+        val first = File.createTempFile("first", ".rkmbak")
+        val second = File.createTempFile("second", ".rkmbak")
+        val restored = File.createTempFile("restored", ".zip")
+        try {
+            BackupCrypto.encrypt(plain, first, "password".toCharArray())
+            BackupCrypto.encrypt(plain, second, "password".toCharArray())
+            assertFalse(first.readBytes().contentEquals(second.readBytes()))
+            BackupCrypto.decrypt(first, restored, "password".toCharArray())
+            assertTrue(restored.length() == 0L)
+        } finally {
+            plain.delete(); first.delete(); second.delete(); restored.delete()
+        }
+    }
+
+    @Test
     fun unsupportedHeaderIsRejected() {
         val bogus = File.createTempFile("bogus", ".rkmbak")
         val restored = File.createTempFile("restored", ".zip")

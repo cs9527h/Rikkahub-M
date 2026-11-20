@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.WebDavConfig
@@ -48,6 +51,40 @@ class BackupVM(
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
     val localBackupItems = MutableStateFlow(WebDavConfig.BackupItem.entries.toList())
 
+    // Deliberately not persisted in Settings, SavedStateHandle, archives or logs.
+    val encryptBackups = MutableStateFlow(true)
+    val backupPassphrase = MutableStateFlow("")
+    val backupPassphraseConfirmation = MutableStateFlow("")
+    val includeBackupCredentials = MutableStateFlow(false)
+    private val archiveMutex = Mutex()
+
+    fun clearBackupPassphrase() {
+        backupPassphrase.value = ""
+        backupPassphraseConfirmation.value = ""
+        includeBackupCredentials.value = false
+    }
+
+    private suspend fun <T> withPassphrase(export: Boolean, block: suspend (CharArray?, Boolean) -> T): T =
+        archiveMutex.withLock {
+            val includeCredentials = export && encryptBackups.value && includeBackupCredentials.value
+            val passphrase = if (export) {
+                BackupArchiveFormat.exportPassphrase(
+                    encryptBackups.value, backupPassphrase.value,
+                    backupPassphraseConfirmation.value, includeCredentials,
+                )
+            } else backupPassphrase.value.takeIf { it.isNotEmpty() }?.toCharArray()
+            try {
+                block(passphrase, includeCredentials)
+            } finally {
+                passphrase?.fill('\u0000')
+            }
+        }
+
+    override fun onCleared() {
+        clearBackupPassphrase()
+        super.onCleared()
+    }
+
     init {
         loadBackupFileItems()
         loadS3BackupFileItems()
@@ -84,31 +121,33 @@ class BackupVM(
         webDavSync.testConnection(settings.value.webDavConfig)
     }
 
-    suspend fun backup() {
-        webDavSync.backup(settings.value.webDavConfig)
+    suspend fun backup() = withPassphrase(export = true) { passphrase, includeCredentials ->
+        webDavSync.backup(settings.value.webDavConfig, passphrase, includeCredentials)
         recordBackupTime()
     }
 
-    suspend fun restore(item: WebDavBackupItem) {
-        webDavSync.restore(config = settings.value.webDavConfig, item = item)
+    suspend fun restore(item: WebDavBackupItem) = withPassphrase(export = false) { passphrase, _ ->
+        webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = passphrase)
     }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = localBackupItems.value)
+    suspend fun exportToFile(): File = withPassphrase(export = true) { passphrase, includeCredentials ->
+        webDavSync.prepareBackupFile(
+            settings.value.webDavConfig.copy(items = localBackupItems.value),
+            passphrase, includeCredentials,
         )
-        recordBackupTime()
-        return file
     }
 
-    suspend fun restoreFromLocalFile(file: File) {
+    suspend fun recordLocalExportSuccess() = recordBackupTime()
+
+    suspend fun restoreFromLocalFile(file: File) = withPassphrase(export = false) { passphrase, _ ->
         webDavSync.restoreFromLocalFile(
             file,
             settings.value.webDavConfig.copy(items = localBackupItems.value),
+            passphrase,
         )
     }
 
@@ -183,7 +222,7 @@ class BackupVM(
             throw IllegalArgumentException("No importable providers found in Cherry Studio backup")
         }
 
-        Log.i(TAG, "restoreFromCherryStudio: import ${importProviders.size} providers: $importProviders")
+        Log.i(TAG, "restoreFromCherryStudio: import ${importProviders.size} providers")
 
         updateSettings {
             it.copy(
@@ -214,13 +253,13 @@ class BackupVM(
         s3Sync.testS3(settings.value.s3Config)
     }
 
-    suspend fun backupToS3() {
-        s3Sync.backupToS3(settings.value.s3Config)
+    suspend fun backupToS3() = withPassphrase(export = true) { passphrase, includeCredentials ->
+        s3Sync.backupToS3(settings.value.s3Config, passphrase, includeCredentials)
         recordBackupTime()
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem) {
-        s3Sync.restoreFromS3(config = settings.value.s3Config, item = item)
+    suspend fun restoreFromS3(item: S3BackupItem) = withPassphrase(export = false) { passphrase, _ ->
+        s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
     }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {

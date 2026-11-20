@@ -104,6 +104,8 @@ fun WebDavTab(
             },
         )
 
+        me.rerere.rikkahub.ui.pages.backup.components.BackupEncryptionOptions(vm)
+
         CardGroup {
             formItem(
                 headlineContent = { Text(stringResource(R.string.backup_page_webdav_server_address)) },

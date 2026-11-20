@@ -95,6 +95,8 @@ fun S3Tab(
             },
         )
 
+        me.rerere.rikkahub.ui.pages.backup.components.BackupEncryptionOptions(vm)
+
         CardGroup {
             s3ConnectionItems(config = s3Config, onUpdate = ::updateS3Config)
         }

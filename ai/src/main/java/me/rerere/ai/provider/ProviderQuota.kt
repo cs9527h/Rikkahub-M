@@ -45,6 +45,10 @@ data class QuotaQuery(
     val headers: List<CustomHeader> = listOf(CustomHeader("Authorization", "Bearer {{apiKey}}")),
     val body: String = "",
     val resultPath: String = "data.total_usage",
+    // Display conversion is per provider; original quota units and API requests remain unchanged.
+    val displayDivisor: String = "1",
+    // E.g. "$" or "¥"; labels do not convert exchange rates.
+    val currencySymbol: String = "",
 ) {
     companion object {
         const val VARIABLE_BASE_URL = "baseUrl"

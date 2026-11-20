@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.ProviderSetting
@@ -150,6 +152,26 @@ fun SettingProviderQuotaQuery(
                         onValueChange = { onEdit(query.copy(resultPath = it)) },
                         label = { Text(stringResource(R.string.setting_provider_page_balance_json_key)) },
                         isError = !isJsonExprValid(query.resultPath),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = codeStyle,
+                    )
+                    OutlinedTextField(
+                        value = query.displayDivisor,
+                        onValueChange = { onEdit(query.copy(displayDivisor = it)) },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_divisor)) },
+                        supportingText = { Text(stringResource(R.string.setting_provider_page_balance_divisor_hint)) },
+                        isError = query.displayDivisor.toBigDecimalOrNull()?.signum() != 1,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = codeStyle,
+                    )
+                    OutlinedTextField(
+                        value = query.currencySymbol,
+                        onValueChange = { onEdit(query.copy(currencySymbol = it.take(8))) },
+                        label = { Text(stringResource(R.string.setting_provider_page_balance_currency_symbol)) },
+                        supportingText = { Text(stringResource(R.string.setting_provider_page_balance_currency_hint)) },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = codeStyle,
                     )

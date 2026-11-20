@@ -6,6 +6,7 @@ import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.sync.BackupManager
+import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.utils.fileSizeToString
 import java.io.File
@@ -29,12 +30,16 @@ class WebDavSync(
         Log.i(TAG, "testConnection: Connection successful")
     }
 
-    suspend fun backup(config: WebDavConfig) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config)
+    suspend fun backup(
+        config: WebDavConfig,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val file = prepareBackupFile(config, passphrase, includeCredentials)
         try {
             val client = getClient(config)
             client.ensureCollectionExists().getOrThrow()
-            client.put(path = file.name, file = file, contentType = "application/zip").getOrThrow()
+            client.put(path = file.name, file = file, contentType = "application/octet-stream").getOrThrow()
             Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
         } finally {
             // Upload failures and cancellation must not leave plaintext chat archives in cache.
@@ -53,7 +58,7 @@ class WebDavSync(
         val resources = client.list().getOrThrow()
 
         resources
-            .filter { !it.isCollection && it.displayName.startsWith("backup_") && it.displayName.endsWith(".zip") }
+            .filter { !it.isCollection && BackupArchiveFormat.isBackupName(it.displayName) }
             .map { resource ->
                 WebDavBackupItem(
                     href = resource.href,
@@ -65,7 +70,7 @@ class WebDavSync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem) = withContext(Dispatchers.IO) {
+    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, passphrase: CharArray? = null) = withContext(Dispatchers.IO) {
         val client = getClient(config)
         val backupFile = File.createTempFile("restore-", ".zip", context.cacheDir)
 
@@ -77,7 +82,7 @@ class WebDavSync(
             Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
 
             // Restore from backup file
-            restoreFromBackupFile(backupFile, config)
+            restoreFromBackupFile(backupFile, config, passphrase)
         } finally {
             // Clean up temp file
             if (backupFile.exists()) {
@@ -93,19 +98,26 @@ class WebDavSync(
         Log.i(TAG, "deleteBackupFile: Deleted ${item.displayName}")
     }
 
-    suspend fun restoreFromLocalFile(file: File, config: WebDavConfig) {
-        restoreFromBackupFile(file, config)
+    suspend fun restoreFromLocalFile(file: File, config: WebDavConfig, passphrase: CharArray? = null) {
+        restoreFromBackupFile(file, config, passphrase)
     }
 
-    suspend fun prepareBackupFile(config: WebDavConfig): File = backupManager.createBackup(
+    suspend fun prepareBackupFile(
+        config: WebDavConfig,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+    ): File = backupManager.createBackup(
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
+        passphrase = passphrase,
+        includeCredentials = includeCredentials,
     )
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: WebDavConfig) = backupManager.stageRestore(
+    private suspend fun restoreFromBackupFile(backupFile: File, config: WebDavConfig, passphrase: CharArray?) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
+        passphrase = passphrase,
     )
 
 }

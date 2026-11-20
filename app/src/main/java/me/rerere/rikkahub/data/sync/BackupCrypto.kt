@@ -40,6 +40,7 @@ object BackupCrypto {
 
     fun encrypt(input: File, output: File, passphrase: CharArray) {
         require(passphrase.isNotEmpty()) { "备份口令不能为空" }
+        require(input.canonicalFile != output.canonicalFile) { "备份输入与输出不能是同一文件" }
         val random = SecureRandom()
         val salt = ByteArray(SALT_BYTES).also(random::nextBytes)
         val iv = ByteArray(IV_BYTES).also(random::nextBytes)
@@ -64,6 +65,7 @@ object BackupCrypto {
 
     fun decrypt(input: File, output: File, passphrase: CharArray) {
         require(passphrase.isNotEmpty()) { "备份口令不能为空" }
+        require(input.canonicalFile != output.canonicalFile) { "备份输入与输出不能是同一文件" }
         FileInputStream(input).use { fileIn ->
             val magic = ByteArray(8)
             require(fileIn.read(magic) == 8 && String(magic, Charsets.US_ASCII) == MAGIC) {

@@ -81,7 +81,7 @@ fun ProviderQuotaText(
     val quota = result?.getOrNull()
     val text = when {
         result == null -> "~"
-        quota == null -> "Error: ${result.exceptionOrNull()?.message}"
+        quota == null -> stringResource(R.string.provider_quota_unavailable)
         else -> when (quota) {
             is ProviderQuota.Balance -> quota.value
             is ProviderQuota.UsageLimits -> quota.windows.joinToString(" · ") { window ->

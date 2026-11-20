@@ -7,6 +7,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PortableSettingsTest {
+    @Test fun encryptedExportCanPreserveSyntheticCredentialsButNotEnableWebServer() {
+        val input = Json.parseToJsonElement(
+            """{"providers":[{"apiKey":"SYNTHETIC_KEY"}],
+                "webDavConfig":{"password":"SYNTHETIC_PASSWORD"},
+                "s3Config":{"secretAccessKey":"SYNTHETIC_SECRET"},
+                "webServerEnabled":true,"webServerAccessPassword":"PRIVATE"}"""
+        ).jsonObject
+        val encryptedSettings = BackupManager.portableSettings(input, includeCredentials = true).toString()
+        for (value in listOf("SYNTHETIC_KEY", "SYNTHETIC_PASSWORD", "SYNTHETIC_SECRET")) {
+            assertTrue(encryptedSettings.contains(value))
+            assertFalse(BackupManager.portableSettings(input).toString().contains(value))
+        }
+        assertFalse(encryptedSettings.contains("PRIVATE"))
+        assertTrue(encryptedSettings.contains("\"webServerEnabled\":false"))
+    }
+
     @Test fun removesStoredCredentialsAndPreservesConfiguration() {
         val input = Json.parseToJsonElement(
             """{"providers":[{"id":"my-model","apiKey":"PRIVATE","credential":{"accessToken":"PRIVATE"}}],

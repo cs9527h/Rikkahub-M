@@ -55,6 +55,9 @@ private enum class BackupTab(
 
 @Composable
 fun BackupPage(vm: BackupVM = koinViewModel()) {
+    androidx.compose.runtime.DisposableEffect(vm) {
+        onDispose { vm.clearBackupPassphrase() }
+    }
     val pagerState = rememberPagerState { BackupTab.entries.size }
     var showRestartDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()

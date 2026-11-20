@@ -34,6 +34,10 @@ android {
     }
 }
 
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    testLogging { events("passed", "failed", "skipped") }
+}
+
 dependencies {
     implementation(project(":common"))
 

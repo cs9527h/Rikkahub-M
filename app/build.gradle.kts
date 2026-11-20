@@ -168,6 +168,13 @@ configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
 }
 
+// App verification must also exercise the real provider/stream/quota contracts.
+// Keep this dependency in the build graph so local and CI invocations behave identically.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    dependsOn(":ai:testDebugUnitTest")
+    testLogging { events("passed", "failed", "skipped") }
+}
+
 // Local JVM tests need the desktop native library instead of the Android AAR.
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
     resolutionStrategy.dependencySubstitution {

@@ -1,6 +1,7 @@
 package me.rerere.ai.provider
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -102,6 +103,47 @@ class QuotaQueryRunnerTest {
 
         assertEquals(ProviderQuota.Balance("unlimited"), quota)
         assertEquals("key", captured!!.header("x-api-key"))
+    }
+
+    @Test
+    fun `NewAPI quota points are displayed in dollars by configured divisor`() = runTest {
+        val query = QuotaQuery(
+            enabled = true,
+            url = "https://api.example.com/api/usage/token",
+            resultPath = "data.user_quota.total_available",
+            displayDivisor = "500000",
+            currencySymbol = "$",
+        )
+        val setting = ProviderSetting.OpenAI(quotaQuery = query)
+        val quota = client(
+            """{"data":{"user_quota":{"total_available":2495799}}}"""
+        ).runQuotaQuery(setting) { "sk-test" }
+
+        assertEquals(ProviderQuota.Balance("$4.99"), quota)
+        assertEquals("https://api.example.com/api/usage/token", captured!!.url.toString())
+    }
+
+    @Test
+    fun `quota conversion handles provider-specific values and malformed inputs`() {
+        val usd = QuotaQuery(displayDivisor = "500000", currencySymbol = "$")
+        val cny = QuotaQuery(displayDivisor = "100", currencySymbol = "¥")
+        assertEquals("$4.99", formatQuotaValue("2495799", usd))
+        assertEquals("¥25.00", formatQuotaValue("2500", cny))
+        assertEquals("2495799", formatQuotaValue("2495799", usd.copy(displayDivisor = "0")))
+        assertEquals("2495799", formatQuotaValue("2495799", usd.copy(displayDivisor = "-10")))
+        assertEquals("2495799", formatQuotaValue("2495799", usd.copy(displayDivisor = "invalid")))
+        assertEquals("unlimited", formatQuotaValue("unlimited", usd))
+        assertEquals("12.50", formatQuotaValue("12.5", QuotaQuery()))
+    }
+
+    @Test
+    fun `older saved quota configs use backwards-compatible defaults`() {
+        val restored = Json.decodeFromString<QuotaQuery>(
+            """{"enabled":true,"resultPath":"data.balance"}"""
+        )
+        assertEquals("1", restored.displayDivisor)
+        assertEquals("", restored.currencySymbol)
+        assertEquals("123.00", formatQuotaValue("123", restored))
     }
 
     @Test

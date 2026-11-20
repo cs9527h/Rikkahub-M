@@ -49,6 +49,10 @@ class BackupManager(
         passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ): File = withContext(Dispatchers.IO) {
+        require(!includeCredentials || (passphrase != null && passphrase.isNotEmpty())) {
+            "包含凭据的备份必须使用非空口令加密"
+        }
+        require(passphrase == null || passphrase.isNotEmpty()) { "备份口令不能为空" }
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
         val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
@@ -110,8 +114,8 @@ class BackupManager(
                 val readable = if (!BackupCrypto.isEncrypted(archive)) archive else {
                     requireNotNull(passphrase) { "该备份已加密，需要恢复口令" }
                     File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
-                        BackupCrypto.decrypt(archive, temp, passphrase)
                         decrypted = temp
+                        BackupCrypto.decrypt(archive, temp, passphrase)
                     }
                 }
                 val restore = pendingRestore(context)

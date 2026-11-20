@@ -29,21 +29,24 @@ class S3Sync(
         Log.i(TAG, "testS3: Connection successful")
     }
 
-    suspend fun backupToS3(config: S3Config) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config)
-        val client = getS3Client(config)
-        val key = "rikkahub_backups/${file.name}"
-
-        client.putObject(
-            key = key,
-            file = file,
-            contentType = "application/zip"
-        ).getOrThrow()
-
-        Log.i(TAG, "backupToS3: Uploaded ${file.name} (${file.length().fileSizeToString()})")
-
-        // Clean up temp file
-        file.delete()
+    suspend fun backupToS3(
+        config: S3Config,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+    ) = withContext(Dispatchers.IO) {
+        val file = prepareBackupFile(config, passphrase, includeCredentials)
+        try {
+            val client = getS3Client(config)
+            client.putObject(
+                key = "rikkahub_backups/${file.name}",
+                file = file,
+                contentType = "application/octet-stream"
+            ).getOrThrow()
+            Log.i(TAG, "backupToS3: Uploaded ${file.name} (${file.length().fileSizeToString()})")
+        } finally {
+            // Failures and cancellation must also remove temporary archives.
+            file.delete()
+        }
     }
 
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
@@ -54,7 +57,7 @@ class S3Sync(
         ).getOrThrow()
 
         result.objects
-            .filter { it.key.startsWith("rikkahub_backups/backup_") && it.key.endsWith(".zip") }
+            .filter { it.key.startsWith("rikkahub_backups/") && BackupArchiveFormat.isBackupName(it.key.removePrefix("rikkahub_backups/")) }
             .map { obj ->
                 S3BackupItem(
                     key = obj.key,
@@ -66,7 +69,7 @@ class S3Sync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem) = withContext(Dispatchers.IO) {
+    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, passphrase: CharArray? = null) = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
         val backupFile = File.createTempFile("restore-", ".zip", context.cacheDir)
 
@@ -78,7 +81,7 @@ class S3Sync(
             Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
 
             // Restore from backup file
-            restoreFromBackupFile(backupFile, config)
+            restoreFromBackupFile(backupFile, config, passphrase)
         } finally {
             // Clean up temp file
             if (backupFile.exists()) {
@@ -94,15 +97,22 @@ class S3Sync(
         Log.i(TAG, "deleteS3BackupFile: Deleted ${item.key}")
     }
 
-    suspend fun prepareBackupFile(config: S3Config): File = backupManager.createBackup(
+    suspend fun prepareBackupFile(
+        config: S3Config,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+    ): File = backupManager.createBackup(
         includeDatabase = S3Config.BackupItem.DATABASE in config.items,
         includeFiles = S3Config.BackupItem.FILES in config.items,
+        passphrase = passphrase,
+        includeCredentials = includeCredentials,
     )
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config) = backupManager.stageRestore(
+    private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config, passphrase: CharArray?) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = S3Config.BackupItem.DATABASE in config.items,
         includeFiles = S3Config.BackupItem.FILES in config.items,
+        passphrase = passphrase,
     )
 
 }
