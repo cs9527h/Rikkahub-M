@@ -42,7 +42,7 @@ internal object MateWire {
         val text = obj.optString("text")
         val error = obj.optString("error")
         require(type in setOf("", "snapshot", "done", "error")) { "未知流事件" }
-        require(state in setOf("running", "done", "failed", "error", "uncertain", "expired")) {
+        require(state in setOf("running", "done", "failed", "error", "uncertain", "expired", "cancelled")) {
             "未知服务器状态"
         }
         require(type != "done" || state == "done") { "流结束事件与请求状态不一致" }
@@ -153,6 +153,12 @@ internal class MateChatTransport {
             throw IOException("服务器协议或实例标识发生变化，已拒绝使用旧授权")
         }
         return caps
+    }
+
+    suspend fun cancelRequest(connection: MateConnection, id: String) = withContext(Dispatchers.IO) {
+        val call = http.newCall(request(connection, "/chat/cancel", JSONObject().put("request_id", id)))
+        call.timeout().timeout(3, TimeUnit.SECONDS)
+        call.execute().use { boundedJson(it) }
     }
 
     suspend fun requestResult(connection: MateConnection, id: String): MateSnapshot {

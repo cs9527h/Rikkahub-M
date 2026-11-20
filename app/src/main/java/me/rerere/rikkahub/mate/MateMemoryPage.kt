@@ -287,11 +287,11 @@ fun MateMemoryPage() {
                     )
                 }
             }
-            if (showAudit) {
+            if (showAudit && memoryReady) {
                 items(auditItems, key = { it.seq }) { row ->
                     AuditRow(row)
                 }
-            } else {
+            } else if (memoryReady) {
                 items(items, key = { it.id }) { item ->
                     MemoryRow(
                         item = item,

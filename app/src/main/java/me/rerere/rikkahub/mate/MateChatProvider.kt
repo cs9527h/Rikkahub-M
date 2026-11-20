@@ -33,6 +33,7 @@ import java.io.IOException
 import java.io.File
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -141,6 +142,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         val call = client.newCall(request)
         emit(StreamChunk.TextStart(partId))
         val handle = cancelCallWithRequest(call)
+        prefs.edit().putString("request_" + connection.instanceId, requestId).apply()
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
@@ -158,7 +160,6 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     } else "发送失败，网关返回 HTTP " + response.code
                     throw IOException(reason)
                 }
-                prefs.edit().putString("request_" + connection.instanceId, requestId).apply()
                 val summary = if (ordered) "网关已接收有序上下文，匹配规则 " + params.cloudInjectionCount + " 条"
                     else if (isolated) "独立会话，未发送注入规则" else "旧版网关使用共享会话，未发送注入规则"
                 prefs.edit().putString(diagnosticKey, summary).apply()
@@ -182,7 +183,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     val payloadText = parser.line(line.orEmpty())
                     if (payloadText != null) {
                         val event = MateWire.parseSnapshot(payloadText, requestId)
-                        if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain")) {
+                        if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain", "cancelled")) {
                             throw IOException("服务器未完成这条消息，请检查会话状态")
                         }
                         if (!event.text.startsWith(accumulated)) {
@@ -214,6 +215,11 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
             }
         } finally {
             handle.cancel()
+            if (!currentCoroutineContext().isActive && capabilities.optBoolean("request_cancel")) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                    runCatching { transport.cancelRequest(connection, requestId) }
+                }
+            }
         }
         emit(StreamChunk.TextEnd(partId))
         emit(StreamChunk.Finish(finishReason = "stop", responseId = requestId, model = params.model.modelId))

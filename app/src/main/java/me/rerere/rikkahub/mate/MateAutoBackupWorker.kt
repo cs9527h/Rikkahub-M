@@ -83,10 +83,9 @@ class MateAutoBackupWorker(
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
                 .build()
-            // Replacing the pending snapshot avoids growing an unbounded queue
-            // across frequent foreground/background transitions.
+            // Foreground/background transitions during a large upload share its running snapshot.
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
-                UNIQUE_WORK, ExistingWorkPolicy.REPLACE, work
+                UNIQUE_WORK, ExistingWorkPolicy.KEEP, work
             )
         }
     }

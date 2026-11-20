@@ -226,6 +226,7 @@ fun MateConnectionPage() {
                                         requestStatus = when (snapshot.state) {
                                             "running" -> "服务器仍在生成"
                                             "done" -> "服务器已完成这次请求"
+                                            "cancelled" -> "请求已取消"
                                             "expired" -> "请求记录已过期"
                                             "uncertain" -> "服务器无法确认最终结果"
                                             else -> "服务器报告生成失败"
