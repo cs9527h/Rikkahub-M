@@ -140,15 +140,7 @@ internal class MateChatTransport {
             val call = http.newCall(request(connection, path, body))
             val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
             try {
-                call.execute().use { response ->
-                    // 失败时网关会带 error 字段，原样抛给上层做提示，不当成成功
-                    if (!response.isSuccessful) {
-                        val text = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
-                        val err = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
-                        throw IOException("网关 HTTP " + response.code + (if (err.isBlank()) "" else " " + err))
-                    }
-                    boundedJson(response)
-                }
+                call.execute().use { boundedJson(it) }
             } finally {
                 handle.dispose()
             }
