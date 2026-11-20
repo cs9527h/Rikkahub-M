@@ -68,6 +68,15 @@ fun AutoAIIcon(
         TextAvatar(text = name, modifier = modifier, loading = loading, color = color)
         return
     }
+    if (path == "mate-cloud.svg") {
+        androidx.compose.material3.Icon(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_cloud_connection),
+            contentDescription = name,
+            modifier = modifier.size(24.dp),
+            tint = LocalContentColor.current,
+        )
+        return
+    }
     AIIcon(
         path = path,
         name = name,
