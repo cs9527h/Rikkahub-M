@@ -83,6 +83,7 @@ fun MateMemoryPage() {
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("正在读取记忆…") }
 
+    var detail by remember { mutableStateOf<MemoryItem?>(null) }
     var editing by remember { mutableStateOf<MemoryItem?>(null) }
     var editText by remember { mutableStateOf("") }
     var editTags by remember { mutableStateOf("") }
@@ -299,6 +300,17 @@ fun MateMemoryPage() {
                         onToggle = {
                             if (selected.contains(item.id)) selected.remove(item.id) else selected.add(item.id)
                         },
+                        onDetail = { scope.launch {
+                            try {
+                                val paired = connection() ?: throw IllegalStateException("请先配对云服务器")
+                                val id = java.net.URLEncoder.encode(item.id, "UTF-8")
+                                detail = transport.get(paired, "/memory/item?id=$id").toMemoryItem()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                snackbar.showSnackbar(humanizeMemoryError(error.message))
+                            }
+                        } },
                         onEdit = { editing = item; editText = item.content; editTags = item.tags },
                         onDelete = { pendingDelete = item },
                         onRestore = { scope.launch { sendAction(JSONObject().put("action", "restore").put("id", item.id), "已恢复") } },
@@ -311,6 +323,12 @@ fun MateMemoryPage() {
                 }
             }
         }
+    }
+
+    detail?.let { record ->
+        AlertDialog(onDismissRequest = { detail = null }, title = { Text("记忆详情") },
+            text = { Text(record.content) },
+            confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } })
     }
 
     if (bulkConfirm) {
@@ -470,6 +488,7 @@ private fun MemoryRow(
     canWrite: Boolean,
     checked: Boolean,
     onToggle: () -> Unit,
+    onDetail: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onRestore: () -> Unit,
@@ -482,6 +501,7 @@ private fun MemoryRow(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        TextButton(onClick = onDetail) { Text("详情") }
         if (canWrite) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (item.active) {
