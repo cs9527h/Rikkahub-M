@@ -22,12 +22,11 @@ import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -78,11 +77,9 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         require(userText.length <= 6000) { "单条消息不能超过 6000 字" }
 
         // 附件先上传换服务端 id，再随消息一起提交；上传失败直接报错，不静默丢弃
-        val attachmentIds = lastUser?.parts.orEmpty()
-            .mapNotNull { part -> part.toUploadPayload() }
-            .map { payloadItem ->
-                uploadMedia(connection, payloadItem)
-            }
+        val uploadItems = lastUser?.parts.orEmpty().mapNotNull { it.toUploadPayload() }
+        require(uploadItems.size <= 4) { "单条消息最多发送 4 个附件" }
+        val attachmentIds = uploadItems.map { uploadMedia(connection, it) }
         require(userText.isNotEmpty() || attachmentIds.isNotEmpty()) { "没有可以发送的内容" }
 
         val requestId = UUID.randomUUID().toString()
@@ -216,14 +213,22 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         is UIMessagePart.Audio -> decodeSource(url).let { (bytes, mime) ->
             UploadPayload(bytes, "audio-" + bytes.size + guessExt(mime), mime, "audio")
         }
-        is UIMessagePart.Video -> decodeSource(url).let { (bytes, mime) ->
-            UploadPayload(bytes, "video-" + bytes.size + guessExt(mime), mime, "video")
-        }
+        is UIMessagePart.Video -> throw IOException("当前云服务器网关不支持视频附件")
         is UIMessagePart.Document -> decodeSource(url).let { (bytes, mime) ->
             UploadPayload(bytes, fileName.ifBlank { "document" + guessExt(mime) }, mime, "file")
         }
         else -> null
     }
+
+    // Match gateway/media.py rather than accepting arbitrary MIME.
+    private val supportedMediaTypes = setOf(
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg",
+        "application/pdf", "text/plain", "text/csv", "text/markdown",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    private val maxGatewayMediaBytes = 8_000_000
 
     private fun guessExt(mime: String): String = when {
         mime.contains("png") -> ".png"
@@ -244,6 +249,9 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 val header = url.substringAfter("data:").substringBefore(',')
                 val mime = header.substringBefore(';').ifBlank { "application/octet-stream" }
                 val body = url.substringAfter(',')
+                if (body.length > (maxGatewayMediaBytes * 4L / 3 + 16)) {
+                    throw IOException("附件超过云服务器 8MB 限制")
+                }
                 val bytes = if ("base64" in header) {
                     android.util.Base64.decode(body, android.util.Base64.DEFAULT)
                 } else {
@@ -255,8 +263,19 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 val parsed = android.net.Uri.parse(url)
                 val resolver = appContext.contentResolver
                 val mime = resolver.getType(parsed) ?: "application/octet-stream"
-                val bytes = resolver.openInputStream(parsed)?.use { it.readBytes() }
-                    ?: throw IOException("附件读取为空")
+                val bytes = resolver.openInputStream(parsed)?.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (output.size().toLong() + count > maxGatewayMediaBytes) {
+                            throw IOException("附件超过云服务器 8MB 限制")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: throw IOException("附件读取为空")
                 bytes to mime
             }
             else -> throw IOException("暂不支持发送该来源的附件")
@@ -268,27 +287,23 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
     }
 
     /**
-     * 上传到网关的 /media 换取附件 id。
-     * 契约：multipart 表单字段 file + kind，成功返回含 id 的 JSON。
-     * 任何一步不符合预期都直接失败，避免前端显示已发送、服务器却没收到附件。
+     * Gateway protocol v3: POST /media accepts the RAW file bytes as the request body,
+     * with Content-Type set to the exact MIME. The gateway itself wraps the upstream
+     * /api/v1/file request as multipart. Do not send multipart to the gateway.
+     *
+     * Reference: cs9527h/dafayu-android gateway/server.py and gateway/media.py.
      */
     private suspend fun uploadMedia(connection: MateConnection, payload: UploadPayload): String {
-        if (payload.bytes.size > 20 * 1024 * 1024) {
-            throw IOException("附件超过 20MB，无法发送")
+        if (payload.bytes.size !in 8..maxGatewayMediaBytes) {
+            throw IOException("附件大小不符合云服务器限制（最大 8MB）")
         }
-        val body = MultipartBody.Builder()
-            .setType(MultipartBody.FORM)
-            .addFormDataPart("kind", payload.kind)
-            .addFormDataPart(
-                "file",
-                payload.fileName,
-                payload.bytes.toRequestBody(payload.mime.toMediaTypeOrNull())
-            )
-            .build()
+        if (payload.mime !in supportedMediaTypes) {
+            throw IOException("云服务器不支持此附件类型：" + payload.mime)
+        }
         val request = Request.Builder()
             .url(connection.baseUrl.trimEnd('/') + "/media")
             .header("Authorization", "Bearer " + connection.token)
-            .post(body)
+            .post(payload.bytes.toRequestBody(payload.mime.toMediaType()))
             .build()
         val call = client.newCall(request)
         val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
@@ -297,13 +312,15 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 if (!response.isSuccessful) {
                     throw IOException("附件上传失败，网关返回 HTTP " + response.code)
                 }
-                val text = response.body?.string().orEmpty()
-                val obj = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse {
+                val bodyText = response.body?.string().orEmpty()
+                val obj = runCatching { json.parseToJsonElement(bodyText).jsonObject }.getOrElse {
                     throw IOException("附件上传返回了无法解析的数据")
                 }
-                val id = listOf("id", "file_id", "media_id", "attachment_id")
-                    .firstNotNullOfOrNull { key -> obj[key]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } }
-                return id ?: throw IOException("附件上传成功但服务器没有返回附件标识")
+                val id = obj["id"]?.jsonPrimitive?.contentOrNull
+                if (id.isNullOrBlank() || !Regex("[0-9a-f]{32}").matches(id)) {
+                    throw IOException("附件上传响应缺少有效的网关附件 ID")
+                }
+                return id
             }
         } finally {
             handle.dispose()
