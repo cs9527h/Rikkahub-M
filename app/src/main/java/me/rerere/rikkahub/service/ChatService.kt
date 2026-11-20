@@ -697,6 +697,7 @@ class ChatService(
         session.replyMessageId.value = null
         // 生成开始前失败时通知只用来取消 Live Update，用不到发送者名称
         var senderName = ""
+        var senderAvatar: me.rerere.rikkahub.data.model.Avatar? = null
         try {
             val settings = settingsStore.awaitLoaded()
             // 清掉上一轮的建议；没法继续执行的工具调用发给模型会被拒绝，先去掉。
@@ -722,6 +723,7 @@ class ChatService(
             } else {
                 turn.model.displayName
             }
+            senderAvatar = turn.assistant.avatar.takeIf { turn.assistant.useAssistantAvatar }
             warnIfToolsUnavailable(turn, conversationId)
 
             var finishReason: AgentFinishReason? = null
@@ -760,7 +762,7 @@ class ChatService(
                                 // 通知等边缘副作用由 ChatNotificationManager 消费；
                                 // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
                                 appEventBus.tryEmit(
-                                    AppEvent.ChatGenerationUpdate(conversationId, event.message, senderName)
+                                    AppEvent.ChatGenerationUpdate(conversationId, event.message, senderName, senderAvatar)
                                 )
                             }
 
@@ -792,8 +794,11 @@ class ChatService(
                         AppEvent.ChatGenerationEnded(
                             conversationId = conversationId,
                             senderName = senderName,
-                            contentPreview = finished.currentMessages.lastOrNull()
-                                ?.toText()?.take(50)?.trim() ?: "",
+                            // 取消/失败不发完成通知；只有真正结束且有内容才提示
+                            contentPreview = if (finishReason == null) null else finished.currentMessages
+                                .lastOrNull()?.toText()?.replace(Regex("\\s+"), " ")?.trim()
+                                ?.take(120)?.takeIf { it.isNotBlank() },
+                            senderAvatar = senderAvatar,
                         )
                     )
                 }
@@ -808,7 +813,7 @@ class ChatService(
             }
             return TurnResult.Finished(reason)
         } catch (e: CancellationException) {
-            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
+            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, senderAvatar))
             throw e
         } catch (e: InvalidMcpServerNamesException) {
             session.inbox.pause()
@@ -821,7 +826,7 @@ class ChatService(
             return TurnResult.Failed
         } catch (e: Exception) {
             // 兜底取消 Live Update 通知（生成开始前失败时上面的 finally 不会执行）
-            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
+            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, senderAvatar))
             session.inbox.pause()
             e.printStackTrace()
             addError(e, conversationId, title = context.getString(R.string.error_title_generation))

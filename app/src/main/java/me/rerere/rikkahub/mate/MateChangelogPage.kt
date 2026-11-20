@@ -31,6 +31,15 @@ fun MateChangelogPage() {
                     style = MaterialTheme.typography.titleLarge)
             }
             item {
+                Text("0.3.2", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 通知显示助手名称与头像，不再显示连接类型；取消或失败不再推送完成通知\n" +
+                    "• 同一会话的完成通知会去重，内容为空时不再显示省略号\n" +
+                    "• 设置与引导文案精简，并加入每版性能基线记录",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("0.3.1", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 记忆中心先核对服务器真实能力：未接入记忆库、未配置浏览器、只读模式各有独立提示\n" +

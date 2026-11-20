@@ -58,8 +58,10 @@ internal fun Settings.withBuiltInDefaults(): Settings {
                     updated.copy(
                         name = if (updated.name == "Mate 服务端") "云服务器" else updated.name,
                         models = updated.models.map { model ->
-                            if (model.id == MATE_MODEL_ID && model.displayName == "Mate 网关") {
-                                model.copy(displayName = "云服务器")
+                            if (model.id == MATE_MODEL_ID &&
+                                model.displayName in setOf("Mate 网关", "云服务器")
+                            ) {
+                                model.copy(displayName = "李鱼")
                             } else model
                         },
                     )

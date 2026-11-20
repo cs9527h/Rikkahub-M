@@ -1,0 +1,10 @@
+{
+  "version": "0.3.2",
+  "measured": false,
+  "source": "未采集",
+  "device": "",
+  "buildType": "benchmarkRelease",
+  "thresholdPercent": 10,
+  "metrics": {},
+  "note": "当前 CI 只有模拟器，启动/滚动/流式数据波动大于判据；本版未采集真机基线，发布说明已标注待真机验收。采集到真机数据后按 scripts/perf_compare.py 写入本文件，后续版本自动对比。"
+}

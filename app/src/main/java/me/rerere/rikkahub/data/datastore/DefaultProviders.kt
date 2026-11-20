@@ -24,7 +24,8 @@ val MATE_PROVIDER = ProviderSetting.OpenAI(
     models = listOf(
         me.rerere.ai.provider.Model(
             modelId = "liyu",
-            displayName = "云服务器",
+            // 云服务器是连接入口，不是助手身份；模型目录里显示助手名称。
+            displayName = "李鱼",
             id = MATE_MODEL_ID,
         )
     ),

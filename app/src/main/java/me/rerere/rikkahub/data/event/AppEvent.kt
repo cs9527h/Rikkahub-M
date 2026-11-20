@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.event
 
 import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.data.model.Avatar
 import kotlin.uuid.Uuid
 
 sealed class AppEvent {
@@ -12,6 +13,7 @@ sealed class AppEvent {
         val conversationId: Uuid,
         val lastMessage: UIMessage,
         val senderName: String,
+        val senderAvatar: Avatar? = null,
     ) : AppEvent()
 
     /**
@@ -22,5 +24,6 @@ sealed class AppEvent {
         val conversationId: Uuid,
         val senderName: String,
         val contentPreview: String?,
+        val senderAvatar: Avatar? = null,
     ) : AppEvent()
 }
