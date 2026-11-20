@@ -2,6 +2,7 @@ package me.rerere.rikkahub.mate
 
 import androidx.compose.foundation.layout.Arrangement
 import android.net.Uri
+import org.json.JSONObject
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +58,7 @@ fun MateConnectionPage() {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("正在读取本机连接…") }
     var restoring by remember { mutableStateOf(true) }
+    var capabilitySummary by remember { mutableStateOf("服务器能力尚未验证") }
     var showScanner by remember { mutableStateOf(false) }
 
     val diagnosticPrefs = remember(context) { MateDiagnostics.preferences(context) }
@@ -105,6 +107,8 @@ fun MateConnectionPage() {
             if (current != null) {
                 try {
                     gateway.verify(current)
+                    val caps = MateChatTransport().capabilities(current)
+                    capabilitySummary = describeMateCapabilities(caps)
                     message = "连接已验证 · 协议 3"
                 } catch (error: CancellationException) {
                     throw error
@@ -137,6 +141,9 @@ fun MateConnectionPage() {
             }
             item {
                 Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (paired != null) Text(capabilitySummary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 OutlinedTextField(
@@ -269,7 +276,9 @@ fun MateConnectionPage() {
                             busy = true
                             scope.launch {
                                 try {
-                                    gateway.verify(paired!!)
+                                    val current = paired!!
+                                    gateway.verify(current)
+                                    capabilitySummary = describeMateCapabilities(MateChatTransport().capabilities(current))
                                     message = "服务器连接正常 · 授权有效"
                                     snackbarHostState.showSnackbar(message)
                                 } catch (error: CancellationException) {
@@ -313,4 +322,15 @@ fun MateConnectionPage() {
             }
         }
     }
+}
+
+/** Capability availability is not proof of successful execution; keep UI wording precise. */
+internal fun describeMateCapabilities(caps: JSONObject): String {
+    fun available(key: String): String = if (caps.optBoolean(key, false)) "支持" else "不可用"
+    return "网关 " + caps.optString("version", "未知") +
+        " · 长期记忆：" + available("memory_browser") +
+        " · 记忆修改：" + available("memory_write") +
+        " · 云端规则：" + available("ordered_context_v1") +
+        " · 视频上传：" + available("video_upload") +
+        "\n以上是服务器声明的功能能力，不代表实际操作已验收。"
 }
