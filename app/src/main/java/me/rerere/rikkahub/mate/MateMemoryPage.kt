@@ -196,10 +196,40 @@ fun MateMemoryPage() {
         try {
             val connection = connection() ?: throw IllegalStateException("还没有连接云服务器")
             val result = transport.post(connection, "/memory", body)
-            snackbar.showSnackbar(
-                if (result.optBoolean("needs_reindex", false)) success + "（向量索引需服务器重建）" else success
-            )
+            val action = body.optString("action")
+            val id = body.optString("id")
+            if (action in setOf("update", "delete", "restore")) {
+                check(result.optString("id") == id) { "服务器未确认目标记忆的操作" }
+                val verified = transport.get(connection, "/memory/item?id=" +
+                    java.net.URLEncoder.encode(id, "UTF-8")).toMemoryItem()
+                check(verified.id == id) { "服务器回读的记忆编号不匹配" }
+                if (action == "update") {
+                    if (body.has("content")) check(verified.content == body.getString("content").trim()) {
+                        "服务器未保存新的记忆正文"
+                    }
+                    if (body.has("type")) check(verified.type == body.getString("type")) {
+                        "服务器未保存新的记忆类型"
+                    }
+                    if (body.has("tags")) check(verified.tags == body.getString("tags")) {
+                        "服务器未保存新的记忆标签"
+                    }
+                    if (body.has("importance")) check(
+                        kotlin.math.abs(verified.importance.toDouble() - body.getDouble("importance")) < 0.00001
+                    ) { "服务器未保存新的记忆重要度" }
+                }
+                if (action == "restore") check(verified.active) { "服务器尚未恢复记忆" }
+                if (action == "delete") check(!verified.active) { "服务器尚未删除记忆" }
+            } else if (action == "create") {
+                check(result.optString("id").isNotBlank()) { "服务器没有返回新记忆编号" }
+            } else if (action == "delete" && body.has("ids")) {
+                check(result.has("count") || result.has("deleted") || result.has("ids")) {
+                    "服务器没有确认批量操作结果"
+                }
+            }
             load(true)
+            snackbar.showSnackbar(
+                if (result.optBoolean("needs_reindex", false)) success + "（索引待服务端重建）" else success + "（已确认）"
+            )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
