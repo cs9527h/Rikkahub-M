@@ -38,7 +38,7 @@ internal fun Settings.normalized(): Settings =
 
 // 补齐缺失的内置提供商/助手/TTS，内置提供商的描述信息以代码里的为准
 internal fun Settings.withBuiltInDefaults(): Settings {
-    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.filterNot { it.isUnusedLegacyPromotion() }.toMutableList()
+    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.filterNot { it.isUnusedLegacyPromotion() || it.id == LEGACY_MATE_PROVIDER_ID }.toMutableList()
     DEFAULT_PROVIDERS.forEach { defaultProvider ->
         if (providers.none { it.id == defaultProvider.id }) {
             providers.add(defaultProvider.copyProvider())
@@ -53,19 +53,7 @@ internal fun Settings.withBuiltInDefaults(): Settings {
                     description = defaultProvider.description,
                     shortDescription = defaultProvider.shortDescription,
                 )
-                // 仅迁移原始内置名称；不覆盖自定义名称或头像。
-                if (provider.id == MATE_PROVIDER_ID && updated is ProviderSetting.OpenAI) {
-                    updated.copy(
-                        name = if (updated.name == "Mate 服务端") "云服务器" else updated.name,
-                        models = updated.models.map { model ->
-                            if (model.id == MATE_MODEL_ID &&
-                                model.displayName in setOf("Mate 网关", "云服务器")
-                            ) {
-                                model.copy(displayName = "李鱼")
-                            } else model
-                        },
-                    )
-                } else updated
+                updated
             }
 
             else -> provider
@@ -75,11 +63,10 @@ internal fun Settings.withBuiltInDefaults(): Settings {
     val assistants = this.assistants.ifEmpty { DEFAULT_ASSISTANTS }
         .filterNot { it.isUnusedLegacySecondaryAssistant() }
         .map { assistant ->
-            // 升级用户那个从没动过的空白默认助手，直接补成李鱼，避免首屏继续弹"没有可用模型"
-            if (assistant.id == DEFAULT_ASSISTANT_ID && assistant.name.isBlank() && assistant.chatModelId == null) {
-                assistant.copy(name = "李鱼", chatModelId = MATE_MODEL_ID)
-            } else {
-                assistant
+            when {
+                assistant.chatModelId == LEGACY_MATE_MODEL_ID -> assistant.copy(chatModelId = null)
+                assistant.id == DEFAULT_ASSISTANT_ID && assistant.name.isBlank() -> assistant.copy(name = "李鱼")
+                else -> assistant
             }
         }
         .ifEmpty { DEFAULT_ASSISTANTS }
@@ -94,6 +81,7 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         }
     }
     return copy(
+        chatModelId = chatModelId.takeUnless { it == LEGACY_MATE_MODEL_ID },
         providers = providers,
         assistants = assistants,
         ttsProviders = ttsProviders,

@@ -16,7 +16,6 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
-import me.rerere.ai.provider.MATE_GATEWAY_CHAT_PATH
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
@@ -58,13 +57,6 @@ import kotlin.uuid.Uuid
 private const val TAG = "ChatRequestFactory"
 
 /**
- * The Mate adapter is a text conversation gateway, not an OpenAI function-calling API.
- * AstrBot-side tools run on the server and are not controlled by the app's MCP/search switches.
- */
-internal fun ProviderSetting.isMateGateway(): Boolean =
-    this is ProviderSetting.OpenAI && chatCompletionsPath == MATE_GATEWAY_CHAT_PATH
-
-/**
  * 一轮对话的请求上下文，按会话固定的配置解析一次。
  *
  * 正常对话和压缩用同一份上下文组装请求，系统提示词、工具定义、参数和 sessionId 都相同，
@@ -102,11 +94,6 @@ class ChatRequestFactory(
         WorkspaceReminderTransformer(workspaceRepository),
     )
 
-    // The gateway uploads original bytes and resolves attachment IDs on the server.
-    private val gatewayInputTransformers = inputTransformers.filterNot {
-        it === DocumentAsPromptTransformer || it === OcrTransformer
-    }
-
     private val outputTransformers: List<OutputMessageTransformer> = listOf(
         ThinkTagTransformer,
         Base64ImageToLocalFileTransformer,
@@ -129,19 +116,13 @@ class ChatRequestFactory(
             conversationSystemPrompt = conversation.customSystemPrompt,
             workspaceCwd = conversation.workspaceCwd,
             memories = if (assistant.enableMemory) memoryRepository.getFiles(assistant.memoryId) else emptyList(),
-            tools = if (provider.isMateGateway()) {
-                // Do not discover or attach unsupported local/MCP tools to cloud-gateway requests.
-                // Server-side AstrBot tools remain independently available to the server.
-                emptyList()
-            } else {
-                chatToolFactory.createTools(
-                    settings = settings,
-                    assistant = assistant,
-                    model = model,
-                    conversationId = conversation.id,
-                    workspaceCwd = conversation.workspaceCwd,
-                )
-            },
+            tools = chatToolFactory.createTools(
+                settings = settings,
+                assistant = assistant,
+                model = model,
+                conversationId = conversation.id,
+                workspaceCwd = conversation.workspaceCwd,
+            ),
         )
     }
 
@@ -166,7 +147,7 @@ class ChatRequestFactory(
             messages = messages,
             tools = turn.tools,
             stream = turn.assistant.streamOutput,
-            retry = if (turn.providerSetting.isMateGateway()) RetryPolicy.NONE else turn.settings.retryPolicy(),
+            retry = turn.settings.retryPolicy(),
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
@@ -224,7 +205,7 @@ class ChatRequestFactory(
         val (requestMessages, params) = buildStep(turn, messages)
         // 压缩指令不经过输入转换器，模板转换器会把其中的花括号当成模板语法
         val result = withRetry(
-            policy = if (turn.providerSetting.isMateGateway()) RetryPolicy.NONE else turn.settings.retryPolicy(),
+            policy = turn.settings.retryPolicy(),
             onRetry = { Log.w(TAG, "Compression request failed, retrying in ${it.delay}", it.cause) },
         ) {
             usageRecorder.wrap(
@@ -249,7 +230,6 @@ class ChatRequestFactory(
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): StepRequest {
         val assistant = turn.assistant
-        var injectionCount = 0
         val requestMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
@@ -278,14 +258,13 @@ class ChatRequestFactory(
             }
             addAll(messages.limitContext(assistant.contextMessageLimit).withContinuationHint())
         }.transforms(
-            transformers = if (turn.providerSetting.isMateGateway()) gatewayInputTransformers else inputTransformers,
+            transformers = inputTransformers,
             context = context,
             model = turn.model,
             assistant = assistant,
             settings = turn.settings,
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
-            onInjections = { injectionCount = it },
         ).expandNotices()
         val params = TextGenerationParams(
             model = turn.model,
@@ -304,7 +283,6 @@ class ChatRequestFactory(
             },
             sessionId = turn.conversationId.toString(),
             currentUserMessageId = messages.lastOrNull { it.role == MessageRole.USER }?.id?.toString(),
-            cloudInjectionCount = injectionCount,
         )
         return StepRequest(requestMessages, params)
     }
