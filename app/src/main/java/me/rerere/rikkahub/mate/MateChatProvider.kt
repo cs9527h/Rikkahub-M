@@ -49,6 +49,7 @@ import java.util.concurrent.TimeUnit
 class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
 
     private val appContext = context.applicationContext
+    private val transport = MateChatTransport()
     private val store = MateGatewayStore(appContext)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -74,7 +75,16 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         val connection = store.load()
             ?: throw IOException("还没有连接服务器，请先在「云服务器」里完成配对")
 
-        val lastUser = messages.lastOrNull { it.role == MessageRole.USER }
+        val capabilities = transport.capabilities(connection)
+        val versions = capabilities.optJSONArray("chat_versions")
+        val isolated = versions != null && (0 until versions.length()).any { versions.optInt(it) == 4 }
+        val ordered = isolated && capabilities.optBoolean("ordered_context_v1")
+        if (params.requiresOrderedContext && !ordered) {
+            throw IOException("当前云服务器未启用有序提示词协议，本次注入未发送")
+        }
+        val lastUser = messages.lastOrNull {
+            it.role == MessageRole.USER && (params.currentUserMessageId == null || it.id.toString() == params.currentUserMessageId)
+        }
         val userText = lastUser
             ?.parts
             ?.filterIsInstance<UIMessagePart.Text>()
@@ -94,8 +104,24 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
 
         val requestId = UUID.randomUUID().toString()
         val partId = "mate-" + requestId
-        val attachmentsJson = attachmentIds.joinToString(",", "[", "]") { jsonString(it) }
-        val payload = """{"request_id":"$requestId","message":${jsonString(userText)},"attachments":$attachmentsJson}"""
+        val payload = org.json.JSONObject().apply {
+            put("request_id", requestId)
+            put("message", userText)
+            put("attachments", org.json.JSONArray(attachmentIds))
+            if (isolated && params.sessionId != null) {
+                put("chat_version", 4)
+                put("conversation_id", params.sessionId)
+                if (ordered) {
+                    val context = org.json.JSONArray()
+                    messages.forEach { message ->
+                        val text = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+                        if (message.role == MessageRole.TOOL) throw IOException("云服务器暂不支持工具历史")
+                        context.put(org.json.JSONObject().put("role", message.role.name.lowercase()).put("content", text))
+                    }
+                    put("context_messages", context)
+                }
+            }
+        }.toString()
         val request = Request.Builder()
             .url(connection.baseUrl.trimEnd('/') + "/chat/stream")
             .header("Authorization", "Bearer " + connection.token)
