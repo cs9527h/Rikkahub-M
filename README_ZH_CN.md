@@ -1,61 +1,35 @@
-<div align="center">
-  <h1>Rikkahub-M · Mate</h1>
-  <p><strong>保留 RikkaHub 的好体验，让默认助手真正融入 App。</strong></p>
-  <p>原生 Android AI 客户端 · 自由模型配置 · AstrBot 私人连接</p>
-  <p>简体中文 · <a href="README_ZH_TW.md">繁體中文</a> · <a href="README.md">English</a></p>
-</div>
+# Rikkahub-M
 
-> [!IMPORTANT]
-> **0.3.2 发布线。** 聊天走你自己的 AstrBot Mate 网关，长期记忆通过按设备鉴权的接口读写，附件按原始字节上传。包名保持 `com.rikkahub.mate`、沿用 0.2.4 签名，可直接覆盖升级，不会丢聊天和设置；旧 Mate（`com.dafayu.chat.preview`）是另一个 App，不会被覆盖。
+**独立 Android AI 客户端｜本地人格与记忆｜模型 API 直连｜可恢复云备份**
 
-## Mate 是什么？
+> **0.4.0 开发中，未正式发布。** 当前 GitHub 草稿 PR #16 仍存在编译问题；页面描述的是重构目标，不能当作已验证的稳定功能。
 
-**Mate 是 App 名称，Rikkahub-M 是开发仓库名称。** 项目以 [RikkaHub](https://github.com/rikkahub/rikkahub) 的 Kotlin / Jetpack Compose 架构为基础，保留其原生 UI、自然动画、聊天管理、模型配置及丰富的工具能力，再逐步整合旧 Mate 的 **AstrBot 私人连接、默认人格、长期记忆、历史同步与设备管理**。
+## 项目定位
 
-目标不是给 RikkaHub 换一个名字，而是让 **独立模型聊天** 与 **服务端聊天** 共存，互不干扰。
+Rikkahub-M 是 [RikkaHub](https://github.com/rikkahub/rikkahub) 的非官方独立 Fork，保留 Kotlin、Jetpack Compose、Material 3 Expressive、原生聊天、自然动画、搜索、MCP、Skills 和多模型等有效能力。**不再维护 AstrBot/Mate 专用聊天网关、配对码、云端人格注入和跨平台记忆系统。**
 
-## 功能介绍
+架构：
+- Android 手机直接连接用户配置的 AI 模型 API；本地管理助手、提示词、聊天记录与长期记忆。
+- 云服务器仅作为备份存储；当前已有 WebDAV/S3 客户端，未来优先研究 S3 兼容存储。
+- 本地人格提示词支持 Markdown/TXT/JSON 导入及模式注入；需持续验证新聊天、重启和多助手隔离。
 
-### 原生聊天体验（继承 RikkaHub）
+## 0.4.0 待完成事项
 
-- **自然、流畅的聊天：** Material 3 Expressive、深浅色主题、页面过渡和长聊天列表。
-- **自由选择模型：** 配置自己的 AI 提供商、API 地址和模型；保留独立 API 模式。
-- **完整消息表达：** Markdown、代码、公式、图片、文件与多轮会话。
-- **实用工具：** 搜索、模型助手、MCP、Skills、语音、工作区与备份等上游功能，具体以已配置能力为准。
+- 修复 PR #16 编译失败和旧网关残留引用，保证现有模型配置迁移正确。
+- 完善本地长期记忆的提取、检索、增删改查和跨会话召回。
+- 设置高频轻量备份、聊天数据库单独低频备份；默认不自动备份附件。
+- 实现包含 API Key 等配置的客户端加密备份、密钥跨机恢复、版本保留和去重。
+- 测试 WebDAV/S3 真正上传与恢复；修复长聊天卡顿、流式输出、后台通知身份、键盘与页面动画。
+- 延续包名 `com.rikkahub.mate`、旧版本签名、数据兼容；最终只发布一个通用 APK。
 
-### 服务端与 Mate（逐步迁移）
+**注意：目前的便携 ZIP 备份并非经验证的端到端加密；涉及隐私的真实备份应在加密功能验收后上传。**
 
-| 功能 | 0.3.2 状态 |
-|---|---|
-| 设置 → **连接服务器** | 已实现 |
-| 一次性配对、协议 3 验证、设备凭据加密保存、二维码配对 | 已实现 |
-| 独立服务端聊天页、SSE 流式对话、停止与取消 | 已实现 |
-| 图片 / PDF / 文档附件（原始字节上传，8MB × 4） | 已实现 |
-| 记忆中心：列表、搜索、筛选、新增、编辑、删除、回收站、恢复、批量删除、操作审计 | 已实现，需网关 `APP_MEMORY_WRITE_ENABLED=true` |
-| 把聊天内容手动保存为长期记忆 | 已实现 |
-| 峰谷状态与 DeepSeek 余额 | 已实现，读取网关 `/status` 与 `/billing/deepseek` |
-| 授权式诊断上传（只发事件名，不含聊天正文与 Token） | 已实现 |
-| 设置、聊天、头像昵称备份（WebDAV / S3） | 已实现；密钥类需恢复后重新填写 |
-| 签名通用 APK `Rikkahub-M-0.3.2.apk` | 由 GitHub Actions 发布工作流构建 |
+## 当前开发
 
-**两套记忆不能混为一谈：** RikkaHub 的本地文件记忆与AstrBot 服务器记忆属于不同系统，迁移时必须验证归属、权限和同步边界。
+- [客户端独立模式 PR #16](https://github.com/cs9527h/Rikkahub-M/pull/16)（草稿、未合并）
+- [旧功能 PR #15](https://github.com/cs9527h/Rikkahub-M/pull/15)（仅挑选适合新架构的通知、UI、备份代码）
+- [历史问题与验收清单](docs/LEGACY_BUG_FIX_CHECKLIST.md)
+- [独立架构说明](docs/STANDALONE_BACKUP_ONLY.md)
+- [正式发布页面](https://github.com/cs9527h/Rikkahub-M/releases)
 
-## 第一次使用
-
-1. **想使用自己的 API：** 打开「快速开始 → 独立 API」，先配置提供商和默认模型。
-2. **想连接服务器：** 打开「快速开始 → Mate 服务端」或「设置 → 连接服务器」，扫码或输入服务端生成的一次性配对码；聊天、附件和记忆中心都走这个网关。
-3. **下载安装：** 到 [Releases](https://github.com/cs9527h/Rikkahub-M/releases) 下载签名 APK `Rikkahub-M-0.3.2.apk`，可直接覆盖 0.3.1。旧 Mate 属于另一个包名，两者并存。
-
-## 我们坚持的体验
-
-**不靠删除动画换流畅，不靠堆叠设置充功能。** 页面简洁，消息清晰，功能好找；不添加广告、赞助名单、返佣推荐或捐赠弹窗。所有重大更新需要有源码记录、构建测试、数据兼容性验证与更新日志。
-
-## 开发与版权
-
-项目采用 Kotlin、Jetpack Compose、Room、Koin、Navigation 3。当前仍使用上游构建体系；如需构建，应配置自己的 `app/google-services.json`，不要复用不属于本项目的生产配置。
-
-- [Mate 集成与迁移记录](docs/MATE_FORK_MIGRATION.md)
-- [Mate 使用指南与开发状态](docs/MATE_USER_GUIDE.md)
-- [仓库源码](https://github.com/cs9527h/Rikkahub-M)
-
-本项目为 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**非官方独立 Fork**，遵循 **AGPL-3.0**。保留原作者署名及 [许可证](LICENSE)，不冒充官方版本。
+不上传私人聊天、真实人格原文、API Key 或服务器密钥。项目不是官方 RikkaHub，遵循现有 [AGPL-3.0 许可证](LICENSE)，保留上游著作权与第三方许可证。
