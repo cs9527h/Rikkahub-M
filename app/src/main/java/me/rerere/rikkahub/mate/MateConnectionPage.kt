@@ -2,6 +2,8 @@ package me.rerere.rikkahub.mate
 
 import androidx.compose.foundation.layout.Arrangement
 import android.net.Uri
+import android.content.ClipboardManager
+import android.content.Context
 import org.json.JSONObject
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,7 +55,10 @@ fun MateConnectionPage() {
     val navController = LocalNavController.current
     var address by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
-    var deviceName by remember { mutableStateOf("Mate Android") }
+    var deviceName by remember {
+        mutableStateOf(android.os.Build.MODEL?.trim()?.take(40)?.ifBlank { "Android 手机" } ?: "Android 手机")
+    }
+    var showManualFields by remember { mutableStateOf(false) }
     var paired by remember { mutableStateOf<MateConnection?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("正在读取本机连接…") }
@@ -76,23 +81,18 @@ fun MateConnectionPage() {
             onResult = { data ->
                 showScanner = false
                 try {
-                    val uri = Uri.parse(data)
-                    require(uri.scheme == "mate" && uri.host == "pair") { "不是 Mate 配对码" }
-                    val safeBase = MateGatewayAddress.normalize(
-                        uri.getQueryParameter("server") ?: error("二维码缺少服务器地址")
-                    )
-                    val parsedCode = uri.getQueryParameter("code") ?: error("二维码缺少配对码")
-                    require(parsedCode.length in 24..80 && parsedCode.all { it.code in 33..126 })
+                    val (safeBase, parsedCode) = parseMatePairingLink(data)
                     address = safeBase
                     code = parsedCode
-                    message = "已读取一次性二维码，请核对服务器地址并点击配对"
+                    showManualFields = false
+                    message = "已导入授权信息，确认服务器：" + Uri.parse(safeBase).host
                 } catch (_: Exception) {
                     message = "二维码不是有效的 Mate 一次性配对格式"
                 }
             },
             onPermissionDenied = {
                 showScanner = false
-                message = "没有摄像头权限，可手动输入服务器地址与配对码"
+                message = "没有摄像头权限，可从剪贴板导入或手动填写"
             },
             onDismissRequest = { showScanner = false },
         )
@@ -145,37 +145,76 @@ fun MateConnectionPage() {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            item {
-                OutlinedTextField(
-                    value = address, onValueChange = { address = it },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true,
-                    label = { Text("服务器地址（HTTPS）") },
-                    placeholder = { Text("https://your-gateway.example") },
-                    enabled = !busy
-                )
-            }
             if (!restoring && paired == null) {
                 item {
-                    TextButton(
-                        enabled = !busy, onClick = { showScanner = true }
-                    ) { Text("扫码导入设备配对信息") }
-                }
-                item {
-                    OutlinedTextField(
-                        value = code, onValueChange = { code = it },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        label = { Text("一次性配对码") },
+                    Button(
                         enabled = !busy,
-                        supportingText = { Text("请在已授权的服务端生成；本页不会保存配对码") }
-                    )
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { showScanner = true },
+                    ) { Text("扫码连接服务器") }
                 }
                 item {
-                    OutlinedTextField(
-                        value = deviceName, onValueChange = { deviceName = it },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        label = { Text("本机名称") }, enabled = !busy
-                    )
+                    TextButton(
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            try {
+                                // Read only after a user gesture; never log or retain the clipboard content.
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val link = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                                val (server, oneTimeCode) = parseMatePairingLink(link)
+                                address = server
+                                code = oneTimeCode
+                                showManualFields = false
+                                message = "已导入授权信息，确认服务器：" + Uri.parse(server).host
+                            } catch (_: Exception) {
+                                message = "剪贴板中没有有效的配对链接，可扫码或选择手动输入"
+                            }
+                        },
+                    ) { Text("同一手机？从剪贴板导入配对链接") }
+                }
+                item {
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { showManualFields = !showManualFields },
+                    ) { Text(if (showManualFields) "收起手动填写" else "手动输入服务器地址及配对码") }
+                }
+                if (showManualFields) {
+                    item {
+                        OutlinedTextField(
+                            value = address, onValueChange = { address = it },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("服务器地址（HTTPS）") },
+                            placeholder = { Text("https://your-gateway.example") },
+                            enabled = !busy,
+                        )
+                    }
+                    item {
+                        OutlinedTextField(
+                            value = code, onValueChange = { code = it },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            label = { Text("一次性配对码") },
+                            enabled = !busy,
+                            supportingText = { Text("配对成功后不会保留一次性配对码") },
+                        )
+                    }
+                    item {
+                        OutlinedTextField(
+                            value = deviceName, onValueChange = { deviceName = it },
+                            modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            label = { Text("本机名称") }, enabled = !busy,
+                        )
+                    }
+                }
+                if (code.isNotBlank() && address.isNotBlank()) {
+                    item {
+                        Text(
+                            "即将连接：" + (Uri.parse(address).host ?: "未知服务器") +
+                                " · 设备：" + deviceName,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 item {
                     Button(
@@ -201,7 +240,7 @@ fun MateConnectionPage() {
                                 }
                             }
                         }
-                    ) { Text(if (busy) "正在连接…" else "配对并连接") }
+                    ) { Text(if (busy) "正在连接…" else "确认并连接") }
                 }
             } else if (!restoring) {
                 item {
@@ -333,4 +372,25 @@ internal fun describeMateCapabilities(caps: JSONObject): String {
         " · 云端规则：" + available("ordered_context_v1") +
         " · 视频上传：" + available("video_upload") +
         "\n以上是服务器声明的功能能力，不代表实际操作已验收。"
+}
+
+/**
+ * Parse a one-time invitation link without loading a web page or sending it elsewhere.
+ * Both the QR code and same-phone clipboard flow use the same validated format.
+ */
+internal fun parseMatePairingLink(raw: String): Pair<String, String> {
+    val uri = java.net.URI(raw.trim())
+    require(uri.scheme == "mate" && uri.host == "pair") { "不是服务器配对链接" }
+    val parts = uri.rawQuery?.split("&").orEmpty()
+    require(parts.size == 2) { "配对信息不完整" }
+    val values = parts.map { field ->
+        val pair = field.split("=", limit = 2)
+        require(pair.size == 2) { "配对信息格式错误" }
+        pair[0] to java.net.URLDecoder.decode(pair[1], "UTF-8")
+    }
+    require(values.map { it.first }.toSet() == setOf("server", "code")) { "配对字段错误" }
+    val server = MateGatewayAddress.normalize(values.first { it.first == "server" }.second)
+    val code = values.first { it.first == "code" }.second
+    require(code.length in 24..80 && code.all { it.code in 33..126 }) { "配对码格式不正确" }
+    return server to code
 }
