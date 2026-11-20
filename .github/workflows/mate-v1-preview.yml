@@ -161,9 +161,8 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: false
-          script: |
-            ./gradlew --no-daemon :app:baselineprofile:connectedBenchmarkReleaseAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.baselineprofile.StartupBenchmarks
+          # android-emulator-runner 逐行执行脚本，命令必须写在一行
+          script: ./gradlew --no-daemon :app:baselineprofile:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.baselineprofile.StartupBenchmarks
       - name: Compare with baseline
         if: always()
         run: python3 scripts/perf_compare.py
