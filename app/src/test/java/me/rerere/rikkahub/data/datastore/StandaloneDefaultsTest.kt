@@ -35,9 +35,14 @@ class StandaloneDefaultsTest {
             chatModelId = LEGACY_MATE_MODEL_ID
         ).normalized()
         assertFalse(migrated.providers.any { it.id == LEGACY_MATE_PROVIDER_ID })
-        // 全局 chatModelId 在 Settings 里是非空 Uuid：旧 Mate 模型必须回落到一个真实存在的本地模型
-        assertTrue(migrated.chatModelId != LEGACY_MATE_MODEL_ID)
-        assertTrue(migrated.providers.flatMap { it.models }.any { it.id == migrated.chatModelId })
+        // 全局 chatModelId 是非空 Uuid，不能置空：有可用模型时回落到本地模型，
+        // 没有任何模型时保留旧值但必须解析失败，由引导页提示用户选择模型。
+        if (migrated.providers.any { it.models.isNotEmpty() }) {
+            assertTrue(migrated.chatModelId != LEGACY_MATE_MODEL_ID)
+            assertTrue(migrated.providers.flatMap { it.models }.any { it.id == migrated.chatModelId })
+        } else {
+            assertNull(migrated.findModelById(migrated.chatModelId))
+        }
         assertNull(migrated.getCurrentAssistant().chatModelId)
         assertEquals("kept persona", migrated.getCurrentAssistant().systemPrompt)
         assertTrue(migrated.providers.any { it.name == "DeepSeek" })
