@@ -20,9 +20,11 @@ import me.rerere.rikkahub.conversationIntent
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.GenerationPhase
 import me.rerere.rikkahub.data.model.generationPhase
 import me.rerere.rikkahub.utils.cancelNotification
+import me.rerere.rikkahub.utils.NotificationAvatar
 import me.rerere.rikkahub.utils.sendNotification
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
@@ -30,6 +32,7 @@ import kotlin.uuid.Uuid
 // Live Update 通知节流间隔：流式输出每个chunk都会触发一次更新，
 // notify() 是 binder IPC 且系统本身会对高频更新限流，必须在应用侧节流
 private const val LIVE_UPDATE_NOTIFICATION_THROTTLE_MS = 1000L
+private const val DONE_NOTIFICATION_DEDUPE_MS = 5_000L
 
 /**
  * 订阅 [AppEventBus] 上的聊天生成事件，负责后台生成相关的系统通知
@@ -43,6 +46,8 @@ class ChatNotificationManager(
 ) {
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
+    // 同一会话只有一条完成通知；重复事件按预览内容与时间去重，避免刷屏。
+    private val doneNotificationAt = ConcurrentHashMap<Uuid, Pair<String, Long>>()
 
     init {
         // ProcessLifecycleOwner 要求在主线程注册观察者
@@ -79,29 +84,44 @@ class ChatNotificationManager(
         if (lastSentAt != null && now - lastSentAt < LIVE_UPDATE_NOTIFICATION_THROTTLE_MS) return
         liveUpdateLastSentAt[event.conversationId] = now
 
-        sendLiveUpdateNotification(event.conversationId, event.lastMessage, event.senderName)
+        sendLiveUpdateNotification(
+            event.conversationId, event.lastMessage, resolveSenderName(event.senderName), event.senderAvatar
+        )
     }
 
     private fun handleGenerationEnded(event: AppEvent.ChatGenerationEnded) {
         cancelLiveUpdateNotification(event.conversationId)
 
-        val contentPreview = event.contentPreview ?: return
+        val contentPreview = event.contentPreview?.takeIf { it.isNotBlank() } ?: return
         if (isForeground.value) return
         if (!settingsStore.settingsFlow.value.displaySetting.enableNotificationOnMessageGeneration) return
-        sendGenerationDoneNotification(event.conversationId, event.senderName, contentPreview)
+        val now = SystemClock.elapsedRealtime()
+        val previous = doneNotificationAt[event.conversationId]
+        if (previous != null && previous.first == contentPreview &&
+            now - previous.second < DONE_NOTIFICATION_DEDUPE_MS
+        ) {
+            return
+        }
+        doneNotificationAt[event.conversationId] = contentPreview to now
+        sendGenerationDoneNotification(
+            event.conversationId, resolveSenderName(event.senderName), contentPreview, event.senderAvatar
+        )
     }
 
     private fun sendGenerationDoneNotification(
         conversationId: Uuid,
         senderName: String,
-        contentPreview: String
+        contentPreview: String,
+        senderAvatar: Avatar?
     ) {
         context.sendNotification(
             channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
-            notificationId = 1
+            // 每个会话一条，避免不同会话互相顶掉或重复堆积
+            notificationId = conversationId.hashCode()
         ) {
             title = senderName
             content = contentPreview
+            largeIcon = NotificationAvatar.render(context, senderAvatar)
             autoCancel = true
             useDefaults = true
             category = NotificationCompat.CATEGORY_MESSAGE
@@ -112,7 +132,8 @@ class ChatNotificationManager(
     private fun sendLiveUpdateNotification(
         conversationId: Uuid,
         lastMessage: UIMessage,
-        senderName: String
+        senderName: String,
+        senderAvatar: Avatar?
     ) {
         // 确定当前状态
         val (chipText, statusText, contentText) = determineNotificationContent(lastMessage)
@@ -123,8 +144,9 @@ class ChatNotificationManager(
             notificationId = ChatGenerationForegroundService.NOTIFICATION_ID
         ) {
             title = senderName
-            content = contentText
-            subText = statusText
+            content = contentText.ifBlank { statusText }
+            subText = statusText.takeIf { it.isNotBlank() }
+            largeIcon = NotificationAvatar.render(context, senderAvatar)
             ongoing = true
             onlyAlertOnce = true
             category = NotificationCompat.CATEGORY_PROGRESS
@@ -161,6 +183,13 @@ class ChatNotificationManager(
                 ""
             )
         }
+
+    /** 发送者身份以助手为准；事件丢失名字时回退到当前默认助手，不显示连接类型。 */
+    private fun resolveSenderName(raw: String): String {
+        if (raw.isNotBlank()) return raw
+        return settingsStore.settingsFlow.value.assistants.firstOrNull()?.name?.takeIf { it.isNotBlank() }
+            ?: context.getString(R.string.assistant_page_default_assistant)
+    }
 
     private fun cancelLiveUpdateNotification(conversationId: Uuid) {
         liveUpdateLastSentAt.remove(conversationId)

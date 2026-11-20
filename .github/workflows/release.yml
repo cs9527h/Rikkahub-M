@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.3.1'
+  VERSION: '0.3.2'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -116,7 +116,7 @@ jobs:
           apk=${apks[0]}
           test -x "$APKANALYZER"
           test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
-          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 11
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 12
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -209,6 +209,15 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
+          # 性能台账门禁：每次发布必须为本版本记录性能基线状态（真机数据或明确待测）
+          python3 - "$VERSION" <<'PY'
+          import json,sys,pathlib
+          version=sys.argv[1]
+          data=json.loads(pathlib.Path('docs/perf/baseline.json').read_text())
+          if data.get('version') != version:
+              raise SystemExit('docs/perf/baseline.json 未记录 ' + version + ' 的性能状态，先更新再发布')
+          print('perf baseline status:', data.get('measured'), data.get('source',''))
+          PY
           (cd dist && sha256sum -c SHA256SUMS.txt)
           # Refuse to overwrite an existing published binary with another build.
           gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \

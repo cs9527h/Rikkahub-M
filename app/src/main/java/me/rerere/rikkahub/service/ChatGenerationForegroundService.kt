@@ -16,6 +16,8 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.conversationIntent
+import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.utils.NotificationAvatar
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
 
@@ -76,6 +78,7 @@ class ChatGenerationForegroundService : Service() {
     private var isForeground = false
     private val appScope: AppScope by inject()
     private val chatService: ChatService by inject()
+    private val settingsStore: SettingsStore by inject()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -162,10 +165,14 @@ class ChatGenerationForegroundService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(generation: ActiveGeneration) =
-        NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
+    private fun buildNotification(generation: ActiveGeneration): android.app.Notification {
+        // 通知身份是助手，不是连接类型或应用名
+        val assistant = settingsStore.settingsFlow.value.assistants.firstOrNull()
+        val senderName = assistant?.name?.takeIf { it.isNotBlank() } ?: getString(R.string.app_name)
+        return NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
-            .setContentTitle(getString(R.string.app_name))
+            .setContentTitle(senderName)
+            .also { builder -> NotificationAvatar.render(this, assistant?.avatar)?.let(builder::setLargeIcon) }
             .setContentText(
                 getString(
                     when (generation.activity) {
@@ -179,6 +186,7 @@ class ChatGenerationForegroundService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
+    }
 
     private fun getConversationPendingIntent(conversationId: String): PendingIntent {
         return PendingIntent.getActivity(
