@@ -285,10 +285,17 @@ class ChatService(
 
         return appScope.launch(start = CoroutineStart.LAZY) {
             val generationId = Uuid.random()
+            // Resolve this conversation's own assistant before starting the foreground
+            // notification. New, not-yet-persisted conversations use the selected assistant.
+            val notificationAssistantId = runCatching {
+                conversationRepo.getConversationById(conversationId)?.assistantId
+                    ?: settingsStore.awaitLoaded().getCurrentAssistant().id
+            }.getOrNull()
             val foregroundStarted = ChatGenerationForegroundService.acquire(
                 context = context,
                 generationId = generationId,
                 conversationId = conversationId,
+                assistantId = notificationAssistantId,
                 activity = activity,
             )
             try {
