@@ -60,9 +60,7 @@ class ProviderManager(
     fun <T : ProviderSetting> getProviderByType(setting: T): Provider<T> {
         @Suppress("UNCHECKED_CAST")
         return when (setting) {
-            is ProviderSetting.OpenAI ->
-                if (setting.chatCompletionsPath == MATE_GATEWAY_CHAT_PATH) getProvider("mate")
-                else getProvider("openai")
+            is ProviderSetting.OpenAI -> getProvider("openai")
             is ProviderSetting.Google -> getProvider("google")
             is ProviderSetting.Claude -> getProvider("claude")
             is ProviderSetting.ChatGPT -> getProvider("chatgpt")
