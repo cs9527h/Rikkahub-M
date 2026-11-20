@@ -920,6 +920,11 @@
   <string name="setting_provider_page_avaliable_models">Avaliable Models</string>
   <string name="setting_provider_page_balance_info">"Get account balance "</string>
   <string name="setting_provider_page_balance_json_key">Result Json Key</string>
+  <string name="setting_provider_page_balance_divisor">Balance display divisor (e.g. 500000)</string>
+  <string name="setting_provider_page_balance_divisor_hint">Divide the raw API value for display only.</string>
+  <string name="setting_provider_page_balance_currency_symbol">Currency symbol (optional)</string>
+  <string name="setting_provider_page_balance_currency_hint">Display label only; exchange rates are not converted.</string>
+  <string name="provider_quota_unavailable">Balance unavailable</string>
   <string name="setting_provider_page_basic_settings">Basic Settings</string>
   <string name="setting_provider_page_chat_model">Chat</string>
   <string name="setting_provider_page_claude_prompt_cache_ttl">Prompt cache TTL</string>
