@@ -1,3 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
-  <path d="M7.4,18.5H6.7a4.65,4.65 0,0 1,-0.6,-9.26a6.1,6.1 0,0 1,11.8,0.2a4.55,4.55 0,0 1,-0.55,9.06H16.6M9,15.5l3,-3l3,3M12,12.9v7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cloud chat / connected AI service: no upload-arrow metaphor. -->
+  <path d="M6.7 18.1H17.1a3.9 3.9 0 0 0 0.6-7.75A5.95 5.95 0 0 0 6.2 10a4.1 4.1 0 0 0 0.5 8.1Z"
+        fill="none" stroke="currentColor" stroke-width="1.65"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="9.3" cy="14.15" r="0.85" fill="currentColor"/>
+  <circle cx="12" cy="14.15" r="0.85" fill="currentColor"/>
+  <circle cx="14.7" cy="14.15" r="0.85" fill="currentColor"/>
 </svg>
