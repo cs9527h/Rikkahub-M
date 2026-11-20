@@ -74,6 +74,8 @@ data class TextGenerationParams(
     val customHeaders: List<CustomHeader> = emptyList(),
     val customBody: List<CustomBody> = emptyList(),
     val sessionId: String? = Uuid.random().toString(),
+    val requiresOrderedContext: Boolean = false,
+    val currentUserMessageId: String? = null,
 )
 
 @Serializable
