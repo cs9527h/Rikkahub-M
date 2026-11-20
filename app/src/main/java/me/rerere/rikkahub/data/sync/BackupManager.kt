@@ -43,7 +43,12 @@ class BackupManager(
 ) {
     private val restoreMutex = Mutex()
 
-    suspend fun createBackup(includeDatabase: Boolean, includeFiles: Boolean): File = withContext(Dispatchers.IO) {
+    suspend fun createBackup(
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+    ): File = withContext(Dispatchers.IO) {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
         val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
@@ -53,7 +58,7 @@ class BackupManager(
                 zip.putNextEntry(ZipEntry("settings.json"))
                 val settingsJson = portableSettings(json.parseToJsonElement(
                     json.encodeSettings(settings, settingsStore.launchCountFlow.first())
-                ).jsonObject).toString()
+                ).jsonObject, includeCredentials).toString()
                 zip.write(settingsJson.toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
                 if (includeDatabase) {
@@ -79,7 +84,11 @@ class BackupManager(
                     }
                 }
             }
-            archive
+            if (passphrase == null) return@withContext archive
+            val encrypted = File(context.cacheDir, "backup_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}")
+            BackupCrypto.encrypt(archive, encrypted, passphrase)
+            archive.delete()
+            return@withContext encrypted
         } catch (e: Throwable) {
             archive.delete()
             throw e
@@ -88,9 +97,23 @@ class BackupManager(
         }
     }
 
-    suspend fun stageRestore(archive: File, includeDatabase: Boolean, includeFiles: Boolean) =
+    suspend fun stageRestore(
+        archive: File,
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        passphrase: CharArray? = null,
+    ) =
         withContext(Dispatchers.IO) {
             restoreMutex.withLock {
+                var decrypted: File? = null
+                try {
+                val readable = if (!BackupCrypto.isEncrypted(archive)) archive else {
+                    requireNotNull(passphrase) { "该备份已加密，需要恢复口令" }
+                    File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
+                        BackupCrypto.decrypt(archive, temp, passphrase)
+                        decrypted = temp
+                    }
+                }
                 val restore = pendingRestore(context)
                 val staging = restore.createStagingDirectory()
                 try {
@@ -99,7 +122,7 @@ class BackupManager(
                     val stagedWal = File(stagedDatabase.path + "-wal")
                     val seen = mutableSetOf<String>()
                     var restoredEntries = 0
-                    ZipFile(archive).use { zip ->
+                    ZipFile(readable).use { zip ->
                         for (entry in zip.entries()) {
                             currentCoroutineContext().ensureActive()
                             if (entry.isDirectory) continue
@@ -152,6 +175,9 @@ class BackupManager(
                 } finally {
                     staging.deleteRecursively()
                 }
+                } finally {
+                    decrypted?.delete()
+                }
             }
         }
 
@@ -181,7 +207,7 @@ class BackupManager(
         private const val LAUNCH_COUNT_KEY = "launchCount"
 
         // Apply only on archive export. Restore staging still accepts older archive formats.
-        internal fun portableSettings(settings: JsonObject): JsonObject {
+        internal fun portableSettings(settings: JsonObject, includeCredentials: Boolean = false): JsonObject {
             val credentialFields = setOf(
                 "apiKey", "accessKeyId", "secretAccessKey", "password", "proxyPassword",
                 "privateKey", "passphrase", "credential", "oauth", "customHeaders", "headers",
@@ -198,6 +224,14 @@ class BackupManager(
                 "webDavConfig", "s3Config", "uploadS3Config", "providers", "searchServices",
                 "mediaGenerationProviders", "ttsProviders", "asrProviders", "networkSetting", "mcpServers",
             )
+            if (includeCredentials) {
+                // 仅加密备份携带凭据；明文 ZIP 仍按原规则剥离密钥。
+                return JsonObject(settings.mapValues { (key, value) ->
+                    if (key == "webServerEnabled") JsonPrimitive(false)
+                    else if (key == "webServerAccessPassword") JsonPrimitive("")
+                    else value
+                })
+            }
             return JsonObject(settings.mapValues { (key, value) ->
                 when (key) {
                     "webServerEnabled" -> JsonPrimitive(false)
