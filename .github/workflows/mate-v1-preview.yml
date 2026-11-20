@@ -88,6 +88,16 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew :app:testGithubDebugUnitTest :app:assembleGithubDebug --stacktrace --no-daemon
+      - name: Verify universal preview contents
+        run: |
+          python3 - <<'PY'
+          import glob, zipfile
+          files = glob.glob("app/build/outputs/apk/github/debug/*.apk")
+          assert len(files) == 1, "expected one preview APK"
+          with zipfile.ZipFile(files[0]) as apk:
+              abis = {p.split("/")[1] for p in apk.namelist() if p.startswith("lib/") and p.endswith(".so")}
+          assert {"arm64-v8a", "x86_64"} <= abis, abis
+          PY
       - name: Upload unsigned-by-project preview APK for technical testing
         if: success()
         uses: actions/upload-artifact@v4
@@ -96,6 +106,18 @@ jobs:
           path: app/build/outputs/apk/github/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Enable KVM for backup and recovery tests
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: false
+          script: ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.rikkahub.data.sync.BackupManagerTest,me.rerere.rikkahub.data.sync.DatabaseBackupTest --no-daemon
 
   android-smoke:
     name: Compare installed Android chat screens
