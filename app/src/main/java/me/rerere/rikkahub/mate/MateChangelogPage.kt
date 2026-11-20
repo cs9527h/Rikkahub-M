@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.20 · 0.2.4", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 新增「记忆中心」：直接查看、搜索、编辑、删除、恢复服务器长期记忆，不再需要先点用户\n" +
+                    "• 删除为软删除并可恢复；编辑会带原文校验，避免另一台设备已改时被覆盖\n" +
+                    "• 服务器未开启记忆写入时，页面只读并说明原因，不显示假成功",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.20 · 0.2.3", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 附件上传改为按网关协议发送原始字节（不再 multipart），上传接口与网关 media.py 对齐\n" +

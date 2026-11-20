@@ -1930,5 +1930,7 @@
   <string name="mate_intro_tab">云服务器</string>
   <string name="mate_settings_group">Connection &amp; devices</string>
   <string name="mate_connection_title">Cloud server</string>
+  <string name="mate_memory_title">Memory center</string>
+  <string name="mate_memory_desc">Browse, search, edit and restore server long-term memory</string>
   <string name="mate_connection_desc">First-time pairing, connection check, re-authorization</string>
 </resources>

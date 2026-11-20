@@ -211,6 +211,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.mate_connection_title)) },
                         supportingContent = { Text(stringResource(R.string.mate_connection_desc)) },
                     )
+                    item(
+                        onClick = { navController.navigate(Screen.MateMemory) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text(stringResource(R.string.mate_memory_title)) },
+                        supportingContent = { Text(stringResource(R.string.mate_memory_desc)) },
+                    )
                 }
             }
 

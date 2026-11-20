@@ -137,6 +137,25 @@ internal class MateChatTransport {
         }
     }
 
+    suspend fun post(connection: MateConnection, path: String, body: JSONObject): JSONObject =
+        withContext(Dispatchers.IO) {
+            val call = http.newCall(request(connection, path, body))
+            val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+            try {
+                call.execute().use { response ->
+                    // 失败时网关会带 error 字段，原样抛给上层做提示，不当成成功
+                    if (!response.isSuccessful) {
+                        val text = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
+                        val err = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
+                        throw IOException("网关 HTTP " + response.code + (if (err.isBlank()) "" else " " + err))
+                    }
+                    boundedJson(response)
+                }
+            } finally {
+                handle.dispose()
+            }
+        }
+
     suspend fun capabilities(connection: MateConnection): JSONObject {
         val caps = get(connection, "/capabilities")
         if (caps.optInt("protocol") != 3 || caps.optString("instance_id") != connection.instanceId) {
