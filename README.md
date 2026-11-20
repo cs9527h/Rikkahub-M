@@ -6,7 +6,7 @@
 </div>
 
 > [!IMPORTANT]
-> **0.3.0 release line.** Chat goes through your own AstrBot Mate gateway, long-term memory is read/written through a signed per-device API, and attachments upload as raw bytes. The app keeps package `com.rikkahub.mate` and the 0.2.4 signing key, so it upgrades over 0.2.4 without losing chats or settings. Old Mate (`com.dafayu.chat.preview`) is a separate app and is never overwritten.
+> **0.3.1 release line.** Chat goes through your own AstrBot Mate gateway, long-term memory is read/written through a signed per-device API, and attachments upload as raw bytes. The app keeps package `com.rikkahub.mate` and the 0.2.4 signing key, so it upgrades over 0.3.0 without losing chats or settings. Old Mate (`com.dafayu.chat.preview`) is a separate app and is never overwritten.
 
 ## What is Mate?
 
@@ -19,9 +19,9 @@
 - Markdown, code, equations, images, files, search, assistants and model settings.
 - Additional upstream modules such as MCP, Skills, workspace, voice and backup features.
 
-### Mate-specific status in 0.3.0
+### Mate-specific status in 0.3.1
 
-| Capability | Status in 0.3.0 |
+| Capability | Status in 0.3.1 |
 |---|---|
 | Always-visible **Connect server** entry | Implemented |
 | One-time pairing, gateway protocol v3 verification, encrypted device credentials | Implemented; QR pairing fixed |
@@ -32,13 +32,13 @@
 | Peak/valley status and DeepSeek balance | Implemented, read from gateway `/status` and `/billing/deepseek` |
 | Consent-based diagnostics upload | Implemented, event names only, no chat text or tokens |
 | Backup of settings, chats and profile via WebDAV/S3 | Implemented; provider keys must be re-entered after restore |
-| Signed universal APK `Rikkahub-M-0.3.0.apk` | Built by GitHub Actions release workflow |
+| Signed universal APK `Rikkahub-M-0.3.1.apk` | Built by GitHub Actions release workflow |
 
 ## Getting started (development preview)
 
 1. For ordinary AI chat, go to **Quick start → Independent API** and configure a provider and a model.
 2. For the private server, go to **Quick start → Mate server** or **Settings → Connect server**, then scan the one-time QR code or enter the pairing code. Server chat, attachments and the memory center run through that gateway.
-3. Download the signed APK `Rikkahub-M-0.3.0.apk` from the [Releases](https://github.com/cs9527h/Rikkahub-M/releases) page. It upgrades over 0.2.4 in place.
+3. Download the signed APK `Rikkahub-M-0.3.1.apk` from the [Releases](https://github.com/cs9527h/Rikkahub-M/releases) page. It upgrades over 0.3.0 in place.
 
 ## UI and product principles
 

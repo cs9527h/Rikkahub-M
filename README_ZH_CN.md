@@ -6,7 +6,7 @@
 </div>
 
 > [!IMPORTANT]
-> **0.3.0 发布线。** 聊天走你自己的 AstrBot Mate 网关，长期记忆通过按设备鉴权的接口读写，附件按原始字节上传。包名保持 `com.rikkahub.mate`、沿用 0.2.4 签名，可直接覆盖升级，不会丢聊天和设置；旧 Mate（`com.dafayu.chat.preview`）是另一个 App，不会被覆盖。
+> **0.3.1 发布线。** 聊天走你自己的 AstrBot Mate 网关，长期记忆通过按设备鉴权的接口读写，附件按原始字节上传。包名保持 `com.rikkahub.mate`、沿用 0.2.4 签名，可直接覆盖升级，不会丢聊天和设置；旧 Mate（`com.dafayu.chat.preview`）是另一个 App，不会被覆盖。
 
 ## Mate 是什么？
 
@@ -25,7 +25,7 @@
 
 ### 服务端与 Mate（逐步迁移）
 
-| 功能 | 0.3.0 状态 |
+| 功能 | 0.3.1 状态 |
 |---|---|
 | 设置 → **连接服务器** | 已实现 |
 | 一次性配对、协议 3 验证、设备凭据加密保存、二维码配对 | 已实现 |
@@ -36,7 +36,7 @@
 | 峰谷状态与 DeepSeek 余额 | 已实现，读取网关 `/status` 与 `/billing/deepseek` |
 | 授权式诊断上传（只发事件名，不含聊天正文与 Token） | 已实现 |
 | 设置、聊天、头像昵称备份（WebDAV / S3） | 已实现；密钥类需恢复后重新填写 |
-| 签名通用 APK `Rikkahub-M-0.3.0.apk` | 由 GitHub Actions 发布工作流构建 |
+| 签名通用 APK `Rikkahub-M-0.3.1.apk` | 由 GitHub Actions 发布工作流构建 |
 
 **两套记忆不能混为一谈：** RikkaHub 的本地文件记忆与AstrBot 服务器记忆属于不同系统，迁移时必须验证归属、权限和同步边界。
 
@@ -44,7 +44,7 @@
 
 1. **想使用自己的 API：** 打开「快速开始 → 独立 API」，先配置提供商和默认模型。
 2. **想连接服务器：** 打开「快速开始 → Mate 服务端」或「设置 → 连接服务器」，扫码或输入服务端生成的一次性配对码；聊天、附件和记忆中心都走这个网关。
-3. **下载安装：** 到 [Releases](https://github.com/cs9527h/Rikkahub-M/releases) 下载签名 APK `Rikkahub-M-0.3.0.apk`，可直接覆盖 0.2.4。旧 Mate 属于另一个包名，两者并存。
+3. **下载安装：** 到 [Releases](https://github.com/cs9527h/Rikkahub-M/releases) 下载签名 APK `Rikkahub-M-0.3.1.apk`，可直接覆盖 0.3.0。旧 Mate 属于另一个包名，两者并存。
 
 ## 我们坚持的体验
 
