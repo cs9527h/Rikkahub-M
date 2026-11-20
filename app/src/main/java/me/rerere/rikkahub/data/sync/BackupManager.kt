@@ -19,6 +19,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.mate.MateGatewayStore
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.AppDatabase
@@ -56,6 +57,21 @@ class BackupManager(
                 ).jsonObject).toString()
                 zip.write(settingsJson.toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
+                // Connection metadata is portable; Android Keystore device credentials are not.
+                // Restoring an archive must never silently impersonate the original device.
+                val cloud = MateGatewayStore(context)
+                val endpoint = cloud.savedAddress()
+                val instance = cloud.savedInstanceId()
+                if (endpoint.isNotBlank() && instance.isNotBlank()) {
+                    zip.putNextEntry(ZipEntry("cloud-connection.json"))
+                    val metadata = JsonObject(mapOf(
+                        "server_url" to JsonPrimitive(endpoint),
+                        "instance_id" to JsonPrimitive(instance),
+                        "requires_repairing" to JsonPrimitive(true),
+                    ))
+                    zip.write(metadata.toString().toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
                 if (includeDatabase) {
                     val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
                     DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
