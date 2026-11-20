@@ -203,6 +203,9 @@ data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
-    // 用户主动开启后，在应用进入前台和退到后台时安排完整备份。
+    // 打开或退出时只上传小体积设置快照；不包括聊天数据库、图片或附件。
     val autoBackupOnAppLifecycle: Boolean = false,
+    // 0=不自动备份聊天数据库；7/14/30=满足间隔后随下一次生命周期任务单独备份。
+    val databaseBackupIntervalDays: Int = 0,
+    val lastDatabaseBackupTime: Long = 0L,
 )
