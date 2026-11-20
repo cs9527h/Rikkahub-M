@@ -75,7 +75,7 @@ class MateDiagnosticWorker(context: Context, params: WorkerParameters) : Corouti
             .put("logs", JSONArray().put("event android " + event.name))
         try {
             val response = MateChatTransport().post(connection, "/diagnostics", body)
-            check(response.optInt("accepted") == 1)
+            check(response.optInt("accepted") >= 1)
             prefs.edit().putString(MateDiagnostics.RESULT, "云服务器已接收诊断").apply()
             Result.success()
         } catch (e: CancellationException) {
