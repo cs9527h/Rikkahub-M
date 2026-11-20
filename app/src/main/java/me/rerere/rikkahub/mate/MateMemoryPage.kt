@@ -60,6 +60,7 @@ private data class MemoryItem(
     val type: String,
     val tags: String,
     val importance: String,
+    val source: String,
     val active: Boolean,
 )
 
@@ -87,6 +88,8 @@ fun MateMemoryPage() {
     var editing by remember { mutableStateOf<MemoryItem?>(null) }
     var editText by remember { mutableStateOf("") }
     var editTags by remember { mutableStateOf("") }
+    var editType by remember { mutableStateOf("") }
+    var editImportance by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<MemoryItem?>(null) }
     var creating by remember { mutableStateOf(false) }
     val selected = remember { mutableStateListOf<String>() }
@@ -260,6 +263,8 @@ fun MateMemoryPage() {
             }
             if (gatewayInfo.isNotBlank()) {
                 item {
+                    Text("数据来源：AstrBot 云端长期记忆库；与本地助手记忆分开管理。",
+                        style = MaterialTheme.typography.bodySmall)
                     Text(gatewayInfo, style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -311,7 +316,13 @@ fun MateMemoryPage() {
                                 snackbar.showSnackbar(humanizeMemoryError(error.message))
                             }
                         } },
-                        onEdit = { editing = item; editText = item.content; editTags = item.tags },
+                        onEdit = {
+                            editing = item
+                            editText = item.content
+                            editTags = item.tags
+                            editType = item.type
+                            editImportance = item.importance
+                        },
                         onDelete = { pendingDelete = item },
                         onRestore = { scope.launch { sendAction(JSONObject().put("action", "restore").put("id", item.id), "已恢复") } },
                     )
@@ -327,7 +338,16 @@ fun MateMemoryPage() {
 
     detail?.let { record ->
         AlertDialog(onDismissRequest = { detail = null }, title = { Text("记忆详情") },
-            text = { Text(record.content) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(record.content)
+                    Text("类型：" + record.type + " · 重要度：" + record.importance,
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("来源：" + record.source.ifBlank { "服务器未提供" } +
+                        (if (record.active) " · 有效" else " · 已删除"),
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
             confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } })
     }
 
@@ -360,15 +380,24 @@ fun MateMemoryPage() {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = editText, onValueChange = { editText = it }, label = { Text("内容") }, minLines = 3)
                     OutlinedTextField(value = editTags, onValueChange = { editTags = it }, label = { Text("标签（可选）") }, singleLine = true)
+                    OutlinedTextField(value = editType, onValueChange = { editType = it }, label = { Text("记忆类型") }, singleLine = true)
+                    OutlinedTextField(value = editImportance, onValueChange = { editImportance = it },
+                        label = { Text("重要度（0～1）") }, singleLine = true)
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(
+                    enabled = editText.isNotBlank() && editText.length <= 6000 &&
+                        editTags.length <= 200 && editType.isNotBlank() && editType.length <= 40 &&
+                        editImportance.toDoubleOrNull()?.let { it.isFinite() && it in 0.0..1.0 } == true,
+                    onClick = {
                     val body = JSONObject()
                         .put("action", "update")
                         .put("id", item.id)
                         .put("content", editText)
                         .put("tags", editTags)
+                        .put("type", editType)
+                        .put("importance", editImportance.toDouble())
                         // 带上原始正文，服务器可发现另一端已改过并拒绝覆盖
                         .put("expect_content", item.content)
                     editing = null
@@ -478,6 +507,7 @@ private fun JSONObject.toMemoryItem(): MemoryItem {
         type = optString("type"),
         tags = optString("tags"),
         importance = optString("importance"),
+        source = optString("source"),
         active = active,
     )
 }
@@ -496,7 +526,8 @@ private fun MemoryRow(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
         Text(item.content, style = MaterialTheme.typography.bodyMedium)
         Text(
-            "#" + item.id + " · " + item.type + (if (item.tags.isBlank()) "" else " · " + item.tags) +
+            "#" + item.id + " · " + item.type + " · 重要度 " + item.importance +
+                (if (item.tags.isBlank()) "" else " · " + item.tags) +
                 (if (item.active) "" else " · 已删除"),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
