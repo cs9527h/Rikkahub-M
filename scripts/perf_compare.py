@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """对比 Macrobenchmark 结果与 docs/perf/baseline.json，超过阈值即失败。
 
-用法：python3 scripts/perf_compare.py [benchmark.json ...]
-没有输入文件或基线未采集时只打印提示并退出 0（不得伪造数据）。
+- measured=true 的真机基线是验收依据；
+- ciEmulator 记录同一类模拟器的趋势值，仅用于发现明显回退，不作为发布验收。
+用法：python3 scripts/perf_compare.py [benchmarkData.json ...]
 """
 import glob
 import json
@@ -21,35 +22,58 @@ def load_results(paths):
         except (OSError, ValueError):
             continue
         for bench in data.get("benchmarks", []):
-            name = bench.get("name") or ""
-            for metric in bench.get("metrics", []):
-                key = name.split("_")[-1] + "." + metric.get("name", "")
+            if not isinstance(bench, dict):
+                continue
+            name = str(bench.get("name", ""))
+            metrics = bench.get("metrics", {})
+            if isinstance(metrics, dict):
+                entries = metrics.items()
+            elif isinstance(metrics, list):
+                entries = ((m.get("name", ""), m) for m in metrics)
+            else:
+                continue
+            for metric_name, metric in entries:
+                if not isinstance(metric, dict):
+                    continue
                 value = metric.get("median")
                 if isinstance(value, (int, float)):
-                    found[key] = float(value)
+                    found[f"{name}.{metric_name}"] = float(value)
     return found
+
+
+def compare(label, baseline_metrics, current, threshold):
+    failures = []
+    for key, base in baseline_metrics.items():
+        if key not in current:
+            print(f"[{label}] 缺少指标 {key}，跳过")
+            continue
+        delta = (current[key] - float(base)) / float(base) * 100 if base else 0
+        print(f"[{label}] {key}: {float(base):.1f} -> {current[key]:.1f} ({delta:+.1f}%)")
+        if delta > threshold:
+            failures.append(f"{key} 回退 {delta:.1f}%")
+    return failures
 
 
 def main(argv):
     baseline = json.loads(BASELINE.read_text())
     threshold = float(baseline.get("thresholdPercent", 10))
-    if not baseline.get("measured") or not baseline.get("metrics"):
-        print("基线未采集：本次跳过数值对比（不得据此宣称性能达标）")
-        return 0
-    inputs = argv[1:] or glob.glob(str(ROOT / "**" / "*benchmark*.json"), recursive=True)
+    inputs = argv[1:] or glob.glob(str(ROOT / "**" / "*benchmarkData.json"), recursive=True)
     if not inputs:
-        print("没有找到 benchmark JSON，跳过对比")
+        print("没有找到 benchmarkData.json，跳过对比")
         return 0
     current = load_results(inputs)
+    if not current:
+        print("benchmarkData.json 无法解析，跳过对比")
+        return 0
+
     failures = []
-    for key, base in baseline["metrics"].items():
-        if key not in current:
-            print(f"缺少指标 {key}，跳过")
-            continue
-        delta = (current[key] - base) / base * 100 if base else 0
-        print(f"{key}: {base:.1f} -> {current[key]:.1f} ({delta:+.1f}%)")
-        if delta > threshold:
-            failures.append(f"{key} 回退 {delta:.1f}%")
+    if baseline.get("measured") and baseline.get("metrics"):
+        failures += compare("真机基线", baseline["metrics"], current, threshold)
+    else:
+        print("真机基线未采集：本次不能宣称性能达标")
+        ci = baseline.get("ciEmulator") or {}
+        if ci.get("metrics"):
+            failures += compare("模拟器趋势", ci["metrics"], current, threshold)
     if failures:
         print("性能回退超阈值：" + "；".join(failures))
         return 1

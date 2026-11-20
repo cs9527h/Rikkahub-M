@@ -26,7 +26,7 @@
 |---|---|---|
 | 生产记忆中心可用 | 线上仍 404，说明网关未升级；owner 绑定未验收 | 按 dafayu `docs/MEMORY_CENTER_DEPLOY_0.3.1.md` 备份后部署，只读通过再开写 |
 | AstrBot 插件后台 500 | 无服务器访问权限，未取堆栈 | 在生产机取日志定位插件列表接口，不改 schema、不重建库 |
-| 真机性能基线 | 未采集，模拟器数据不可作为验收 | 按 `docs/perf/README.md` 采集启动/滚动/流式/内存，写入 baseline.json |
+| 真机性能基线 | 未采集。CI 已在模拟器跑通启动基准（冷启动中位 2004ms，run 44711450859），仅作趋势 | 按 `docs/perf/README.md` 在真机采集启动/滚动/流式/内存，写入 baseline.json |
 | 插件真实可调用性 | `/capabilities` 只是静态清单 | 用 AstrBot OpenAPI 实测每个插件的安装/启用/可调用状态 |
 
 ### P1 / P2 延续
