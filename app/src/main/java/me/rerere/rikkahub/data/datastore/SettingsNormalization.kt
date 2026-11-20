@@ -81,7 +81,11 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         }
     }
     return copy(
-        chatModelId = chatModelId.takeUnless { it == LEGACY_MATE_MODEL_ID },
+        chatModelId = if (chatModelId == LEGACY_MATE_MODEL_ID) {
+            providers.asSequence().flatMap { it.models.asSequence() }.firstOrNull()?.id ?: chatModelId
+        } else {
+            chatModelId
+        },
         providers = providers,
         assistants = assistants,
         ttsProviders = ttsProviders,

@@ -179,18 +179,6 @@ fun SettingAboutPage() {
                     }
                 }
 
-                item {
-                    val containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    CardGroup {
-                        item(
-                            onClick = { navController.navigate(Screen.MateConnection) },
-                            leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text(stringResource(R.string.mate_intro_connection_detail)) },
-                            headlineContent = { Text(stringResource(R.string.mate_intro_connect_button)) },
-                        )
-                    }
-                }
 
                 item {
                     val containerColor = MaterialTheme.colorScheme.primaryContainer
