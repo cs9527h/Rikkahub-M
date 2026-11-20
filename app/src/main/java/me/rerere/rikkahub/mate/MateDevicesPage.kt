@@ -79,7 +79,7 @@ fun MateDevicesPage() {
             for (i in 0 until (source?.length() ?: 0)) {
                 val row = source?.optJSONObject(i) ?: continue
                 val id = row.optString("id")
-                if (!id.matches(Regex("[0-9a-f]{24}"))) continue
+                if (!id.matches(Regex("[0-9a-f]{24}")) || row.optBoolean("revoked")) continue
                 add(MateDevice(
                     id, row.optString("label").take(40), row.optBoolean("revoked"),
                     id == currentId
@@ -115,7 +115,7 @@ fun MateDevicesPage() {
     }
 
     Scaffold(topBar = {
-        TopAppBar(title = { Text("Mate · 设备与配对") }, navigationIcon = { BackButton() })
+        TopAppBar(title = { Text("设备管理") }, navigationIcon = { BackButton() })
     }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -188,7 +188,7 @@ fun MateDevicesPage() {
                 }
             }
             item {
-                Text("已登记设备", style = MaterialTheme.typography.titleMedium)
+                Text("已授权设备", style = MaterialTheme.typography.titleMedium)
                 FilledTonalButton(enabled = connection != null && !busy, onClick = {
                     val current = connection ?: return@FilledTonalButton
                     scope.launch {
@@ -201,14 +201,12 @@ fun MateDevicesPage() {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(device.label + if (device.isCurrent) " · 本机" else "")
                     Text(
-                        if (device.revoked) "已撤销" else "已授权",
+                        "已授权",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (!device.revoked) {
-                        TextButton(enabled = !busy, onClick = { revokeTarget = device }) {
-                            Text(if (device.isCurrent) "撤销本机授权" else "撤销此设备")
-                        }
+                    TextButton(enabled = !busy, onClick = { revokeTarget = device }) {
+                        Text(if (device.isCurrent) "撤销本机授权" else "撤销此设备")
                     }
                 }
             }
