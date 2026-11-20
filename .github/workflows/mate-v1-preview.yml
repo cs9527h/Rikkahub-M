@@ -145,6 +145,30 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+      - name: Generate CI-only Firebase placeholder
+        run: |
+          python3 - <<'PY'
+          import json
+          config = {
+            "project_info": {
+              "project_number": "123456789012",
+              "project_id": "mate-preview-ci-invalid",
+              "storage_bucket": "mate-preview-ci-invalid.appspot.com"
+            },
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef012345",
+                "android_client_info": {
+                  "package_name": "com.rikkahub.mate"
+                }
+              },
+              "api_key": [{"current_key": "CI_ONLY_INVALID_API_KEY_DO_NOT_USE"}]
+            }],
+            "configuration_version": "1"
+          }
+          with open("app/google-services.json", "w", encoding="utf-8") as f:
+            json.dump(config, f)
+          PY
       - name: Prepare web-ui build tools
         run: |
           corepack enable
