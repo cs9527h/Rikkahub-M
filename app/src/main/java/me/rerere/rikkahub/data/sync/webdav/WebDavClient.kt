@@ -25,6 +25,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.io.InputStream
 import java.io.StringReader
+import java.net.URI
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -314,12 +315,8 @@ class WebDavClient(
     suspend fun list(path: String = ""): Result<List<WebDavResourceInfo>> = withContext(Dispatchers.IO) {
         runCatching {
             val result = propfind(path, depth = 1).getOrThrow()
-            // Filter out the parent directory itself (first entry)
-            if (result.isNotEmpty()) {
-                result.drop(1)
-            } else {
-                emptyList()
-            }
+            // RFC 4918 does not guarantee that the collection itself is first.
+            excludeCurrentCollection(result, config.buildUrl(path))
         }
     }
 
@@ -434,3 +431,18 @@ class WebDavException(
     val statusCode: Int,
     val responseBody: String,
 ) : Exception(message)
+
+/**
+ * Removes only the collection being listed. WebDAV servers may put its response
+ * anywhere in a multistatus result; drop(1) could discard a real backup.
+ */
+internal fun excludeCurrentCollection(
+    resources: List<WebDavResourceInfo>,
+    collectionUrl: String,
+): List<WebDavResourceInfo> {
+    fun rawPath(uri: String): String? = runCatching {
+        URI(uri).rawPath.orEmpty().ifEmpty { "/" }.trimEnd('/').ifEmpty { "/" }
+    }.getOrNull()
+    val requested = rawPath(collectionUrl) ?: return resources
+    return resources.filterNot { it.isCollection && rawPath(it.href) == requested }
+}

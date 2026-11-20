@@ -53,7 +53,7 @@ fun ReminderTab(vm: BackupVM) {
                 },
                 headlineContent = { Text("打开及退出时自动备份") },
                 supportingContent = {
-                    Text("开启后通过已配置的 HTTPS WebDAV 或 S3 备份应用设置、昵称、头像、聊天记录和附件。云端备份含敏感数据，请使用可信服务；服务器设备授权需重新配对。")
+                    Text("开启后通过已配置的 HTTPS WebDAV 或 S3 备份应用设置、昵称、头像、聊天记录和附件。备份 ZIP 包含聊天内容和个人设置，当前未实现端到端加密。请只上传到可信且启用 HTTPS 的私人存储。")
                 },
             )
             switchItem(

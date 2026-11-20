@@ -31,22 +31,17 @@ class WebDavSync(
 
     suspend fun backup(config: WebDavConfig) = withContext(Dispatchers.IO) {
         val file = prepareBackupFile(config)
-        val client = getClient(config)
-
-        // Ensure the backup directory exists
-        client.ensureCollectionExists().getOrThrow()
-
-        // Upload the backup file
-        client.put(
-            path = file.name,
-            file = file,
-            contentType = "application/zip"
-        ).getOrThrow()
-
-        Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
-
-        // Clean up temp file
-        file.delete()
+        try {
+            val client = getClient(config)
+            client.ensureCollectionExists().getOrThrow()
+            client.put(path = file.name, file = file, contentType = "application/zip").getOrThrow()
+            Log.i(TAG, "backup: Uploaded ${file.name} (${file.length().fileSizeToString()})")
+        } finally {
+            // Upload failures and cancellation must not leave plaintext chat archives in cache.
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "backup: Failed to remove temporary archive")
+            }
+        }
     }
 
     suspend fun listBackupFiles(config: WebDavConfig): List<WebDavBackupItem> = withContext(Dispatchers.IO) {
