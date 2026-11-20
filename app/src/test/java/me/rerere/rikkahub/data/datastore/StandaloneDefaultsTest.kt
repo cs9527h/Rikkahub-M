@@ -35,7 +35,9 @@ class StandaloneDefaultsTest {
             chatModelId = LEGACY_MATE_MODEL_ID
         ).normalized()
         assertFalse(migrated.providers.any { it.id == LEGACY_MATE_PROVIDER_ID })
-        assertNull(migrated.chatModelId)
+        // 全局 chatModelId 在 Settings 里是非空 Uuid：旧 Mate 模型必须回落到一个真实存在的本地模型
+        assertTrue(migrated.chatModelId != LEGACY_MATE_MODEL_ID)
+        assertTrue(migrated.providers.flatMap { it.models }.any { it.id == migrated.chatModelId })
         assertNull(migrated.getCurrentAssistant().chatModelId)
         assertEquals("kept persona", migrated.getCurrentAssistant().systemPrompt)
         assertTrue(migrated.providers.any { it.name == "DeepSeek" })
