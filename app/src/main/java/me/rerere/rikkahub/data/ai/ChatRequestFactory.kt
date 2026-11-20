@@ -301,6 +301,11 @@ class ChatRequestFactory(
                 addAll(turn.model.customBodies)
             },
             sessionId = turn.conversationId.toString(),
+            currentUserMessageId = messages.lastOrNull { it.role == MessageRole.USER }?.id?.toString(),
+            requiresOrderedContext = turn.providerSetting.isMateGateway() && (
+                turn.settings.modeInjections.any { it.enabled && it.id in assistant.modeInjectionIds } ||
+                    turn.settings.lorebooks.any { it.enabled && it.id in assistant.lorebookIds }
+                ),
         )
         return StepRequest(requestMessages, params)
     }
