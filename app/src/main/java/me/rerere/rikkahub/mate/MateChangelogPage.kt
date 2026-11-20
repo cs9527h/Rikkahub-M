@@ -33,6 +33,15 @@ fun MateChangelogPage() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
+                Text("2026.11.20 · 0.2.3", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 附件上传改为按网关协议发送原始字节（不再 multipart），上传接口与网关 media.py 对齐\n" +
+                    "• 只允许网关支持的类型：JPEG/PNG/GIF/WebP、MP4/MP3/WAV/OGG 语音、PDF/TXT/CSV/MD/DOCX/XLSX\n" +
+                    "• 单附件上限 8MB，单条消息最多 4 个附件；服务器未开启附件/文件功能时直接说明原因",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
                 Text("2026.11.20 · 0.2.2", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 删除旧的独立 Mate 聊天页与私有聊天库，聊天只保留原生一套\n" +

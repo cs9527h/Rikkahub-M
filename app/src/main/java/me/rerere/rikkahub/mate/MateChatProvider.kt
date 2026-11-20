@@ -310,7 +310,22 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("附件上传失败，网关返回 HTTP " + response.code)
+                    // 网关用固定错误码说明原因，直接翻成用户能看懂的提示，不吞掉原因
+                    val failureText = response.body?.string().orEmpty()
+                    val failure = runCatching {
+                        json.parseToJsonElement(failureText).jsonObject["error"]?.jsonPrimitive?.contentOrNull
+                    }.getOrNull()
+                    throw IOException(
+                        when {
+                            failure == "media_disabled" -> "云服务器没有开启附件功能"
+                            failure == "files_disabled" -> "云服务器只允许图片和语音，暂不允许文件"
+                            failure == "unsupported_media_type" -> "云服务器不支持这种文件类型"
+                            failure == "media_too_large" -> "附件超过云服务器 8MB 限制"
+                            failure == "media_busy" -> "服务器正在处理其他附件，请稍后重试"
+                            response.code == 401 -> "设备授权已失效，请重新配对"
+                            else -> "附件上传失败，网关 HTTP " + response.code + " " + failure.orEmpty()
+                        }.trim()
+                    )
                 }
                 val bodyText = response.body?.string().orEmpty()
                 val obj = runCatching { json.parseToJsonElement(bodyText).jsonObject }.getOrElse {

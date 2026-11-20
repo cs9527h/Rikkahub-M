@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.2.2'
+  VERSION: '0.2.3'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -162,26 +162,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="v0.2.2"
+          TAG="v0.2.3"
           ls -lh dist
           cat dist/SHA256SUMS.txt
           NOTES=$(cat <<'EOF'
-          Rikkahub-M 0.2.2
+          Rikkahub-M 0.2.3
 
-          聊天架构收敛为原生一套，云服务器补上附件发送能力。覆盖安装即可，聊天记录与设置保留。
+          附件发送对齐真实网关协议。覆盖安装即可，聊天记录与设置保留。
 
           本次变更
-          - 移除独立 Mate 聊天页（MateChatPage）与其私有库 MateLocalHistory 的全部代码与路由
-          - 旧库 mate_liyu_v1.db 首次启动时归档到 files/legacy-mate-backup/，归档成功后才清理原文件
-          - 云服务器聊天支持图片、文件、语音附件：逐个上传 /media 拿附件 ID，再随 /chat/stream 提交
-          - 附件读取或上传失败会直接报错并保留输入，不再出现「界面显示已发送、服务器没收到」
-          - 单条附件上限 20MB，超出直接提示
+          - 附件上传改为 POST /media 原始字节 + 精确 Content-Type（此前 multipart 会让网关拒收）
+          - 仅接受网关支持的 14 种类型；视频直接提示不支持，不再静默忽略
+          - 单附件 8MB、单条消息 4 个附件，与网关 media.py 的校验一致
+          - 上传失败按网关错误码给出原因：未开启附件、未开启文件、类型不支持、过大、正在忙
 
           安装包
-          - Rikkahub-M-0.2.2.apk：arm64-v8a + x86_64 通用包
+          - Rikkahub-M-0.2.3.apk：arm64-v8a + x86_64 通用包
 
-          包名 com.rikkahub.mate，versionCode 8，签名与 0.2.1 一致。
-          未在真机与真实服务器上验收的项目见 docs/MATE_V2_REFACTOR.md。
+          包名 com.rikkahub.mate，versionCode 9，签名与 0.2.2 一致。
           EOF
           )
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -189,5 +187,5 @@ jobs:
           else
             gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
               --repo "$GITHUB_REPOSITORY" --prerelease \
-              --title "Rikkahub-M 0.2.2" --notes "$NOTES"
+              --title "Rikkahub-M 0.2.3" --notes "$NOTES"
           fi
