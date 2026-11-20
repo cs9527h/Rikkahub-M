@@ -110,7 +110,19 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("发送失败，网关返回 HTTP " + response.code)
+                    val reason = if (response.code == 409) {
+                        val code = runCatching {
+                            json.parseToJsonElement(response.peekBody(1024).string())
+                                .jsonObject["error"]?.jsonPrimitive?.contentOrNull
+                        }.getOrNull()
+                        when (code) {
+                            "another_request_running" -> "服务器正在处理另一条消息，请等它结束后再发送"
+                            "request_id_conflict" -> "请求编号已用于其他内容，请检查原请求状态"
+                            "revision_conflict" -> "服务器数据已更新，请刷新后再试"
+                            else -> "服务器报告请求冲突，请检查请求状态"
+                        }
+                    } else "发送失败，网关返回 HTTP " + response.code
+                    throw IOException(reason)
                 }
                 val contentType = response.header("Content-Type", "").orEmpty()
                 if (!contentType.startsWith("text/event-stream")) {
@@ -128,7 +140,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     if (payloadText != null) {
                         val event = MateWire.parseSnapshot(payloadText, requestId)
                         if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain")) {
-                            throw IOException(event.error.ifBlank { "服务器未完成这条消息，请检查会话状态" })
+                            throw IOException("服务器未完成这条消息，请检查会话状态")
                         }
                         if (!event.text.startsWith(accumulated)) {
                             throw IOException("服务器回复与已接收的内容不一致")
@@ -141,6 +153,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     }
                     if (terminal || eof) break
                 }
+                if (terminal && accumulated.isBlank()) throw IOException("服务器结束了请求，但没有返回文字")
                 if (!terminal) {
                     throw IOException("网络中断，没收到服务器的最终状态；请不要重复发送")
                 }
