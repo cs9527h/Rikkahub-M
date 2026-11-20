@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -198,7 +200,11 @@ fun MateDevicesPage() {
                 }) { Text("刷新设备列表") }
             }
             items(devices, key = { it.id }) { device ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(12.dp)) {
                     Text(device.label + if (device.isCurrent) " · 本机" else "")
                     Text(
                         "已授权",
@@ -208,6 +214,7 @@ fun MateDevicesPage() {
                     TextButton(enabled = !busy, onClick = { revokeTarget = device }) {
                         Text(if (device.isCurrent) "撤销本机授权" else "撤销此设备")
                     }
+                }
                 }
             }
             item {
