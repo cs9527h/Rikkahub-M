@@ -10,6 +10,8 @@ POST /chat/stream 接收 request_id、message、attachments（本次上传的文
 
 ordered_context_v1 为真时支持 context_messages，按发送顺序列出 role 和 content，role 取 system、user、assistant。上游适配器必须实现 context_mode=replace，仅把数组作为本轮上下文，不能再次追加同一条用户消息或拼接服务端历史。message 及 attachments 标记本轮输入和附件。设备指令受模型服务商规则约束。生产工程师须用虚构数据确认上游真正消费有序角色、只注入一次并保留当前附件。只有验收通过后才设置 ASTRBOT_ORDERED_CONTEXT_V1=1。默认关闭。没有该能力时，已启用且绑定规则的普通聊天必须在发送前提示。
 
+v4 客户端发送 X-Mate-Chat-Version: 4，网关限制 JSON 为 1 MiB。上传 MP4 前检查 video_upload。网关上限 8,000,000 字节，生产工程师验证上游 video 组件接受真实上传 ID 后可开启 APP_ENABLE_VIDEO=true。
+
 ## 幂等与流式状态
 
 request_id 标识一次生成。相同 ID 和相同输入返回已有记录；不同会话、上下文或正文复用 ID 返回 HTTP 409 request_id_conflict。another_request_running 表示服务器忙。revision_conflict 表示资源版本过期。SSE data 包含 id、state、type、累计 text。running 可继续，done 才表示完成。failed、uncertain、expired 要展示失败或未知。网络断开不代表服务端停止；恢复通过 GET /requests/{id} 查询，不创建新 ID。当前网关没有远程取消承诺。

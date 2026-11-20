@@ -102,6 +102,9 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 it is UIMessagePart.Document || it is UIMessagePart.Video
         }
         require(attachments.size <= 4) { "单条消息最多发送 4 个附件" }
+        if (attachments.any { it is UIMessagePart.Video } && !capabilities.optBoolean("video_upload")) {
+            throw IOException("当前云服务器未启用 MP4 视频上传")
+        }
         val attachmentIds = attachments.map { uploadPart(connection, it) }
         require(userText.isNotEmpty() || attachmentIds.isNotEmpty()) { "没有可以发送的内容" }
 
@@ -258,7 +261,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
     // Match gateway/media.py rather than accepting arbitrary MIME.
     private val supportedMediaTypes = setOf(
         "image/jpeg", "image/png", "image/gif", "image/webp",
-        "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg",
+        "video/mp4", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg",
         "application/pdf", "text/plain", "text/csv", "text/markdown",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -268,9 +271,10 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
     private suspend fun uploadPart(connection: MateConnection, part: UIMessagePart): String {
         val url = when (part) {
             is UIMessagePart.Image -> part.url
+            is UIMessagePart.Video -> part.url
             is UIMessagePart.Audio -> part.url
             is UIMessagePart.Document -> part.url
-            else -> throw IOException("当前云服务器网关不支持视频附件")
+            else -> throw IOException("云服务器不支持此附件类型")
         }
         if (url.startsWith("data:")) {
             val comma = url.indexOf(',')
