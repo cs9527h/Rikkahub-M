@@ -77,6 +77,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
+import me.rerere.rikkahub.ui.components.ui.MateCloudIconPalette
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.permission.LocalNetworkPermissionCard
@@ -87,6 +88,7 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.writeClipboardText
@@ -208,7 +210,14 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 CardGroup(title = { Text(stringResource(R.string.mate_settings_group)) }) {
                     item(
                         onClick = { navController.navigate(Screen.MateConnection) },
-                        leadingContent = { CardGroupIcon(ImageVector.vectorResource(R.drawable.ic_cloud_connection), containerColor = containerColor, contentColor = contentColor) },
+                        leadingContent = {
+                            val darkMode = LocalDarkMode.current
+                            CardGroupIcon(
+                                ImageVector.vectorResource(R.drawable.ic_cloud_connection),
+                                containerColor = MateCloudIconPalette.background(darkMode),
+                                contentColor = MateCloudIconPalette.foreground(darkMode),
+                            )
+                        },
                         headlineContent = { Text(stringResource(R.string.mate_connection_title)) },
                         supportingContent = { Text(stringResource(R.string.mate_connection_desc)) },
                     )

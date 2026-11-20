@@ -22,6 +22,18 @@ import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.computeAIIconByName
 import me.rerere.rikkahub.utils.toCssHex
 
+/**
+ * Cloud identity colors shared by model tiles and the settings entry.
+ * Keep this palette legible in both light and dark themes.
+ */
+internal object MateCloudIconPalette {
+    fun background(darkMode: Boolean): Color =
+        if (darkMode) Color(0xFF173F4B) else Color(0xFFDDF2F4)
+
+    fun foreground(darkMode: Boolean): Color =
+        if (darkMode) Color(0xFF9DE5ED) else Color(0xFF176B80)
+}
+
 @Composable
 private fun AIIcon(
     path: String,
@@ -69,12 +81,21 @@ fun AutoAIIcon(
         return
     }
     if (path == "mate-cloud.svg") {
-        androidx.compose.material3.Icon(
-            painter = androidx.compose.ui.res.painterResource(R.drawable.ic_cloud_connection),
-            contentDescription = name,
+        val darkMode = LocalDarkMode.current
+        val iconColor = MateCloudIconPalette.foreground(darkMode)
+        Surface(
             modifier = modifier.size(24.dp),
-            tint = LocalContentColor.current,
-        )
+            shape = rememberAvatarShape(loading),
+            color = MateCloudIconPalette.background(darkMode),
+            contentColor = iconColor,
+        ) {
+            androidx.compose.material3.Icon(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_cloud_connection),
+                contentDescription = name,
+                modifier = Modifier.padding(4.dp),
+                tint = iconColor,
+            )
+        }
         return
     }
     AIIcon(
