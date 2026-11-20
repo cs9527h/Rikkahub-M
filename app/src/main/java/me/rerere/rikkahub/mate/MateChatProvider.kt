@@ -122,11 +122,13 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 }
             }
         }.toString()
+        require(payload.toByteArray(Charsets.UTF_8).size <= 1_048_576) { "云端聊天上下文超过 1 MiB，请缩短上下文后重试" }
         val request = Request.Builder()
             .url(connection.baseUrl.trimEnd('/') + "/chat/stream")
             .header("Authorization", "Bearer " + connection.token)
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-store")
+            .apply { if (isolated) header("X-Mate-Chat-Version", "4") }
             .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
 
