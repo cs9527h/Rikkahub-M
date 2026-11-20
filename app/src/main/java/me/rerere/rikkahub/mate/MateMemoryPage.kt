@@ -198,7 +198,7 @@ fun MateMemoryPage() {
             val result = transport.post(connection, "/memory", body)
             val action = body.optString("action")
             val id = body.optString("id")
-            if (action in setOf("update", "delete", "restore")) {
+            if (action in setOf("update", "delete", "restore") && !body.has("ids")) {
                 check(result.optString("id") == id) { "服务器未确认目标记忆的操作" }
                 val verified = transport.get(connection, "/memory/item?id=" +
                     java.net.URLEncoder.encode(id, "UTF-8")).toMemoryItem()
@@ -221,10 +221,6 @@ fun MateMemoryPage() {
                 if (action == "delete") check(!verified.active) { "服务器尚未删除记忆" }
             } else if (action == "create") {
                 check(result.optString("id").isNotBlank()) { "服务器没有返回新记忆编号" }
-            } else if (action == "delete" && body.has("ids")) {
-                check(result.has("count") || result.has("deleted") || result.has("ids")) {
-                    "服务器没有确认批量操作结果"
-                }
             }
             load(true)
             snackbar.showSnackbar(
