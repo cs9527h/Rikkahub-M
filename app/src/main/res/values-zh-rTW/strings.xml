@@ -1917,4 +1917,5 @@
   <string name="quick_start_page_deepseek_importing">匯入中…</string>
   <string name="quick_start_page_deepseek_import_another">匯入另一個 ZIP</string>
   <string name="setting_page_share_text">Rikkahub-M · 開源 Android AI 用戶端\n原始碼：https://github.com/cs9527h/Rikkahub-M</string>
+    <string name="mode_rule_system_role">系统</string>
 </resources>

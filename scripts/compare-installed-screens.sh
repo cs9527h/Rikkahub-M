@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the shipped 0.2.4 build and the candidate build on the same emulator,
 # captures both chat screens plus cold-start timings, and leaves evidence for review.
-# Missing windows are reported as warnings: the artifact (screens + logcat) is the result.
+# Missing windows are reported as warnings: the artifact (screens and timings) is the result.
 set -uo pipefail
 mkdir -p evidence
 
@@ -35,7 +35,7 @@ if path.exists():
     ET.ElementTree(tree).write(path, encoding="utf-8")
 PY
     if [ "$ready" -ne 1 ]; then
-      echo "WARN: $label($theme) window not confirmed; see logcat"
+      echo "WARN: $label($theme) window not confirmed; see startup evidence"
     fi
   done
   for sample in {1..5}; do

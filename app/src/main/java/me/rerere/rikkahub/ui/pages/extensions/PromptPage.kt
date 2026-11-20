@@ -568,7 +568,7 @@ private fun InjectionRoleSelector(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 ) {
     ConnectedChoiceButtons(
-        options = listOf(MessageRole.USER, MessageRole.ASSISTANT),
+        options = listOf(MessageRole.USER, MessageRole.ASSISTANT, MessageRole.SYSTEM),
         selected = role,
         onSelect = onSelect,
         containerColor = containerColor,
@@ -579,6 +579,7 @@ private fun InjectionRoleSelector(
 
 @Composable
 private fun getRoleLabel(role: MessageRole): String = when (role) {
+    MessageRole.SYSTEM -> stringResource(R.string.mode_rule_system_role)
     MessageRole.USER -> stringResource(R.string.prompt_page_role_user)
     MessageRole.ASSISTANT -> stringResource(R.string.prompt_page_role_assistant)
     else -> role.name
