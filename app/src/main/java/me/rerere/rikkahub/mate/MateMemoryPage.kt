@@ -107,6 +107,7 @@ fun MateMemoryPage() {
             auditItems.clear()
             val body = transport.get(connection, "/memory/audit?limit=40")
             val list = body.optJSONArray("items") ?: JSONArray()
+            if (reset) items.clear()
             for (index in 0 until list.length()) {
                 val row = list.optJSONObject(index) ?: continue
                 auditItems += AuditItem(
@@ -130,7 +131,6 @@ fun MateMemoryPage() {
     suspend fun load(reset: Boolean) {
         loading = true
         if (reset) {
-            items.clear()
             selected.clear()
             nextAfter = null
             writeEnabled = null
@@ -147,7 +147,7 @@ fun MateMemoryPage() {
             val caps = transport.capabilities(connection)
             gatewayInfo = "网关版本：" + caps.optString("version", "未知") +
                 " · 长期记忆：" + (if (caps.optBoolean("memory_read", false)) "已接入" else "未接入")
-            if (!caps.optBoolean("memory_read", false)) {
+            if (!caps.optBoolean("memory_browser", caps.optBoolean("memory_read", false)) && !caps.optBoolean("memory_read", false)) {
                 status = "服务端尚未接入长期记忆。需要部署新版网关并验证记忆库及用户归属。"
                 return
             }
@@ -167,7 +167,7 @@ fun MateMemoryPage() {
             if (!body.has("write_enabled") || body.optJSONArray("items") == null) {
                 throw java.io.IOException("memory_list_invalid")
             }
-            writeEnabled = body.optBoolean("write_enabled", false)
+            writeEnabled = body.optBoolean("write_enabled", false) && caps.optBoolean("memory_write", true)
             memoryReady = true
             val list = body.optJSONArray("items") ?: JSONArray()
             for (index in 0 until list.length()) {
@@ -182,9 +182,6 @@ fun MateMemoryPage() {
         } catch (error: Exception) {
             memoryReady = false
             writeEnabled = null
-            items.clear()
-            selected.clear()
-            nextAfter = null
             status = "读取失败：" + humanizeMemoryError(error.message)
         } finally {
             loading = false
