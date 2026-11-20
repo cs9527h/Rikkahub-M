@@ -211,6 +211,36 @@ fun MateConnectionPage() {
                             onDispose { diagnosticPrefs.unregisterOnSharedPreferenceChangeListener(observer) }
                         }
                         if (summary.isNotBlank()) Text(summary)
+                        var requestStatus by remember(instance) { mutableStateOf("") }
+                        var checking by remember(instance) { mutableStateOf(false) }
+                        TextButton(enabled = !checking, onClick = {
+                            val current = paired ?: return@TextButton
+                            val id = diagnosticPrefs.getString("request_" + instance, null)
+                            if (id == null) {
+                                requestStatus = "还没有已接收的请求"
+                            } else {
+                                checking = true
+                                scope.launch {
+                                    try {
+                                        val snapshot = MateChatTransport().requestResult(current, id)
+                                        requestStatus = when (snapshot.state) {
+                                            "running" -> "服务器仍在生成"
+                                            "done" -> "服务器已完成这次请求"
+                                            "expired" -> "请求记录已过期"
+                                            "uncertain" -> "服务器无法确认最终结果"
+                                            else -> "服务器报告生成失败"
+                                        }
+                                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        requestStatus = "查询失败，请检查服务器连接"
+                                    } finally {
+                                        checking = false
+                                    }
+                                }
+                            }
+                        }) { Text("查询最近一次请求") }
+                        if (requestStatus.isNotBlank()) Text(requestStatus)
                         Text("自动诊断", style = MaterialTheme.typography.titleMedium)
                         Text("允许向当前云服务器发送版本、Android 版本和错误类别。聊天正文、设备令牌和异常原文不会上传。")
                         androidx.compose.material3.Switch(checked = enabled, onCheckedChange = {

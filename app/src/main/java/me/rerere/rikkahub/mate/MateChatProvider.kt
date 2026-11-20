@@ -155,6 +155,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     } else "发送失败，网关返回 HTTP " + response.code
                     throw IOException(reason)
                 }
+                prefs.edit().putString("request_" + connection.instanceId, requestId).apply()
                 val summary = if (ordered) "网关已接收有序上下文，匹配规则 " + params.cloudInjectionCount + " 条"
                     else if (isolated) "独立会话，未发送注入规则" else "旧版网关使用共享会话，未发送注入规则"
                 prefs.edit().putString(diagnosticKey, summary).apply()
@@ -192,7 +193,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     }
                     if (terminal || eof) break
                 }
-                if (terminal && accumulated.isBlank()) throw IOException("服务器结束了请求，但没有返回文字")
+                if (terminal && accumulated.isBlank()) throw IOException("网关没有返回可显示的文字，请检查回复类型或请求状态")
                 if (!terminal) {
                     currentCoroutineContext().ensureActive()
                     val recovered = transport.requestResult(connection, requestId)
@@ -253,21 +254,6 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 call.cancel()
             }
         }
-
-    private fun jsonString(value: String): String = buildString {
-        append('"')
-        value.forEach { ch ->
-            when (ch) {
-                '"' -> append("\\\"")
-                '\\' -> append("\\\\")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> if (ch < ' ') append("\\u%04x".format(ch.code)) else append(ch)
-            }
-        }
-        append('"')
-    }
 
     // Match gateway/media.py rather than accepting arbitrary MIME.
     private val supportedMediaTypes = setOf(
