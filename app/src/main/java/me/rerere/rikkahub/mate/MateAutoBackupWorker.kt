@@ -34,9 +34,15 @@ class MateAutoBackupWorker(
 
     override suspend fun doWork(): Result {
         val settings = settingsStore.awaitLoaded()
-        if (!settings.backupReminderConfig.autoBackupOnAppLifecycle) return Result.success()
+        val policy = settings.backupReminderConfig
+        val autoSettings = policy.autoBackupOnAppLifecycle
+        val now = System.currentTimeMillis()
+        val databaseDue = isDatabaseBackupDue(
+            policy.databaseBackupIntervalDays, policy.lastDatabaseBackupTime, now
+        )
+        if (!autoSettings && !databaseDue) return Result.success()
 
-        // Only send archives (which contain settings and chat history) over HTTPS.
+        // Only send archives over HTTPS. Automatic tasks exclude attachments.
         val dav = settings.webDavConfig
         val s3 = settings.s3Config
         val davReady = dav.url.startsWith("https://") &&
@@ -47,22 +53,23 @@ class MateAutoBackupWorker(
         if (!davReady && !s3Ready) return Result.failure()
 
         try {
-            if (davReady) {
-                webDavSync.backup(
-                    dav.copy(items = listOf(WebDavConfig.BackupItem.DATABASE, WebDavConfig.BackupItem.FILES))
-                )
+            // Backups are separate on purpose: tiny settings archives may be frequent,
+            // while the conversation database uses a slower opt-in schedule.
+            // ATTACHMENTS are never included in lifecycle jobs.
+            if (autoSettings) {
+                if (davReady) webDavSync.backup(dav.copy(items = emptyList()))
+                if (s3Ready) s3Sync.backupToS3(s3.copy(items = emptyList()))
             }
-            if (s3Ready) {
-                s3Sync.backupToS3(
-                    s3.copy(items = listOf(S3Config.BackupItem.DATABASE, S3Config.BackupItem.FILES))
-                )
+            if (databaseDue) {
+                if (davReady) webDavSync.backup(dav.copy(items = listOf(WebDavConfig.BackupItem.DATABASE)))
+                if (s3Ready) s3Sync.backupToS3(s3.copy(items = listOf(S3Config.BackupItem.DATABASE)))
             }
             settingsStore.update { current ->
-                current.copy(
-                    backupReminderConfig = current.backupReminderConfig.copy(
-                        lastBackupTime = System.currentTimeMillis()
-                    )
-                )
+                val latest = current.backupReminderConfig
+                current.copy(backupReminderConfig = latest.copy(
+                    lastBackupTime = if (autoSettings || databaseDue) System.currentTimeMillis() else latest.lastBackupTime,
+                    lastDatabaseBackupTime = if (databaseDue) System.currentTimeMillis() else latest.lastDatabaseBackupTime,
+                ))
             }
             return Result.success()
         } catch (error: CancellationException) {
@@ -89,4 +96,12 @@ class MateAutoBackupWorker(
             )
         }
     }
+}
+
+/** Calendar-independent policy testable without Android WorkManager. */
+internal fun isDatabaseBackupDue(intervalDays: Int, lastTime: Long, now: Long): Boolean {
+    if (intervalDays !in setOf(7, 14, 30)) return false
+    if (lastTime <= 0L) return true
+    if (lastTime > now) return false
+    return now - lastTime >= intervalDays * 86_400_000L
 }
