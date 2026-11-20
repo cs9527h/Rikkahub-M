@@ -184,12 +184,9 @@ class ChatNotificationManager(
             )
         }
 
-    /** 发送者身份以助手为准；事件丢失名字时回退到当前默认助手，不显示连接类型。 */
-    private fun resolveSenderName(raw: String): String {
-        if (raw.isNotBlank()) return raw
-        return settingsStore.settingsFlow.value.assistants.firstOrNull()?.name?.takeIf { it.isNotBlank() }
-            ?: context.getString(R.string.assistant_page_default_assistant)
-    }
+    /** Missing sender identity must not silently impersonate the first assistant. */
+    private fun resolveSenderName(raw: String): String =
+        raw.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
 
     private fun cancelLiveUpdateNotification(conversationId: Uuid) {
         liveUpdateLastSentAt.remove(conversationId)
