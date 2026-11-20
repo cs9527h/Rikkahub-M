@@ -76,7 +76,10 @@ fun MateMemoryPage() {
     var typeFilter by remember { mutableStateOf("") }
     var showDeleted by remember { mutableStateOf(false) }
     var nextAfter by remember { mutableStateOf<String?>(null) }
-    var writeEnabled by remember { mutableStateOf(false) }
+    // Null = not yet verified; read failures must never imply write-disabled.
+    var writeEnabled by remember { mutableStateOf<Boolean?>(null) }
+    var memoryReady by remember { mutableStateOf(false) }
+    var gatewayInfo by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("正在读取记忆…") }
 
@@ -93,6 +96,7 @@ fun MateMemoryPage() {
     suspend fun connection(): MateConnection? = withContext(Dispatchers.IO) { store.load() }
 
     suspend fun loadAudit() {
+        if (!memoryReady) return
         loading = true
         try {
             val connection = connection() ?: run {
@@ -125,11 +129,31 @@ fun MateMemoryPage() {
 
     suspend fun load(reset: Boolean) {
         loading = true
+        if (reset) {
+            items.clear()
+            selected.clear()
+            nextAfter = null
+            writeEnabled = null
+            memoryReady = false
+            gatewayInfo = ""
+        }
         try {
             val connection = connection()
             if (connection == null) {
                 status = "还没有连接云服务器，请先在「云服务器」完成配对"
-                items.clear(); nextAfter = null
+                return
+            }
+            // Query the authenticated gateway contract, not chat connectivity.
+            val caps = transport.capabilities(connection)
+            gatewayInfo = "网关版本：" + caps.optString("version", "未知") +
+                " · 长期记忆：" + (if (caps.optBoolean("memory_read", false)) "已接入" else "未接入")
+            if (!caps.optBoolean("memory_read", false)) {
+                status = "服务端尚未接入长期记忆。需要部署新版网关并验证记忆库及用户归属。"
+                return
+            }
+            // New gateways advertise this separately from legacy search-only recall.
+            if (caps.has("memory_browser") && !caps.optBoolean("memory_browser", false)) {
+                status = "服务端未配置记忆中心。请先核对记忆数据库、用户归属及网关权限。"
                 return
             }
             val path = buildString {
@@ -139,8 +163,12 @@ fun MateMemoryPage() {
                 if (!reset && nextAfter != null) append("&after=").append(nextAfter)
             }
             val body = transport.get(connection, path)
-            if (reset) items.clear()
+            // Old/invalid schemas must not masquerade as an empty successful list.
+            if (!body.has("write_enabled") || body.optJSONArray("items") == null) {
+                throw java.io.IOException("memory_list_invalid")
+            }
             writeEnabled = body.optBoolean("write_enabled", false)
+            memoryReady = true
             val list = body.optJSONArray("items") ?: JSONArray()
             for (index in 0 until list.length()) {
                 val item = list.optJSONObject(index) ?: continue
@@ -152,6 +180,11 @@ fun MateMemoryPage() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            memoryReady = false
+            writeEnabled = null
+            items.clear()
+            selected.clear()
+            nextAfter = null
             status = "读取失败：" + humanizeMemoryError(error.message)
         } finally {
             loading = false
@@ -209,28 +242,36 @@ fun MateMemoryPage() {
                     Button(onClick = { scope.launch { load(true) } }, enabled = !loading) {
                         Text(if (loading) "读取中…" else "搜索")
                     }
-                    TextButton(enabled = !loading, onClick = {
+                    TextButton(enabled = memoryReady && !loading, onClick = {
                         showDeleted = !showDeleted
                         showAudit = false
                         scope.launch { load(true) }
                     }) {
                         Text(if (showDeleted) "显示正常记忆" else "查看回收站")
                     }
-                    TextButton(enabled = !loading, onClick = {
+                    TextButton(enabled = memoryReady && !loading, onClick = {
                         showAudit = !showAudit
                         if (showAudit) scope.launch { loadAudit() } else scope.launch { load(true) }
                     }) {
                         Text(if (showAudit) "返回记忆" else "操作审计")
                     }
-                    if (writeEnabled) {
+                    if (memoryReady && writeEnabled == true && !showAudit) {
                         TextButton(onClick = { creating = true }) { Text("新增") }
                     }
                 }
             }
-            item {
-                Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (gatewayInfo.isNotBlank()) {
+                item {
+                    Text(gatewayInfo, style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            if (writeEnabled && !showAudit && selected.isNotEmpty()) {
+            item {
+                Text(status, style = MaterialTheme.typography.bodySmall,
+                    color = if (!memoryReady && !loading) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (memoryReady && writeEnabled == true && !showAudit && selected.isNotEmpty()) {
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("已选 " + selected.size + " 条", style = MaterialTheme.typography.labelLarge)
@@ -239,10 +280,10 @@ fun MateMemoryPage() {
                     }
                 }
             }
-            if (!writeEnabled) {
+            if (memoryReady && writeEnabled == false) {
                 item {
                     Text(
-                        "服务器未开启记忆编辑（APP_MEMORY_WRITE_ENABLED）。当前只能查看与搜索。",
+                        "记忆中心当前为只读模式。需要在服务器核实身份归属后开启写入权限。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -256,7 +297,7 @@ fun MateMemoryPage() {
                 items(items, key = { it.id }) { item ->
                     MemoryRow(
                         item = item,
-                        canWrite = writeEnabled,
+                        canWrite = memoryReady && writeEnabled == true,
                         checked = selected.contains(item.id),
                         onToggle = {
                             if (selected.contains(item.id)) selected.remove(item.id) else selected.add(item.id)
@@ -267,7 +308,7 @@ fun MateMemoryPage() {
                     )
                 }
             }
-            if (nextAfter != null) {
+            if (memoryReady && nextAfter != null) {
                 item {
                     TextButton(onClick = { scope.launch { load(false) } }, enabled = !loading) { Text("加载更多") }
                 }
@@ -480,7 +521,8 @@ private fun AuditRow(row: AuditItem) {
 internal fun humanizeMemoryError(raw: String?): String {
     val text = raw.orEmpty()
     val table = mapOf(
-        "memory_write_disabled" to "服务器未开启记忆编辑（APP_MEMORY_WRITE_ENABLED=false）",
+        "memory_write_disabled" to "服务器目前未授权记忆写入，请在服务端核实后开启",
+        "memory_list_invalid" to "服务端记忆列表格式不兼容，需要更新网关",
         "memory_not_configured" to "服务器还没配置记忆库路径",
         "memory_unavailable" to "服务器记忆库暂时打不开，请稍后再试",
         "memory_not_found" to "这条记忆在服务器上已不存在",
@@ -496,5 +538,8 @@ internal fun humanizeMemoryError(raw: String?): String {
         "device_authorization_required" to "这台设备还没有通过服务器授权",
     )
     table.forEach { (code, message) -> if (text.contains(code)) return message }
+    if (text.contains("HTTP 404")) return "网关缺少记忆中心接口（HTTP 404），请更新服务器网关并核对反向代理路径"
+    if (text.contains("HTTP 401") || text.contains("HTTP 403")) return "服务器拒绝访问，请检查设备配对与记忆权限"
+    if (text.contains("HTTP 503")) return "服务器记忆服务尚未就绪（HTTP 503），请检查部署及数据库"
     return if (text.isBlank()) "操作失败，服务器没有返回原因" else text
 }
