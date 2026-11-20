@@ -160,9 +160,14 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 var accumulated = ""
                 var terminal = false
                 while (true) {
-                    val eof = source.exhausted()
-                    val line = if (eof) "" else source.readUtf8LineStrict(800_000L)
-                    val payloadText = parser.line(line)
+                    val line = try {
+                        if (source.exhausted()) null else source.readUtf8LineStrict(800_000L)
+                    } catch (interrupted: IOException) {
+                        currentCoroutineContext().ensureActive()
+                        null
+                    }
+                    val eof = line == null
+                    val payloadText = parser.line(line.orEmpty())
                     if (payloadText != null) {
                         val event = MateWire.parseSnapshot(payloadText, requestId)
                         if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain")) {
@@ -181,7 +186,18 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 }
                 if (terminal && accumulated.isBlank()) throw IOException("服务器结束了请求，但没有返回文字")
                 if (!terminal) {
-                    throw IOException("网络中断，没收到服务器的最终状态；请不要重复发送")
+                    currentCoroutineContext().ensureActive()
+                    val recovered = transport.requestResult(connection, requestId)
+                    if (recovered.state != "done") {
+                        throw IOException(if (recovered.state == "running") "连接已中断，服务器仍在生成，请勿重复发送"
+                            else "连接已中断，服务器未确认生成成功")
+                    }
+                    if (recovered.text.isBlank() || !recovered.text.startsWith(accumulated)) {
+                        throw IOException("恢复结果与已接收的回复不一致")
+                    }
+                    if (recovered.text.length > accumulated.length) {
+                        emit(StreamChunk.TextDelta(partId, recovered.text.substring(accumulated.length)))
+                    }
                 }
             }
         } finally {
