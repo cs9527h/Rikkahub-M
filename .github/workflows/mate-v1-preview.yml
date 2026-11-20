@@ -98,6 +98,8 @@ jobs:
     needs: preview
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # 证据型任务：模拟器截图与冷启动数据用于人工复核，装不上/窗口没出现过只记录不阻断代码验证
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

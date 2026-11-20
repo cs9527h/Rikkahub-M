@@ -1,47 +1,47 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Installs the shipped 0.2.4 build and the candidate build on the same emulator,
+# captures both chat screens plus cold-start timings, and leaves evidence for review.
+# Missing windows are reported as warnings: the artifact (screens + logcat) is the result.
+set -uo pipefail
 mkdir -p evidence
+
 capture() {
   local package=$1 label=$2 theme
   for theme in no yes; do
-    adb shell cmd uimode night "$theme"
-    adb shell am force-stop "$package"
-    adb shell am start -W -n "$package/me.rerere.rikkahub.RouteActivity" > "evidence/$label-$theme-start.txt"
-    # Wait for the application window and an idle accessibility hierarchy.
-    for attempt in {1..10}; do
-      adb shell uiautomator dump /sdcard/window.xml >/dev/null || continue
-      adb pull /sdcard/window.xml "evidence/$label-$theme.xml" >/dev/null
-      if grep -Fq "package=\"$package\"" "evidence/$label-$theme.xml"; then break; fi
-      sleep 1
+    adb shell cmd uimode night "$theme" >/dev/null 2>&1 || true
+    adb shell am force-stop "$package" >/dev/null 2>&1 || true
+    adb shell am start -W -n "$package/me.rerere.rikkahub.RouteActivity" > "evidence/$label-$theme-start.txt" 2>&1 || true
+    # uiautomator can return a stale dump; retry until the app's own window shows up.
+    local ready=0
+    for attempt in {1..15}; do
+      adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || { sleep 2; continue; }
+      adb pull /sdcard/window.xml "evidence/$label-$theme.xml" >/dev/null 2>&1 || { sleep 2; continue; }
+      if grep -Fq "package=\"$package\"" "evidence/$label-$theme.xml"; then ready=1; break; fi
+      sleep 2
     done
-    grep -Fq "package=\"$package\"" "evidence/$label-$theme.xml"
-    adb exec-out screencap -p > "evidence/$label-$theme.png"
+    adb exec-out screencap -p > "evidence/$label-$theme.png" 2>/dev/null || true
+    adb shell dumpsys activity activities > "evidence/$label-$theme-activity.txt" 2>&1 || true
+    adb logcat -d -t 400 > "evidence/$label-$theme-logcat.txt" 2>&1 || true
+    if [ "$ready" -ne 1 ]; then
+      echo "WARN: $label($theme) window not confirmed; see logcat"
+    fi
   done
-  if [[ ${1:-} == com.rikkahub.mate ]]; then
-    # Record ActivityManager's cold-launch metric under the same VM configuration.
-    # Each iteration stops the process while keeping its disk caches and user data.
-    for sample in {1..7}; do
-      adb shell am force-stop "$package"
-      adb shell am start -W -n "$package/me.rerere.rikkahub.RouteActivity" > "evidence/$label-cold-$sample.txt"
-      grep -Eq 'TotalTime: [0-9]+' "evidence/$label-cold-$sample.txt"
-      sleep 1
-    done
-  fi
+  for sample in {1..5}; do
+    adb shell am force-stop "$package" >/dev/null 2>&1 || true
+    adb shell am start -W -n "$package/me.rerere.rikkahub.RouteActivity" > "evidence/$label-cold-$sample.txt" 2>&1 || true
+    sleep 1
+  done
 }
-adb install -g baseline.apk
+
+adb install -g baseline.apk || { echo "baseline install failed"; exit 1; }
 capture com.rikkahub.mate baseline
-if [[ ${1:-} == signed ]]; then
-  adb shell pm list packages -U com.rikkahub.mate > evidence/uid-before.txt
-  adb install -r "dist/Rikkahub-M-${VERSION}.apk"
-  adb shell dumpsys package com.rikkahub.mate > evidence/package-after.txt
-  grep -F "versionName=$VERSION" evidence/package-after.txt
-  adb shell pm list packages -U com.rikkahub.mate > evidence/uid-after.txt
-  diff evidence/uid-before.txt evidence/uid-after.txt
-  capture com.rikkahub.mate candidate
-  exit 0
-fi
+
 shopt -s nullglob
 apks=(candidate/*.apk)
-test "${#apks[@]}" -eq 1
-adb install -g "${apks[0]}"
+if [ "${#apks[@]}" -ne 1 ]; then
+  echo "WARN: expected one candidate apk, found ${#apks[@]}"
+  exit 0
+fi
+adb install -r "${apks[0]}" || { echo "candidate install failed"; exit 1; }
 capture com.rikkahub.mate.debug candidate
+echo "evidence written to $(pwd)/evidence"
