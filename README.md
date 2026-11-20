@@ -1,59 +1,35 @@
-<div align="center">
-  <h1>Rikkahub-M · Mate</h1>
-  <p><strong>An expressive Android AI client with private server connectivity.</strong></p>
-  <p>RikkaHub's native experience × Mate's personal AstrBot connection and memory roadmap.</p>
-  <p><a href="README_ZH_CN.md">简体中文</a> · <a href="README_ZH_TW.md">繁體中文</a> · English</p>
-</div>
+# Rikkahub-M
 
-> [!IMPORTANT]
-> **0.3.2 release line.** Chat goes through your own AstrBot Mate gateway, long-term memory is read/written through a signed per-device API, and attachments upload as raw bytes. The app keeps package `com.rikkahub.mate` and the 0.2.4 signing key, so it upgrades over 0.3.1 without losing chats or settings. Old Mate (`com.dafayu.chat.preview`) is a separate app and is never overwritten.
+**Independent Android AI client — direct model APIs, local personas and memory, restorable backups.**
 
-## What is Mate?
+> **Version 0.4.0 is in development, not released.** Draft PR #16 currently needs build fixes and device verification; this README describes the intended standalone architecture rather than a stable release.
 
-**Mate** is the app identity. **Rikkahub-M** is the repository, based on the [RikkaHub](https://github.com/rikkahub/rikkahub) open-source Android client. It keeps RikkaHub's Compose UI, navigation and model capabilities, and adds a private AstrBot connection with 李鱼 persona, long-term memory and diagnostics.
+Rikkahub-M is an unofficial fork of [RikkaHub](https://github.com/rikkahub/rikkahub), retaining Kotlin / Jetpack Compose / Material 3 Expressive, native chat, multiple providers, assistant configuration, search and other useful upstream features.
 
-### What works
+## Standalone architecture
 
-- Chat with separately configured AI providers and models, streaming responses and searchable conversation history.
-- Compose / Material 3 Expressive interface, dark and light themes, adaptive layouts and transitions.
-- Markdown, code, equations, images, files, search, assistants and model settings.
-- Additional upstream modules such as MCP, Skills, workspace, voice and backup features.
+- The Android app connects directly to configured AI providers; assistant identities, prompt injections, chat history and long-term memory are local.
+- The optional cloud server stores backup archives only. Existing client backup integrations include WebDAV and S3. An S3-compatible self-hosted storage service is being evaluated.
+- Legacy Mate/AstrBot server chat, pairing, server-side persona injection and cross-platform memory are being retired.
 
-### Mate-specific status in 0.3.2
+## 0.4.0 outstanding work
 
-| Capability | Status in 0.3.1 |
-|---|---|
-| Always-visible **Connect server** entry | Implemented |
-| One-time pairing, gateway protocol v3 verification, encrypted device credentials | Implemented; QR pairing fixed |
-| Server chat with SSE snapshot streaming, stop and cancel | Implemented |
-| Attachments (image / PDF / document), raw-byte upload, 8MB × 4 limit | Implemented |
-| Long-term memory center: list, search, filter, create, edit, delete, trash, restore, bulk delete, audit | Implemented, needs `APP_MEMORY_WRITE_ENABLED=true` on the gateway |
-| Save chat message as long-term memory | Implemented |
-| Peak/valley status and DeepSeek balance | Implemented, read from gateway `/status` and `/billing/deepseek` |
-| Consent-based diagnostics upload | Implemented, event names only, no chat text or tokens |
-| Backup of settings, chats and profile via WebDAV/S3 | Implemented; provider keys must be re-entered after restore |
-| Signed universal APK `Rikkahub-M-0.3.2.apk` | Built by GitHub Actions release workflow |
+- Fix CI compilation and residual gateway references; migrate invalid legacy model settings safely.
+- Validate local Markdown/TXT/JSON prompt injections across fresh chats, app restarts and multiple assistants.
+- Make local memory create/edit/delete/search/retrieve and conversational extraction genuinely functional.
+- Implement frequent lightweight settings backups, separately scheduled chat database snapshots, and no default automatic attachment backup.
+- Implement portable client-side encryption for secrets including API keys, reliable restore key handling, retention and deduplication.
+- Validate S3/WebDAV upload and restore plus startup, long-chat, streaming, notification identity, UI and animation fixes.
+- Preserve package `com.rikkahub.mate`, signing continuity, app data and a single universal APK.
 
-## Getting started (development preview)
+**Existing portable ZIP backups are not verified end-to-end encrypted.** Do not upload sensitive personal data to untrusted storage.
 
-1. For ordinary AI chat, go to **Quick start → Independent API** and configure a provider and a model.
-2. For the private server, go to **Quick start → Mate server** or **Settings → Connect server**, then scan the one-time QR code or enter the pairing code. Server chat, attachments and the memory center run through that gateway.
-3. Download the signed APK `Rikkahub-M-0.3.2.apk` from the [Releases](https://github.com/cs9527h/Rikkahub-M/releases) page. It upgrades over 0.3.1 in place.
+## Project and status
 
-## UI and product principles
+- [Standalone client PR #16](https://github.com/cs9527h/Rikkahub-M/pull/16) — draft, unmerged.
+- [Prior UI/features PR #15](https://github.com/cs9527h/Rikkahub-M/pull/15) — selectively migrate useful changes, excluding retired gateway code.
+- [Legacy bug and release checklist](docs/LEGACY_BUG_FIX_CHECKLIST.md)
+- [Architecture and migration](docs/STANDALONE_BACKUP_ONLY.md)
+- [Verified releases](https://github.com/cs9527h/Rikkahub-M/releases)
 
-No advertisements, sponsor lists, affiliate recommendations or donation prompts. Keep meaningful animations rather than removing them to disguise jank. Minimize layout noise, retain accessible controls, do not overwrite personal data, and verify real-device performance before release.
-
-## Development and release
-
-- Kotlin, Jetpack Compose, Material 3 Expressive, Koin, Room and Navigation 3.
-- Build commands from the upstream project: `./gradlew assembleGithubDebug` and `./gradlew test`.
-- The upstream project expects `app/google-services.json` in its configured build environment; use a properly configured own project file instead of the upstream production config.
-- Review `docs/MATE_FORK_MIGRATION.md` and `docs/MATE_USER_GUIDE.md` for migration scope and current limitations.
-- Release workflow: `.github/workflows/release.yml` builds one universal APK with the 0.2.4 signing key, verifies package name, `versionName`/`versionCode`, ABI and certificate, then publishes a GitHub Release with SHA-256. Never install an APK whose certificate differs from `e4b90a5f…8f2c94a`.
-
-## Origin and license
-
-Independent fork of [RikkaHub](https://github.com/rikkahub/rikkahub), licensed under **AGPL-3.0**. The original author's copyright and licensing notices are preserved; this fork is not an official RikkaHub release. See [LICENSE](LICENSE) and the upstream source for attribution. No sponsorship or donation is requested by this fork.
-
-Source: https://github.com/cs9527h/Rikkahub-M
+No private persona text, chats, API tokens or server keys should be committed. Independent unofficial [RikkaHub](https://github.com/rikkahub/rikkahub) fork; existing [AGPL-3.0 license](LICENSE) and upstream attribution are preserved.
