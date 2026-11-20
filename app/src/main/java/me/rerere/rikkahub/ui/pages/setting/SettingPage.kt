@@ -77,7 +77,6 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
-import me.rerere.rikkahub.ui.components.ui.MateCloudIconPalette
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.permission.LocalNetworkPermissionCard
@@ -88,7 +87,6 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.theme.ColorMode
 import me.rerere.rikkahub.ui.theme.CustomColors
-import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
 import me.rerere.rikkahub.utils.writeClipboardText
@@ -200,32 +198,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { CardGroupIcon(HugeIcons.Package, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
-                    )
-                }
-            }
-
-            item("mateGateway") {
-                val containerColor = MaterialTheme.colorScheme.secondaryContainer
-                val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                CardGroup(title = { Text(stringResource(R.string.mate_settings_group)) }) {
-                    item(
-                        onClick = { navController.navigate(Screen.MateConnection) },
-                        leadingContent = {
-                            val darkMode = LocalDarkMode.current
-                            CardGroupIcon(
-                                ImageVector.vectorResource(R.drawable.ic_cloud_connection),
-                                containerColor = MateCloudIconPalette.background(darkMode),
-                                contentColor = MateCloudIconPalette.foreground(darkMode),
-                            )
-                        },
-                        headlineContent = { Text(stringResource(R.string.mate_connection_title)) },
-                        supportingContent = { Text(stringResource(R.string.mate_connection_desc)) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.MateMemory) },
-                        leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
-                        headlineContent = { Text(stringResource(R.string.mate_memory_title)) },
-                        supportingContent = { Text(stringResource(R.string.mate_memory_desc)) },
                     )
                 }
             }

@@ -34,7 +34,6 @@ private enum class QuickStartTab(
     @param:StringRes private val labelRes: Int,
 ) : PagerTab {
     GENERAL(HugeIcons.Rocket01, R.string.quick_start_page_tab_general),
-    MATE(HugeIcons.Rocket01, R.string.mate_intro_tab),
     DEEPSEEK(HugeIcons.ArrowDataTransferVertical, R.string.quick_start_page_tab_deepseek);
 
     override val label: String
@@ -79,7 +78,6 @@ fun QuickStartPage(vm: QuickStartVM = koinViewModel()) {
             ) { page ->
                 when (QuickStartTab.entries[page]) {
                     QuickStartTab.GENERAL -> QuickStartGeneralTab(vm = vm)
-                    QuickStartTab.MATE -> QuickStartMateTab()
                     QuickStartTab.DEEPSEEK -> QuickStartDeepSeekTab(vm = vm)
                 }
             }

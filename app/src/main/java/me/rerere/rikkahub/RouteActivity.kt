@@ -60,9 +60,6 @@ import me.rerere.ui.toast.Toaster
 import me.rerere.ui.toast.rememberToasterState
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import me.rerere.rikkahub.mate.MateConnectionPage
-import me.rerere.rikkahub.mate.MateMemoryPage
-import me.rerere.rikkahub.mate.MateDevicesPage
 import me.rerere.rikkahub.mate.MateChangelogPage
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
@@ -189,9 +186,6 @@ class RouteActivity : ComponentActivity() {
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
         if (CrashHandler.hasCrashed(this)) {
-            runCatching {
-                me.rerere.rikkahub.mate.MateDiagnostics.enqueue(this, me.rerere.rikkahub.mate.DiagnosticEvent.APP_CRASH)
-            }
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
             return
@@ -490,22 +484,6 @@ class RouteActivity : ComponentActivity() {
                                 SettingProviderPage()
                             }
 
-                            entry<Screen.MateConnection> {
-                                MateConnectionPage()
-                            }
-
-                            entry<Screen.MateMemory> {
-                                MateMemoryPage()
-                            }
-
-                            entry<Screen.MateDevices> {
-                                MateDevicesPage()
-                            }
-
-                            entry<Screen.MateChangelog> {
-                                MateChangelogPage()
-                            }
-
                             entry<Screen.SettingProviderDetail> { key ->
                                 val id = Uuid.parse(key.providerId)
                                 SettingProviderDetailPage(id = id)
@@ -767,15 +745,6 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingProvider : Screen
-
-    @Serializable
-    data object MateConnection : Screen
-
-    @Serializable
-    data object MateMemory : Screen
-
-    @Serializable
-    data object MateDevices : Screen
 
     @Serializable
     data object MateChangelog : Screen
