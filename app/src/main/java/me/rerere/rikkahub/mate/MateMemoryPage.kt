@@ -76,7 +76,6 @@ fun MateMemoryPage() {
     var editTags by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<MemoryItem?>(null) }
     var creating by remember { mutableStateOf(false) }
-    var createText by remember { mutableStateOf("") }
 
     suspend fun connection(): MateConnection? = withContext(Dispatchers.IO) { store.load() }
 
@@ -101,7 +100,8 @@ fun MateMemoryPage() {
             val list = body.optJSONArray("items") ?: JSONArray()
             for (index in 0 until list.length()) {
                 val item = list.optJSONObject(index) ?: continue
-                items += item.toMemoryItem()
+                val memory = item.toMemoryItem()
+                if (!showDeleted || !memory.active) items += memory
             }
             nextAfter = body.optString("next_after").takeIf { it.isNotBlank() && it != "null" }
             status = if (items.isEmpty()) "没有匹配的记忆" else "共加载 " + items.size + " 条"
@@ -154,7 +154,7 @@ fun MateMemoryPage() {
                     listOf("" to "全部", "preference" to "偏好", "fact" to "事实", "event" to "经历").forEach { (value, label) ->
                         FilterChip(
                             selected = typeFilter == value,
-                            onClick = { typeFilter = value },
+                            onClick = { typeFilter = value; scope.launch { load(true) } }, enabled = !loading,
                             label = { Text(label) },
                         )
                     }
@@ -165,11 +165,11 @@ fun MateMemoryPage() {
                     Button(onClick = { scope.launch { load(true) } }, enabled = !loading) {
                         Text(if (loading) "读取中…" else "搜索")
                     }
-                    TextButton(onClick = { showDeleted = !showDeleted; scope.launch { load(true) } }) {
+                    TextButton(enabled = !loading, onClick = { showDeleted = !showDeleted; scope.launch { load(true) } }) {
                         Text(if (showDeleted) "显示正常记忆" else "查看回收站")
                     }
                     if (writeEnabled) {
-                        TextButton(onClick = { creating = true; createText = "" }) { Text("新增") }
+                        TextButton(onClick = { creating = true }) { Text("新增") }
                     }
                 }
             }
@@ -250,25 +250,70 @@ fun MateMemoryPage() {
     }
 
     if (creating) {
-        AlertDialog(
-            onDismissRequest = { creating = false },
-            title = { Text("新增记忆") },
-            text = { OutlinedTextField(value = createText, onValueChange = { createText = it }, label = { Text("内容") }, minLines = 3) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val text = createText
-                    creating = false
-                    scope.launch {
-                        sendAction(
-                            JSONObject().put("action", "create").put("content", text).put("type", "fact"),
-                            "已新增",
-                        )
-                    }
-                }) { Text("保存") }
-            },
-            dismissButton = { TextButton(onClick = { creating = false }) { Text("取消") } },
-        )
+        MateCreateMemoryDialog("", onDismiss = { creating = false }, onSaved = {
+            creating = false
+            scope.launch { load(true) }
+        })
     }
+}
+
+@Composable
+internal fun MateCreateMemoryDialog(initial: String, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = remember(context) { MateGatewayStore(context) }
+    val transport = remember { MateChatTransport() }
+    var text by remember { mutableStateOf(initial) }
+    var kind by remember { mutableStateOf("fact") }
+    var destination by remember { mutableStateOf<MateConnection?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("正在读取云服务器连接…") }
+    LaunchedEffect(Unit) {
+        val connection = withContext(Dispatchers.IO) { store.load() }
+        destination = connection
+        status = connection?.let { "保存到 " + android.net.Uri.parse(it.baseUrl).host } ?: "请先在云服务器设置中完成配对"
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("保存为长期记忆") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(status, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = text, onValueChange = { text = it }, enabled = !busy,
+                    label = { Text("确认要记住的内容") }, minLines = 2, maxLines = 6,
+                    supportingText = { Text("${text.length} / 6000") })
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("fact" to "事实", "preference" to "偏好", "event" to "经历").forEach { (value, label) ->
+                        FilterChip(selected = value == kind, onClick = { kind = value }, enabled = !busy, label = { Text(label) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && destination != null && text.isNotBlank() && text.length <= 6000, onClick = {
+                val connection = destination ?: return@TextButton
+                busy = true
+                scope.launch {
+                    try {
+                        val current = withContext(Dispatchers.IO) { store.load() }
+                        check(current == connection) { "连接已更换，请重新打开" }
+                        val reply = transport.post(connection, "/memory", JSONObject().put("action", "create")
+                            .put("type", kind).put("content", text.trim()))
+                        check(reply.optString("id").isNotBlank()) { "服务器未确认写入" }
+                        android.widget.Toast.makeText(context, "服务器已保存这条记忆", android.widget.Toast.LENGTH_SHORT).show()
+                        onSaved()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        status = error.message ?: "保存失败"
+                    } finally {
+                        busy = false
+                    }
+                }
+            }) { Text(if (busy) "正在保存…" else "保存") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
+    )
 }
 
 private fun JSONObject.toMemoryItem(): MemoryItem {

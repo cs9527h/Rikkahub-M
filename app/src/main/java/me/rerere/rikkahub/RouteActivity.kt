@@ -189,6 +189,9 @@ class RouteActivity : ComponentActivity() {
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
         if (CrashHandler.hasCrashed(this)) {
+            runCatching {
+                me.rerere.rikkahub.mate.MateDiagnostics.enqueue(this, me.rerere.rikkahub.mate.DiagnosticEvent.APP_CRASH)
+            }
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
             return

@@ -8,6 +8,11 @@ on:
         type: boolean
         default: false
   push:
+    branches:
+      - master
+    paths:
+      - app/build.gradle.kts
+      - .github/workflows/release.yml
     tags:
       - 'v*'
 
@@ -147,9 +152,43 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  upgrade:
+    name: Verify signed upgrade from 0.2.4
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Rikkahub-M-signed-apk
+          path: dist
+      - name: Obtain pinned baseline
+        run: |
+          curl --fail --location --retry 2 https://github.com/cs9527h/Rikkahub-M/releases/download/v0.2.4/Rikkahub-M-0.2.4.apk -o baseline.apk
+          echo 'a634efbdc42dedb37ca5507a65a0cc88b18ab7b33c65ca979a3d63b99f84f13f  baseline.apk' | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          script: bash scripts/compare-installed-screens.sh signed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Signed-upgrade-screens
+          path: evidence/
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, upgrade]
     if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:

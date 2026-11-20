@@ -4,8 +4,12 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -66,7 +70,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<StreamChunk> = flow {
+    ): Flow<StreamChunk> = flow<StreamChunk> {
         val connection = store.load()
             ?: throw IOException("还没有连接服务器，请先在「云服务器」里完成配对")
 
@@ -101,8 +105,8 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
             .build()
 
         val call = client.newCall(request)
-        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
         emit(StreamChunk.TextStart(partId))
+        val handle = cancelCallWithRequest(call)
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
@@ -142,10 +146,13 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 }
             }
         } finally {
-            handle.dispose()
+            handle.cancel()
         }
         emit(StreamChunk.TextEnd(partId))
         emit(StreamChunk.Finish(finishReason = "stop", responseId = requestId, model = params.model.modelId))
+    }.catch { error ->
+        if (error is IOException) runCatching { MateDiagnostics.enqueue(appContext, DiagnosticEvent.CLOUD_CHAT_FAILED) }
+        throw error
     }.flowOn(Dispatchers.IO)
 
     override suspend fun generateText(
@@ -172,6 +179,17 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
             finishReason = "stop",
         )
     }
+
+    // A completion handler runs after a blocking read returns. This child receives
+    // parent cancellation immediately and closes the socket to interrupt that read.
+    private suspend fun cancelCallWithRequest(call: okhttp3.Call) =
+        CoroutineScope(currentCoroutineContext()).launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                call.cancel()
+            }
+        }
 
     private fun jsonString(value: String): String = buildString {
         append('"')
@@ -275,7 +293,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
             .post(body)
             .build()
         val call = client.newCall(request)
-        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+        val handle = cancelCallWithRequest(call)
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
@@ -307,7 +325,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 return id
             }
         } finally {
-            handle.dispose()
+            handle.cancel()
         }
     }
 

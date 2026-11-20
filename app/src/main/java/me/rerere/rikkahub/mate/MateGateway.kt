@@ -126,6 +126,8 @@ internal class MateGatewayStore(context: Context) {
     private val preferences = context.applicationContext
         .getSharedPreferences("mate_gateway_connection", Context.MODE_PRIVATE)
 
+    fun savedInstanceId(): String = preferences.getString("instance_id", "").orEmpty()
+
     fun savedAddress(): String = preferences.getString("base_url", "").orEmpty()
 
     fun load(): MateConnection? {
