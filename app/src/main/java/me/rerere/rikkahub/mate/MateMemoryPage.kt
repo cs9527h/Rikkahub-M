@@ -108,7 +108,6 @@ fun MateMemoryPage() {
             auditItems.clear()
             val body = transport.get(connection, "/memory/audit?limit=40")
             val list = body.optJSONArray("items") ?: JSONArray()
-            if (reset) items.clear()
             for (index in 0 until list.length()) {
                 val row = list.optJSONObject(index) ?: continue
                 auditItems += AuditItem(
@@ -171,6 +170,7 @@ fun MateMemoryPage() {
             writeEnabled = body.optBoolean("write_enabled", false) && caps.optBoolean("memory_write", true)
             memoryReady = true
             val list = body.optJSONArray("items") ?: JSONArray()
+            if (reset) items.clear()
             for (index in 0 until list.length()) {
                 val item = list.optJSONObject(index) ?: continue
                 val memory = item.toMemoryItem()
