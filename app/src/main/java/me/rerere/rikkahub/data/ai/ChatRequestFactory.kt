@@ -102,6 +102,11 @@ class ChatRequestFactory(
         WorkspaceReminderTransformer(workspaceRepository),
     )
 
+    // The gateway uploads original bytes and resolves attachment IDs on the server.
+    private val gatewayInputTransformers = inputTransformers.filterNot {
+        it === DocumentAsPromptTransformer || it === OcrTransformer
+    }
+
     private val outputTransformers: List<OutputMessageTransformer> = listOf(
         ThinkTagTransformer,
         Base64ImageToLocalFileTransformer,
@@ -272,7 +277,7 @@ class ChatRequestFactory(
             }
             addAll(messages.limitContext(assistant.contextMessageLimit).withContinuationHint())
         }.transforms(
-            transformers = inputTransformers,
+            transformers = if (turn.providerSetting.isMateGateway()) gatewayInputTransformers else inputTransformers,
             context = context,
             model = turn.model,
             assistant = assistant,

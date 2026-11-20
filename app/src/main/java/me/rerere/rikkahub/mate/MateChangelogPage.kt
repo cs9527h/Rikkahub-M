@@ -19,7 +19,7 @@ import me.rerere.rikkahub.utils.plus
 @Composable
 fun MateChangelogPage() {
     Scaffold(topBar = {
-        TopAppBar(title = { Text("更新日志") }, navigationIcon = { BackButton() })
+        TopAppBar(title = { Text("Rikkahub-M 更新日志") }, navigationIcon = { BackButton() })
     }) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -29,8 +29,10 @@ fun MateChangelogPage() {
             item {
                 Text("当前源码版本 · " + BuildConfig.VERSION_NAME,
                     style = MaterialTheme.typography.titleLarge)
-                Text("正式签名版本，可直接覆盖旧版安装。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            item {
+                Text("0.3.0", style = MaterialTheme.typography.titleMedium)
+                Text("统一云服务器图标；文件和图片逐个上传；校验流式回复；恢复新备份后需重新授权连接。")
             }
             item {
                 Text("2026.11.20 · 0.2.4", style = MaterialTheme.typography.titleMedium)

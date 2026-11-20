@@ -152,6 +152,7 @@ fun ChatMessage(
         lineHeight = LocalTextStyle.current.lineHeight * settings.fontSizeRatio,
         fontFamily = chatFontFamily
     )
+    var showMemoryDialog by remember(message.id) { mutableStateOf(false) }
     var showActionsSheet by remember { mutableStateOf(false) }
     var showSelectCopySheet by remember { mutableStateOf(false) }
     val navController = LocalNavController.current
@@ -262,6 +263,7 @@ fun ChatMessage(
             },
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
+            onSaveMemory = { showMemoryDialog = true },
             onWebViewPreview = {
                 val textContent = message.parts
                     .filterIsInstance<UIMessagePart.Text>()
@@ -280,6 +282,14 @@ fun ChatMessage(
             onDismissRequest = {
                 showActionsSheet = false
             }
+        )
+    }
+
+    if (showMemoryDialog) {
+        me.rerere.rikkahub.mate.MateCreateMemoryDialog(
+            initial = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
+            onDismiss = { showMemoryDialog = false },
+            onSaved = { showMemoryDialog = false },
         )
     }
 

@@ -59,6 +59,16 @@ fun MateConnectionPage() {
     var restoring by remember { mutableStateOf(true) }
     var showScanner by remember { mutableStateOf(false) }
 
+    val diagnosticPrefs = remember(context) { MateDiagnostics.preferences(context) }
+    var diagnosticResult by remember { mutableStateOf(diagnosticPrefs.getString(MateDiagnostics.RESULT, "").orEmpty()) }
+    androidx.compose.runtime.DisposableEffect(diagnosticPrefs) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+            if (key == MateDiagnostics.RESULT) diagnosticResult = prefs.getString(key, "").orEmpty()
+        }
+        diagnosticPrefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { diagnosticPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     if (showScanner) {
         QRCodeScannerDialog(
             onResult = { data ->
@@ -187,6 +197,24 @@ fun MateConnectionPage() {
                     ) { Text(if (busy) "正在连接…" else "配对并连接") }
                 }
             } else if (!restoring) {
+                item {
+                    val instance = paired?.instanceId.orEmpty()
+                    var enabled by remember(instance) { mutableStateOf(MateDiagnostics.allowed(context, instance)) }
+                    Column {
+                        Text("自动诊断", style = MaterialTheme.typography.titleMedium)
+                        Text("允许向当前云服务器发送版本、Android 版本和错误类别。聊天正文、设备令牌和异常原文不会上传。")
+                        androidx.compose.material3.Switch(checked = enabled, onCheckedChange = {
+                            MateDiagnostics.setConsent(context, instance, it)
+                            enabled = it
+                        })
+                        if (enabled) {
+                            TextButton(onClick = { MateDiagnostics.enqueue(context, DiagnosticEvent.MANUAL_CHECK) }) {
+                                Text("发送诊断（每小时一次）")
+                            }
+                            if (diagnosticResult.isNotBlank()) Text(diagnosticResult)
+                        }
+                    }
+                }
                 item {
                     Button(
                         enabled = !busy, modifier = Modifier.fillMaxWidth(),

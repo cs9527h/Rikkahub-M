@@ -8,6 +8,11 @@ on:
         type: boolean
         default: false
   push:
+    branches:
+      - master
+    paths:
+      - app/build.gradle.kts
+      - .github/workflows/release.yml
     tags:
       - 'v*'
 
@@ -15,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.2.4'
+  VERSION: '0.3.0'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -105,8 +110,13 @@ jobs:
           mkdir -p dist
           : > dist/APK_SIGNING.txt
           : > dist/SHA256SUMS.txt
-          apk=$(ls "$APK_DIR"/*universal*.apk 2>/dev/null | head -1)
-          [ -n "$apk" ] || { echo "::error::No universal APK produced"; exit 1; }
+          shopt -s nullglob
+          apks=("$APK_DIR"/*.apk)
+          [ "${#apks[@]}" -eq 1 ] || { echo "::error::Expected exactly one universal APK"; exit 1; }
+          apk=${apks[0]}
+          test -x "$APKANALYZER"
+          test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 10
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -126,7 +136,7 @@ jobs:
           [ "$cert" = "$EXPECTED_CERT_SHA256" ] || { echo "::error::$base cert=$cert != expected"; exit 1; }
           out="dist/Rikkahub-M-${VERSION}.apk"
           cp "$apk" "$out"
-          sha256sum "$out" >> dist/SHA256SUMS.txt
+          (cd dist && sha256sum "$(basename "$out")") > dist/SHA256SUMS.txt
           { echo "== $(basename "$out")"; echo "package: $pkg"; echo "abis: $abis"; cat /tmp/sig.txt; echo; } >> dist/APK_SIGNING.txt
           echo "== dist =="
           ls -lh dist
@@ -142,10 +152,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  upgrade:
+    name: Verify signed upgrade from 0.2.4
+    needs: build
+    # 证据型任务：模拟器装不上不影响已通过校验的签名包发布
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Rikkahub-M-signed-apk
+          path: dist
+      - name: Obtain pinned baseline
+        run: |
+          curl --fail --location --retry 2 https://github.com/cs9527h/Rikkahub-M/releases/download/v0.2.4/Rikkahub-M-0.2.4.apk -o baseline.apk
+          echo 'a634efbdc42dedb37ca5507a65a0cc88b18ab7b33c65ca979a3d63b99f84f13f  baseline.apk' | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          script: bash scripts/compare-installed-screens.sh signed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Signed-upgrade-screens
+          path: evidence/
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
     needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -156,42 +202,15 @@ jobs:
         with:
           name: Rikkahub-M-signed-apk
           path: dist
-      - name: Create or update preview release
+      - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG="v0.2.4"
-          ls -lh dist
-          cat dist/SHA256SUMS.txt
-          NOTES=$(cat <<'EOF'
-          Rikkahub-M 0.2.4
-
-          记忆管理落地：客户端「记忆中心」+ 网关 /memory 写接口。
-
-          客户端
-          - 设置 → 云服务器分组新增「记忆中心」，可列表、搜索、按类型筛选、查看回收站
-          - 支持编辑（带原文校验，防止覆盖另一端修改）、删除（二次确认）、恢复、新增
-          - 服务器未开启写入时只读展示并说明原因，不出现点击无反应的按钮
-
-          网关（dafayu-android PR #26）
-          - GET /memory、/memory/item、/memory/audit；POST /memory（create/update/delete/restore）
-          - 写入需 APP_MEMORY_WRITE_ENABLED=true 且 owner 绑定已验证；bootstrap 设备 403
-          - 首次写入前 SQLite 全库备份；删除软删并清理 embedding 表引用；恢复标记 needs_reindex
-          - 每次改动写审计（before/after/actor）
-          - /memory/search 读接口保持兼容
-
-          安装包
-          - Rikkahub-M-0.2.4.apk：arm64-v8a + x86_64 通用包
-
-          包名 com.rikkahub.mate，versionCode 10，签名与 0.2.3 一致。
-          EOF
-          )
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
-              --repo "$GITHUB_REPOSITORY" --prerelease \
-              --title "Rikkahub-M 0.2.4" --notes "$NOTES"
-          fi
+          TAG="v${VERSION}"
+          (cd dist && sha256sum -c SHA256SUMS.txt)
+          # Refuse to overwrite an existing published binary with another build.
+          gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md"

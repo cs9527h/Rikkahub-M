@@ -664,15 +664,17 @@ private fun TopBar(
     val context = LocalContext.current
     val gatewayStore = remember(context) { MateGatewayStore(context) }
     val gatewayTransport = remember { MateChatTransport() }
-    var peakLabel by remember { mutableStateOf<String?>(null) }
-    var deepSeekBalance by remember { mutableStateOf<String?>(null) }
+    var peakLabel by remember(chatModel?.id) { mutableStateOf<String?>(null) }
+    var deepSeekBalance by remember(chatModel?.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(chatModel?.id) {
         if (chatModel?.id != MATE_MODEL_ID) return@LaunchedEffect
         while (true) {
             val connection = withContext(Dispatchers.IO) { gatewayStore.load() }
-            peakLabel = null
-            deepSeekBalance = null
-            if (connection != null) {
+            var refreshSeconds = 60
+            if (connection == null) {
+                peakLabel = null
+                deepSeekBalance = null
+            } else {
                 val status = try {
                     gatewayTransport.get(connection, "/status")
                 } catch (error: CancellationException) {
@@ -683,12 +685,15 @@ private fun TopBar(
                 // 网关只在状态仍有效时返回有效峰谷字段。
                 if (status?.optString("instance_id") == connection.instanceId &&
                     status.optInt("valid_for_seconds", 0) > 0) {
+                    refreshSeconds = status.optInt("valid_for_seconds").coerceIn(1, 60)
                     peakLabel = when (status.optString("peak_state")) {
                         "peak" -> "峰段"
                         "valley" -> "谷段"
                         "flat" -> "平段"
                         else -> null
                     }
+                } else {
+                    peakLabel = null
                 }
                 val billing = try {
                     gatewayTransport.get(connection, "/billing/deepseek")
@@ -697,6 +702,7 @@ private fun TopBar(
                 } catch (_: Exception) {
                     null
                 }
+                var balance: String? = null
                 if (billing?.optString("provider") == "deepseek") {
                     val balances = billing.optJSONArray("balances")
                     if (balances != null) {
@@ -706,15 +712,16 @@ private fun TopBar(
                             val total = item.optString("total")
                             if (currency in setOf("CNY", "USD") &&
                                 total.matches(Regex("[0-9]{1,10}(\\.[0-9]{1,8})?"))) {
-                                deepSeekBalance = "DeepSeek " +
+                                balance = "DeepSeek " +
                                     (if (currency == "CNY") "¥" else "$") + total
                                 if (currency == "CNY") break
                             }
                         }
                     }
                 }
+                deepSeekBalance = balance
             }
-            delay(60_000)
+            delay(refreshSeconds * 1000L)
         }
     }
 

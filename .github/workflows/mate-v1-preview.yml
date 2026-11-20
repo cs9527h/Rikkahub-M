@@ -92,3 +92,39 @@ jobs:
           path: app/build/outputs/apk/github/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+
+  android-smoke:
+    name: Compare installed Android chat screens
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 证据型任务：模拟器截图与冷启动数据用于人工复核，装不上/窗口没出现过只记录不阻断代码验证
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Mate-v0.1.0-technical-preview-debug
+          path: candidate
+      - name: Fetch verified baseline
+        run: |
+          curl --fail --location --retry 2 https://github.com/cs9527h/Rikkahub-M/releases/download/v0.2.4/Rikkahub-M-0.2.4.apk -o baseline.apk
+          echo 'a634efbdc42dedb37ca5507a65a0cc88b18ab7b33c65ca979a3d63b99f84f13f  baseline.apk' | sha256sum -c -
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          script: bash scripts/compare-installed-screens.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android-screen-comparison
+          path: evidence/
+          if-no-files-found: error

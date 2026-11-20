@@ -83,15 +83,6 @@ internal class MateChatTransport {
         .readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(30, TimeUnit.SECONDS)
         .build()
-    private val streamHttp = http.newBuilder()
-        .readTimeout(35, TimeUnit.SECONDS)
-        .callTimeout(190, TimeUnit.SECONDS)
-        .build()
-    @Volatile private var activeCall: okhttp3.Call? = null
-
-    /** Explicit user cancellation must interrupt blocking SSE reads immediately. */
-    fun cancelStreaming() { activeCall?.cancel() }
-
     private fun request(connection: MateConnection, path: String, data: JSONObject? = null): Request {
         val base = MateGatewayAddress.normalize(connection.baseUrl)
         require(path.startsWith("/") && ".." !in path && "#" !in path) { "无效网关路径" }
@@ -170,46 +161,6 @@ internal class MateChatTransport {
         // The request lookup response has no SSE event type.
         return MateWire.parseSnapshot(result.put("type", if (result.optString("state") == "done") "done"
             else if (result.optString("state") == "running") "snapshot" else "error").toString(), id)
-    }
-
-    suspend fun stream(
-        connection: MateConnection,
-        requestId: String,
-        message: String,
-        onSnapshot: suspend (MateSnapshot) -> Unit
-    ) = withContext(Dispatchers.IO) {
-        require(Regex("[A-Za-z0-9_-]{8,80}").matches(requestId))
-        require(message.isNotBlank() && message.length <= 6000) { "单条消息长度须在 1～6000 字之间" }
-        val body = JSONObject().put("request_id", requestId).put("message", message)
-            .put("attachments", org.json.JSONArray())
-        val call = streamHttp.newCall(request(connection, "/chat/stream", body))
-        activeCall = call
-        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
-        try {
-            call.execute().use { response ->
-                if (!response.isSuccessful) throw IOException("发送失败，网关 HTTP " + response.code)
-                require(response.header("Content-Type", "").orEmpty().startsWith("text/event-stream")) {
-                    "不支持的流协议"
-                }
-                val source = response.body?.source() ?: throw IOException("流响应为空")
-                val parser = MateSseParser()
-                var terminal = false
-                while (!source.exhausted()) {
-                    val line = source.readUtf8LineStrict(256_000)
-                    val data = parser.line(line) ?: continue
-                    val event = MateWire.parseSnapshot(data, requestId)
-                    onSnapshot(event)
-                    if (event.terminal) {
-                        terminal = true
-                        break
-                    }
-                }
-                if (!terminal) throw IOException("网络中断；请查询原请求状态，不要重复发送")
-            }
-        } finally {
-            activeCall = null
-            handle.dispose()
-        }
     }
 
     private suspend fun postJson(

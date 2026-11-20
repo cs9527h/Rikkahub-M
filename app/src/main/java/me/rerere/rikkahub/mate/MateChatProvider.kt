@@ -4,8 +4,12 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -26,7 +30,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.io.ByteArrayOutputStream
+import java.io.File
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import kotlinx.coroutines.ensureActive
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -63,9 +70,9 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         providerSetting: ProviderSetting.OpenAI,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<StreamChunk> = flow {
+    ): Flow<StreamChunk> = flow<StreamChunk> {
         val connection = store.load()
-            ?: throw IOException("还没有连接服务器，请先在「连接与设备」里完成配对")
+            ?: throw IOException("还没有连接服务器，请先在「云服务器」里完成配对")
 
         val lastUser = messages.lastOrNull { it.role == MessageRole.USER }
         val userText = lastUser
@@ -77,9 +84,12 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         require(userText.length <= 6000) { "单条消息不能超过 6000 字" }
 
         // 附件先上传换服务端 id，再随消息一起提交；上传失败直接报错，不静默丢弃
-        val uploadItems = lastUser?.parts.orEmpty().mapNotNull { it.toUploadPayload() }
-        require(uploadItems.size <= 4) { "单条消息最多发送 4 个附件" }
-        val attachmentIds = uploadItems.map { uploadMedia(connection, it) }
+        val attachments = lastUser?.parts.orEmpty().filter {
+            it is UIMessagePart.Image || it is UIMessagePart.Audio ||
+                it is UIMessagePart.Document || it is UIMessagePart.Video
+        }
+        require(attachments.size <= 4) { "单条消息最多发送 4 个附件" }
+        val attachmentIds = attachments.map { uploadPart(connection, it) }
         require(userText.isNotEmpty() || attachmentIds.isNotEmpty()) { "没有可以发送的内容" }
 
         val requestId = UUID.randomUUID().toString()
@@ -95,8 +105,8 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
             .build()
 
         val call = client.newCall(request)
-        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
         emit(StreamChunk.TextStart(partId))
+        val handle = cancelCallWithRequest(call)
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
@@ -108,59 +118,41 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 }
                 val source = response.body?.source() ?: throw IOException("服务器没有返回内容")
 
-                var accumulated = 0
+                val parser = MateSseParser()
+                var accumulated = ""
                 var terminal = false
-                val data = StringBuilder()
-
-                suspend fun flushEvent() {
-                    if (data.isEmpty()) return
-                    val snapshot = data.toString()
-                    data.clear()
-                    val obj = runCatching { json.parseToJsonElement(snapshot).jsonObject }
-                        .getOrElse { throw IOException("服务器返回了无法解析的数据") }
-                    val id = obj["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (id != requestId) throw IOException("网关请求标识不匹配，已停止接收")
-                    val type = obj["type"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val state = obj["state"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val text = obj["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val error = obj["error"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (text.length > 200_000) throw IOException("服务器回复过长")
-                    when {
-                        type == "error" || state == "failed" || state == "expired" ->
-                            throw IOException(error.ifBlank { "服务器处理这条消息失败" })
-                        state == "uncertain" ->
-                            throw IOException("网络中断，服务器状态未知；这条消息不会被自动重发")
-                    }
-                    if (text.length > accumulated) {
-                        emit(StreamChunk.TextDelta(partId, text.substring(accumulated)))
-                        accumulated = text.length
-                    }
-                    if (type == "done" || state == "done") terminal = true
-                }
-
                 while (true) {
-                    val line = source.readUtf8Line() ?: break
-                    if (line.isEmpty()) {
-                        flushEvent()
-                        if (terminal) break
-                        continue
+                    val eof = source.exhausted()
+                    val line = if (eof) "" else source.readUtf8LineStrict(800_000L)
+                    val payloadText = parser.line(line)
+                    if (payloadText != null) {
+                        val event = MateWire.parseSnapshot(payloadText, requestId)
+                        if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain")) {
+                            throw IOException(event.error.ifBlank { "服务器未完成这条消息，请检查会话状态" })
+                        }
+                        if (!event.text.startsWith(accumulated)) {
+                            throw IOException("服务器回复与已接收的内容不一致")
+                        }
+                        if (event.text.length > accumulated.length) {
+                            emit(StreamChunk.TextDelta(partId, event.text.substring(accumulated.length)))
+                            accumulated = event.text
+                        }
+                        terminal = event.type == "done" || event.state == "done"
                     }
-                    if (line.startsWith(":")) continue
-                    if (!line.startsWith("data:")) continue
-                    val value = line.substring(5).removePrefix(" ")
-                    if (data.isNotEmpty()) data.append('\n')
-                    data.append(value)
+                    if (terminal || eof) break
                 }
-                flushEvent()
                 if (!terminal) {
                     throw IOException("网络中断，没收到服务器的最终状态；请不要重复发送")
                 }
             }
         } finally {
-            handle.dispose()
+            handle.cancel()
         }
         emit(StreamChunk.TextEnd(partId))
         emit(StreamChunk.Finish(finishReason = "stop", responseId = requestId, model = params.model.modelId))
+    }.catch { error ->
+        if (error is IOException) runCatching { MateDiagnostics.enqueue(appContext, DiagnosticEvent.CLOUD_CHAT_FAILED) }
+        throw error
     }.flowOn(Dispatchers.IO)
 
     override suspend fun generateText(
@@ -188,6 +180,17 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         )
     }
 
+    // A completion handler runs after a blocking read returns. This child receives
+    // parent cancellation immediately and closes the socket to interrupt that read.
+    private suspend fun cancelCallWithRequest(call: okhttp3.Call) =
+        CoroutineScope(currentCoroutineContext()).launch(Dispatchers.Unconfined, start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                call.cancel()
+            }
+        }
+
     private fun jsonString(value: String): String = buildString {
         append('"')
         value.forEach { ch ->
@@ -203,23 +206,6 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         append('"')
     }
 
-    /** 聊天里能带出去的附件种类；语音按音频上传，服务端按自身能力决定是否处理。 */
-    private data class UploadPayload(val bytes: ByteArray, val fileName: String, val mime: String, val kind: String)
-
-    private fun UIMessagePart.toUploadPayload(): UploadPayload? = when (this) {
-        is UIMessagePart.Image -> decodeSource(url).let { (bytes, mime) ->
-            UploadPayload(bytes, "image-" + bytes.size + guessExt(mime), mime, "image")
-        }
-        is UIMessagePart.Audio -> decodeSource(url).let { (bytes, mime) ->
-            UploadPayload(bytes, "audio-" + bytes.size + guessExt(mime), mime, "audio")
-        }
-        is UIMessagePart.Video -> throw IOException("当前云服务器网关不支持视频附件")
-        is UIMessagePart.Document -> decodeSource(url).let { (bytes, mime) ->
-            UploadPayload(bytes, fileName.ifBlank { "document" + guessExt(mime) }, mime, "file")
-        }
-        else -> null
-    }
-
     // Match gateway/media.py rather than accepting arbitrary MIME.
     private val supportedMediaTypes = setOf(
         "image/jpeg", "image/png", "image/gif", "image/webp",
@@ -230,60 +216,61 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
     )
     private val maxGatewayMediaBytes = 8_000_000
 
-    private fun guessExt(mime: String): String = when {
-        mime.contains("png") -> ".png"
-        mime.contains("jpeg") || mime.contains("jpg") -> ".jpg"
-        mime.contains("webp") -> ".webp"
-        mime.contains("gif") -> ".gif"
-        mime.contains("pdf") -> ".pdf"
-        mime.contains("mpeg") || mime.contains("mp3") -> ".mp3"
-        mime.contains("wav") -> ".wav"
-        mime.contains("m4a") || mime.contains("mp4a") -> ".m4a"
-        else -> ""
-    }
-
-    /** 把 data: / content: / file: 的引用读成字节；读取失败一律抛出，不静默丢弃附件。 */
-    private fun decodeSource(url: String): Pair<ByteArray, String> = try {
-        when {
-            url.startsWith("data:") -> {
-                val header = url.substringAfter("data:").substringBefore(',')
-                val mime = header.substringBefore(';').ifBlank { "application/octet-stream" }
-                val body = url.substringAfter(',')
-                if (body.length > (maxGatewayMediaBytes * 4L / 3 + 16)) {
-                    throw IOException("附件超过云服务器 8MB 限制")
-                }
-                val bytes = if ("base64" in header) {
-                    android.util.Base64.decode(body, android.util.Base64.DEFAULT)
-                } else {
-                    java.net.URLDecoder.decode(body, "UTF-8").toByteArray()
-                }
-                bytes to mime
-            }
-            url.startsWith("content:") || url.startsWith("file:") -> {
-                val parsed = android.net.Uri.parse(url)
-                val resolver = appContext.contentResolver
-                val mime = resolver.getType(parsed) ?: "application/octet-stream"
-                val bytes = resolver.openInputStream(parsed)?.use { input ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        if (output.size().toLong() + count > maxGatewayMediaBytes) {
-                            throw IOException("附件超过云服务器 8MB 限制")
-                        }
-                        output.write(buffer, 0, count)
-                    }
-                    output.toByteArray()
-                } ?: throw IOException("附件读取为空")
-                bytes to mime
-            }
-            else -> throw IOException("暂不支持发送该来源的附件")
+    private suspend fun uploadPart(connection: MateConnection, part: UIMessagePart): String {
+        val url = when (part) {
+            is UIMessagePart.Image -> part.url
+            is UIMessagePart.Audio -> part.url
+            is UIMessagePart.Document -> part.url
+            else -> throw IOException("当前云服务器网关不支持视频附件")
         }
-    } catch (e: IOException) {
-        throw e
-    } catch (e: Exception) {
-        throw IOException("读取附件失败：" + (e.message ?: "未知错误"))
+        if (url.startsWith("data:")) {
+            val comma = url.indexOf(',')
+            if (comma < 0) throw IOException("附件数据格式有误")
+            val header = url.substring(5, comma)
+            val base64 = header.endsWith(";base64", ignoreCase = true)
+            val limit = if (base64) ((maxGatewayMediaBytes + 2) / 3) * 4 else maxGatewayMediaBytes * 3
+            if (url.length - comma - 1 > limit) throw IOException("附件超过云服务器 8MB 限制")
+            val mime = header.substringBefore(';').lowercase()
+            val body = url.substring(comma + 1)
+            val bytes = if (base64) android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+                else java.net.URLDecoder.decode(body.replace("+", "%2B"), "UTF-8").toByteArray()
+            return uploadMedia(connection, bytes.toRequestBody(mime.toMediaType()), mime)
+        }
+        val uri = android.net.Uri.parse(url)
+        if (uri.scheme !in setOf("content", "file")) throw IOException("暂不支持发送该来源的附件")
+        val resolver = appContext.contentResolver
+        val declared = (part as? UIMessagePart.Document)?.mime
+        val fileName = (part as? UIMessagePart.Document)?.fileName ?: uri.lastPathSegment.orEmpty()
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val inferred = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+        val mime = listOf(resolver.getType(uri), declared, inferred).filterNotNull()
+            .map { it.substringBefore(';').trim().lowercase() }
+            .firstOrNull { it != "application/octet-stream" && '*' !in it && it.isNotEmpty() }
+            ?: throw IOException("无法识别附件类型")
+        if (mime !in supportedMediaTypes) throw IOException("云服务器不支持此附件类型：" + mime)
+        // Some document providers expose no size or return a pipe. Stage one bounded
+        // file so OkHttp can send a known Content-Length even for those providers.
+        val staged = File.createTempFile("mate-media-", ".tmp", appContext.cacheDir)
+        try {
+            val input = resolver.openInputStream(uri) ?: throw IOException("无法打开附件")
+            input.use { source ->
+                staged.outputStream().use { target ->
+                    val buffer = ByteArray(64 * 1024)
+                    var size = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        size += count
+                        if (size > maxGatewayMediaBytes) throw IOException("附件超过云服务器 8MB 限制")
+                        target.write(buffer, 0, count)
+                    }
+                }
+            }
+            return uploadMedia(connection, staged.asRequestBody(mime.toMediaType()), mime)
+        } finally {
+            staged.delete()
+        }
     }
 
     /**
@@ -293,20 +280,20 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
      *
      * Reference: cs9527h/dafayu-android gateway/server.py and gateway/media.py.
      */
-    private suspend fun uploadMedia(connection: MateConnection, payload: UploadPayload): String {
-        if (payload.bytes.size !in 8..maxGatewayMediaBytes) {
+    private suspend fun uploadMedia(connection: MateConnection, body: RequestBody, mime: String): String {
+        if (body.contentLength() !in 8L..maxGatewayMediaBytes.toLong()) {
             throw IOException("附件大小不符合云服务器限制（最大 8MB）")
         }
-        if (payload.mime !in supportedMediaTypes) {
-            throw IOException("云服务器不支持此附件类型：" + payload.mime)
+        if (mime !in supportedMediaTypes) {
+            throw IOException("云服务器不支持此附件类型：" + mime)
         }
         val request = Request.Builder()
             .url(connection.baseUrl.trimEnd('/') + "/media")
             .header("Authorization", "Bearer " + connection.token)
-            .post(payload.bytes.toRequestBody(payload.mime.toMediaType()))
+            .post(body)
             .build()
         val call = client.newCall(request)
-        val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
+        val handle = cancelCallWithRequest(call)
         try {
             call.execute().use { response ->
                 if (!response.isSuccessful) {
@@ -338,7 +325,7 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 return id
             }
         } finally {
-            handle.dispose()
+            handle.cancel()
         }
     }
 

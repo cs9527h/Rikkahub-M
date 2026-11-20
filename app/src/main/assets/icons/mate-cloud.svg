@@ -1,4 +1,3 @@
-<svg fill="currentColor" fill-rule="evenodd" height="1em" viewBox="0 0 24 24" width="1em" xmlns="http://www.w3.org/2000/svg">
-    <title>Rikkahub-M cloud server</title>
-    <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4c-2.89 0-5.4 1.64-6.65 4.04A5.99 5.99 0 0 0 6 20h13a4.5 4.5 0 0 0 .35-9.96ZM10 14h4v-2h-4v2Zm0 3h4v-1h-4v1Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <path d="M7.4,18.5H6.7a4.65,4.65 0,0 1,-0.6,-9.26a6.1,6.1 0,0 1,11.8,0.2a4.55,4.55 0,0 1,-0.55,9.06H16.6M9,15.5l3,-3l3,3M12,12.9v7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

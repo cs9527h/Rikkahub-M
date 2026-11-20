@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -207,7 +208,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 CardGroup(title = { Text(stringResource(R.string.mate_settings_group)) }) {
                     item(
                         onClick = { navController.navigate(Screen.MateConnection) },
-                        leadingContent = { CardGroupIcon(HugeIcons.ServerStack01, containerColor = containerColor, contentColor = contentColor) },
+                        leadingContent = { CardGroupIcon(ImageVector.vectorResource(R.drawable.ic_cloud_connection), containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text(stringResource(R.string.mate_connection_title)) },
                         supportingContent = { Text(stringResource(R.string.mate_connection_desc)) },
                     )
