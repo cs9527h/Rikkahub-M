@@ -111,33 +111,8 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
 
         val requestId = UUID.randomUUID().toString()
         val partId = "mate-" + requestId
-        val payload = org.json.JSONObject().apply {
-            put("request_id", requestId)
-            put("message", userText)
-            put("attachments", org.json.JSONArray(attachmentIds))
-            if (isolated && params.sessionId != null) {
-                put("chat_version", 4)
-                put("conversation_id", params.sessionId)
-                if (ordered) {
-                    val context = org.json.JSONArray()
-                    messages.forEach { message ->
-                        val text = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                        if (message.role == MessageRole.TOOL) throw IOException("云服务器暂不支持工具历史")
-                        context.put(org.json.JSONObject().put("role", message.role.name.lowercase()).put("content", text))
-                    }
-                    put("context_messages", context)
-                }
-            }
-        }.toString()
-        require(payload.toByteArray(Charsets.UTF_8).size <= 1_048_576) { "云端聊天上下文超过 1 MiB，请缩短上下文后重试" }
-        val request = Request.Builder()
-            .url(connection.baseUrl.trimEnd('/') + "/chat/stream")
-            .header("Authorization", "Bearer " + connection.token)
-            .header("Accept", "text/event-stream")
-            .header("Cache-Control", "no-store")
-            .apply { if (isolated) header("X-Mate-Chat-Version", "4") }
-            .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
+        val request = cloudChatRequest(connection, requestId, params.sessionId.takeIf { isolated },
+            userText, attachmentIds, messages, ordered)
 
         val call = client.newCall(request)
         emit(StreamChunk.TextStart(partId))
@@ -388,4 +363,44 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         }
     }
 
+}
+
+internal fun cloudChatRequest(
+    connection: MateConnection,
+    requestId: String,
+    conversationId: String?,
+    userText: String,
+    attachmentIds: List<String>,
+    messages: List<UIMessage>,
+    ordered: Boolean,
+): Request {
+    require(!ordered || conversationId != null) { "缺少云端会话标识" }
+    val payload = org.json.JSONObject().apply {
+        put("request_id", requestId)
+        put("message", userText)
+        put("attachments", org.json.JSONArray(attachmentIds))
+        if (conversationId != null) {
+            put("chat_version", 4)
+            put("conversation_id", conversationId)
+            if (ordered) {
+                require(messages.size in 1..512) { "云端最多支持 512 条上下文消息" }
+                val context = org.json.JSONArray()
+                messages.forEach { message ->
+                    if (message.role == MessageRole.TOOL) throw IOException("云服务器暂不支持工具历史")
+                    val text = message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+                    context.put(org.json.JSONObject().put("role", message.role.name.lowercase()).put("content", text))
+                }
+                put("context_messages", context)
+            }
+        }
+    }.toString().toByteArray(Charsets.UTF_8)
+    require(payload.size <= 1_048_576) { "云端聊天上下文超过 1 MiB，请缩短上下文后重试" }
+    return Request.Builder()
+        .url(connection.baseUrl.trimEnd('/') + "/chat/stream")
+        .header("Authorization", "Bearer " + connection.token)
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-store")
+        .apply { if (conversationId != null) header("X-Mate-Chat-Version", "4") }
+        .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+        .build()
 }
