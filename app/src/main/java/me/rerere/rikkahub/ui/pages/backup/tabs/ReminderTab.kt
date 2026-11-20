@@ -51,11 +51,29 @@ fun ReminderTab(vm: BackupVM) {
                 onCheckedChange = {
                     updateConfig(config.copy(autoBackupOnAppLifecycle = it))
                 },
-                headlineContent = { Text("打开及退出时自动备份") },
+                headlineContent = { Text("打开及退出时备份设置") },
                 supportingContent = {
-                    Text("开启后通过已配置的 HTTPS WebDAV 或 S3 备份应用设置、昵称、头像、聊天记录和附件。云端备份含敏感数据，请使用可信服务；服务器设备授权需重新配对。")
+                    Text("仅备份设置、助手配置及云服务器地址信息，不含聊天数据库或附件。云端备份可能包含私人配置，请使用可信的 HTTPS WebDAV 或 S3；设备授权恢复后需重新配对。")
                 },
             )
+            formItem(
+                headlineContent = { Text("聊天记录自动备份") },
+                supportingContent = { Text("聊天数据库较大，单独按周期上传；不包含图片或附件。关闭后仍可手动备份。") },
+                trailingContent = {
+                    CardGroupValue(
+                        if (config.databaseBackupIntervalDays == 0) "关闭"
+                        else "每 " + config.databaseBackupIntervalDays + " 天"
+                    )
+                },
+            ) {
+                ConnectedChoiceButtons(
+                    options = listOf(0, 7, 14, 30),
+                    selected = config.databaseBackupIntervalDays,
+                    onSelect = { updateConfig(config.copy(databaseBackupIntervalDays = it)) },
+                ) { days, selected ->
+                    ConnectedChoiceLabel(if (days == 0) "关闭" else days.toString(), selected)
+                }
+            }
             switchItem(
                 checked = config.enabled,
                 onCheckedChange = { updateConfig(config.copy(enabled = it)) },
