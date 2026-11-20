@@ -25,6 +25,7 @@ object PromptInjectionTransformer : InputMessageTransformer {
             assistant = ctx.assistant,
             modeInjections = ctx.settings.modeInjections,
             lorebooks = ctx.settings.lorebooks,
+            onInjections = ctx.onInjections,
         )
     }
 }
@@ -37,6 +38,7 @@ internal fun transformMessages(
     assistant: Assistant,
     modeInjections: List<PromptInjection.ModeInjection>,
     lorebooks: List<Lorebook>,
+    onInjections: ((Int) -> Unit)? = null,
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -46,6 +48,7 @@ internal fun transformMessages(
         lorebooks = lorebooks,
     )
 
+    onInjections?.invoke(injections.size)
     if (injections.isEmpty()) {
         return messages
     }
@@ -210,17 +213,18 @@ internal fun applyInjections(
  * 按 role 分组后合并内容，返回合并后的消息列表
  */
 private fun createMergedInjectionMessages(injections: List<PromptInjection>): List<UIMessage> {
-    return injections
-        .groupBy { it.role }
-        .map { (role, grouped) ->
-            val mergedContent = grouped.joinToString("\n") { it.content }
-            when (role) {
-                MessageRole.ASSISTANT -> UIMessage.assistant(mergedContent)
-                else -> UIMessage.user(mergedContent)
-            }.copy(
-                isSynthetic = true,
-            )
+    return buildList {
+        var start = 0
+        while (start < injections.size) {
+            val role = injections[start].role
+            require(role != MessageRole.TOOL) { "注入规则不能伪造工具结果" }
+            var end = start + 1
+            while (end < injections.size && injections[end].role == role) end++
+            val content = injections.subList(start, end).joinToString("\n") { it.content }
+            add(UIMessage(role = role, parts = listOf(UIMessagePart.Text(content)), isSynthetic = true))
+            start = end
         }
+    }
 }
 
 /**

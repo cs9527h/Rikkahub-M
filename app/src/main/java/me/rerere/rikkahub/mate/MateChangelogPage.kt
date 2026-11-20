@@ -31,6 +31,10 @@ fun MateChangelogPage() {
                     style = MaterialTheme.typography.titleLarge)
             }
             item {
+                Text("测试构建", style = MaterialTheme.typography.titleMedium)
+                Text("支持 Markdown 和 TXT 模式规则。配对兼容网关后，云端按聊天隔离；记忆中心可读取服务器详情。")
+            }
+            item {
                 Text("0.3.2", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• 通知显示助手名称与头像，不再显示连接类型；取消或失败不再推送完成通知\n" +

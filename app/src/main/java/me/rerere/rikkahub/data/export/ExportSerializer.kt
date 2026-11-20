@@ -25,6 +25,8 @@ data class ExportData(
 interface ExportSerializer<T> {
     val type: String
 
+    val importExtensions: Set<String> get() = setOf("json")
+
     fun export(data: T): ExportData
     fun import(context: Context, uri: Uri): Result<T>
 
@@ -64,6 +66,7 @@ interface ExportSerializer<T> {
 
 object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection> {
     override val type = "mode_injection"
+    override val importExtensions = setOf("json", "md", "txt")
 
     override fun getExportFileName(data: PromptInjection.ModeInjection): String {
         return "${data.name.ifEmpty { type }}.json"
@@ -78,10 +81,19 @@ object ModeInjectionSerializer : ExportSerializer<PromptInjection.ModeInjection>
 
     override fun import(context: Context, uri: Uri): Result<PromptInjection.ModeInjection> {
         return runCatching {
-            val json = readUri(context, uri)
-            // 首先尝试解析为自己的格式
-            tryImportNative(json)
-                ?: throw IllegalArgumentException("Unsupported format")
+            decodeFile(getUriFileName(context, uri), readUri(context, uri))
+        }
+    }
+
+    internal fun decodeFile(name: String?, text: String): PromptInjection.ModeInjection {
+        return when (name?.substringAfterLast('.', "")?.lowercase()) {
+            "md", "txt" -> {
+                val content = text.removePrefix("\uFEFF")
+                require(content.isNotBlank()) { "文件内容为空" }
+                PromptInjection.ModeInjection(name = name.orEmpty().substringBeforeLast('.'), content = content)
+            }
+            null, "json" -> tryImportNative(text) ?: throw IllegalArgumentException("无法解析注入规则")
+            else -> throw IllegalArgumentException("不支持的文件格式")
         }
     }
 

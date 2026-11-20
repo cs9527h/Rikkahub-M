@@ -386,8 +386,7 @@ private fun ChatListNormal(
                             onShare = {
                                 // 默认选中从第一条到这一条
                                 selectionState.start(
-                                    conversation.messageNodes.map { it.id }
-                                        .subList(0, conversation.messageNodes.indexOf(node) + 1)
+                                    conversation.messageNodes.subList(0, index + 1).map { it.id }
                                 )
                             },
                             onUpdate = {
@@ -476,7 +475,7 @@ private fun ChatListNormal(
             // 完成选择
             ChatSelectionToolbar(
                 state = selectionState,
-                allIds = conversation.messageNodes.map { it.id },
+                allIds = if (selectionState.selecting) conversation.messageNodes.map { it.id } else emptyList(),
                 onConfirm = {
                     selectionState.selecting = false
                     if (conversation.messageNodes.any { it.id in selectedItems }) {
@@ -496,8 +495,10 @@ private fun ChatListNormal(
                     selectedItems.clear()
                 },
                 conversation = conversation,
-                selectedMessages = conversation.messageNodes.filter { it.id in selectedItems }
-                    .map { it.currentMessage }
+                selectedMessages = if (showExportSheet) {
+                    val ids = selectedItems.toHashSet()
+                    conversation.messageNodes.mapNotNull { if (it.id in ids) it.currentMessage else null }
+                } else emptyList()
             )
 
             val captureProgress = LocalScrollCaptureInProgress.current

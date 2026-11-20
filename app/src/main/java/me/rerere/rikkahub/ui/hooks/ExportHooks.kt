@@ -119,8 +119,8 @@ class ImporterState<T>(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 val fileName = serializer.getUriFileName(context, uri)
-                if (fileName != null && !fileName.endsWith(".json", ignoreCase = true)) {
-                    return@withContext Result.failure<T>(IllegalArgumentException("Not a JSON file"))
+                if (fileName != null && fileName.substringAfterLast('.', "").lowercase() !in serializer.importExtensions) {
+                    return@withContext Result.failure<T>(IllegalArgumentException("支持的文件格式：" + serializer.importExtensions.joinToString()))
                 }
                 serializer.import(context, uri)
             }

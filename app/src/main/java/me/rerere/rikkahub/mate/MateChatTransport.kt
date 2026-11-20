@@ -42,9 +42,10 @@ internal object MateWire {
         val text = obj.optString("text")
         val error = obj.optString("error")
         require(type in setOf("", "snapshot", "done", "error")) { "未知流事件" }
-        require(state in setOf("running", "done", "failed", "error", "uncertain", "expired")) {
+        require(state in setOf("running", "done", "failed", "error", "uncertain", "expired", "cancelled")) {
             "未知服务器状态"
         }
+        require(type != "done" || state == "done") { "流结束事件与请求状态不一致" }
         require(text.length <= 200_000 && error.length <= 256) { "网关回复长度无效" }
         return MateSnapshot(id, state, type, text, error)
     }
@@ -140,15 +141,7 @@ internal class MateChatTransport {
             val call = http.newCall(request(connection, path, body))
             val handle = currentCoroutineContext().job.invokeOnCompletion { call.cancel() }
             try {
-                call.execute().use { response ->
-                    // 失败时网关会带 error 字段，原样抛给上层做提示，不当成成功
-                    if (!response.isSuccessful) {
-                        val text = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
-                        val err = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
-                        throw IOException("网关 HTTP " + response.code + (if (err.isBlank()) "" else " " + err))
-                    }
-                    boundedJson(response)
-                }
+                call.execute().use { boundedJson(it) }
             } finally {
                 handle.dispose()
             }
@@ -160,6 +153,12 @@ internal class MateChatTransport {
             throw IOException("服务器协议或实例标识发生变化，已拒绝使用旧授权")
         }
         return caps
+    }
+
+    suspend fun cancelRequest(connection: MateConnection, id: String) = withContext(Dispatchers.IO) {
+        val call = http.newCall(request(connection, "/chat/cancel", JSONObject().put("request_id", id)))
+        call.timeout().timeout(3, TimeUnit.SECONDS)
+        call.execute().use { boundedJson(it) }
     }
 
     suspend fun requestResult(connection: MateConnection, id: String): MateSnapshot {

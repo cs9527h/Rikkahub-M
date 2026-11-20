@@ -14,6 +14,15 @@ import kotlin.uuid.Uuid
 
 class PromptInjectionTransformerTest {
 
+    @Test fun depthPreservesAlternatingRolesAndOrder() {
+        val roles = listOf(MessageRole.SYSTEM, MessageRole.ASSISTANT, MessageRole.SYSTEM)
+        val rules = roles.mapIndexed { i, role ->
+            createModeInjection(content = "fixture-$i", role = role, position = InjectionPosition.TOP_OF_CHAT)
+        }
+        val result = applyInjections(listOf(UIMessage.user("question")), mapOf(InjectionPosition.TOP_OF_CHAT to rules))
+        assertEquals(roles + MessageRole.USER, result.map { it.role })
+    }
+
     // region Helper functions
     private fun createAssistant(
         modeInjectionIds: Set<Uuid> = emptySet(),

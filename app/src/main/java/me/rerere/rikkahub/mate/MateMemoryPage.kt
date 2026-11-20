@@ -83,6 +83,7 @@ fun MateMemoryPage() {
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("正在读取记忆…") }
 
+    var detail by remember { mutableStateOf<MemoryItem?>(null) }
     var editing by remember { mutableStateOf<MemoryItem?>(null) }
     var editText by remember { mutableStateOf("") }
     var editTags by remember { mutableStateOf("") }
@@ -130,7 +131,6 @@ fun MateMemoryPage() {
     suspend fun load(reset: Boolean) {
         loading = true
         if (reset) {
-            items.clear()
             selected.clear()
             nextAfter = null
             writeEnabled = null
@@ -147,7 +147,7 @@ fun MateMemoryPage() {
             val caps = transport.capabilities(connection)
             gatewayInfo = "网关版本：" + caps.optString("version", "未知") +
                 " · 长期记忆：" + (if (caps.optBoolean("memory_read", false)) "已接入" else "未接入")
-            if (!caps.optBoolean("memory_read", false)) {
+            if (!caps.optBoolean("memory_browser", caps.optBoolean("memory_read", false)) && !caps.optBoolean("memory_read", false)) {
                 status = "服务端尚未接入长期记忆。需要部署新版网关并验证记忆库及用户归属。"
                 return
             }
@@ -167,9 +167,10 @@ fun MateMemoryPage() {
             if (!body.has("write_enabled") || body.optJSONArray("items") == null) {
                 throw java.io.IOException("memory_list_invalid")
             }
-            writeEnabled = body.optBoolean("write_enabled", false)
+            writeEnabled = body.optBoolean("write_enabled", false) && caps.optBoolean("memory_write", true)
             memoryReady = true
             val list = body.optJSONArray("items") ?: JSONArray()
+            if (reset) items.clear()
             for (index in 0 until list.length()) {
                 val item = list.optJSONObject(index) ?: continue
                 val memory = item.toMemoryItem()
@@ -182,9 +183,6 @@ fun MateMemoryPage() {
         } catch (error: Exception) {
             memoryReady = false
             writeEnabled = null
-            items.clear()
-            selected.clear()
-            nextAfter = null
             status = "读取失败：" + humanizeMemoryError(error.message)
         } finally {
             loading = false
@@ -289,11 +287,11 @@ fun MateMemoryPage() {
                     )
                 }
             }
-            if (showAudit) {
+            if (showAudit && memoryReady) {
                 items(auditItems, key = { it.seq }) { row ->
                     AuditRow(row)
                 }
-            } else {
+            } else if (memoryReady) {
                 items(items, key = { it.id }) { item ->
                     MemoryRow(
                         item = item,
@@ -302,6 +300,17 @@ fun MateMemoryPage() {
                         onToggle = {
                             if (selected.contains(item.id)) selected.remove(item.id) else selected.add(item.id)
                         },
+                        onDetail = { scope.launch {
+                            try {
+                                val paired = connection() ?: throw IllegalStateException("请先配对云服务器")
+                                val id = java.net.URLEncoder.encode(item.id, "UTF-8")
+                                detail = transport.get(paired, "/memory/item?id=$id").toMemoryItem()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                snackbar.showSnackbar(humanizeMemoryError(error.message))
+                            }
+                        } },
                         onEdit = { editing = item; editText = item.content; editTags = item.tags },
                         onDelete = { pendingDelete = item },
                         onRestore = { scope.launch { sendAction(JSONObject().put("action", "restore").put("id", item.id), "已恢复") } },
@@ -314,6 +323,12 @@ fun MateMemoryPage() {
                 }
             }
         }
+    }
+
+    detail?.let { record ->
+        AlertDialog(onDismissRequest = { detail = null }, title = { Text("记忆详情") },
+            text = { Text(record.content) },
+            confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } })
     }
 
     if (bulkConfirm) {
@@ -473,6 +488,7 @@ private fun MemoryRow(
     canWrite: Boolean,
     checked: Boolean,
     onToggle: () -> Unit,
+    onDetail: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onRestore: () -> Unit,
@@ -485,6 +501,7 @@ private fun MemoryRow(
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        TextButton(onClick = onDetail) { Text("详情") }
         if (canWrite) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (item.active) {

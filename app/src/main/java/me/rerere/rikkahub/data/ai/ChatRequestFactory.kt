@@ -166,7 +166,7 @@ class ChatRequestFactory(
             messages = messages,
             tools = turn.tools,
             stream = turn.assistant.streamOutput,
-            retry = turn.settings.retryPolicy(),
+            retry = if (turn.providerSetting.isMateGateway()) RetryPolicy.NONE else turn.settings.retryPolicy(),
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
@@ -224,7 +224,7 @@ class ChatRequestFactory(
         val (requestMessages, params) = buildStep(turn, messages)
         // 压缩指令不经过输入转换器，模板转换器会把其中的花括号当成模板语法
         val result = withRetry(
-            policy = turn.settings.retryPolicy(),
+            policy = if (turn.providerSetting.isMateGateway()) RetryPolicy.NONE else turn.settings.retryPolicy(),
             onRetry = { Log.w(TAG, "Compression request failed, retrying in ${it.delay}", it.cause) },
         ) {
             usageRecorder.wrap(
@@ -234,7 +234,7 @@ class ChatRequestFactory(
                 providerSetting = turn.providerSetting,
                 messages = requestMessages + UIMessage.user(compressPrompt),
                 // 助手的输出上限是给聊天回复定的，结构化摘要写不完会被截断；max_tokens 不属于请求前缀，改了不影响缓存
-                params = params.copy(maxTokens = null),
+                params = params.copy(maxTokens = null, currentUserMessageId = null),
             )
         }
         val summary = result.message.compressionSummaryOrNull()
@@ -249,6 +249,7 @@ class ChatRequestFactory(
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): StepRequest {
         val assistant = turn.assistant
+        var injectionCount = 0
         val requestMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
@@ -284,6 +285,7 @@ class ChatRequestFactory(
             settings = turn.settings,
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
+            onInjections = { injectionCount = it },
         ).expandNotices()
         val params = TextGenerationParams(
             model = turn.model,
@@ -301,6 +303,8 @@ class ChatRequestFactory(
                 addAll(turn.model.customBodies)
             },
             sessionId = turn.conversationId.toString(),
+            currentUserMessageId = messages.lastOrNull { it.role == MessageRole.USER }?.id?.toString(),
+            cloudInjectionCount = injectionCount,
         )
         return StepRequest(requestMessages, params)
     }
