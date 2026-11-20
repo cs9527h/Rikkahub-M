@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -276,12 +278,6 @@ fun MateMemoryPage() {
                     }) {
                         Text(if (showDeleted) "显示正常记忆" else "查看回收站")
                     }
-                    TextButton(enabled = memoryReady && !loading, onClick = {
-                        showAudit = !showAudit
-                        if (showAudit) scope.launch { loadAudit() } else scope.launch { load(true) }
-                    }) {
-                        Text(if (showAudit) "返回记忆" else "操作审计")
-                    }
                     if (memoryReady && writeEnabled == true && !showAudit) {
                         TextButton(onClick = { creating = true }) { Text("新增") }
                     }
@@ -319,9 +315,10 @@ fun MateMemoryPage() {
                 }
             }
             if (showAudit && memoryReady) {
-                items(auditItems, key = { it.seq }) { row ->
-                    AuditRow(row)
-                }
+                item { TextButton(onClick = { showAudit = false; scope.launch { load(true) } }) {
+                    Text("返回记忆")
+                } }
+                items(auditItems, key = { it.seq }) { row -> AuditRow(row) }
             } else if (memoryReady) {
                 items(items, key = { it.id }) { item ->
                     MemoryRow(
@@ -354,9 +351,15 @@ fun MateMemoryPage() {
                     )
                 }
             }
-            if (memoryReady && nextAfter != null) {
+            if (memoryReady && nextAfter != null && !showAudit) {
                 item {
                     TextButton(onClick = { scope.launch { load(false) } }, enabled = !loading) { Text("加载更多") }
+                }
+            }
+            if (memoryReady && !showAudit) {
+                item {
+                    TextButton(onClick = { showAudit = true; scope.launch { loadAudit() } },
+                        enabled = !loading) { Text("查看操作记录") }
                 }
             }
         }
@@ -549,7 +552,11 @@ private fun MemoryRow(
     onDelete: () -> Unit,
     onRestore: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().padding(12.dp)) {
         Text(item.content, style = MaterialTheme.typography.bodyMedium)
         Text(
             "#" + item.id + " · " + item.type + " · 重要度 " + item.importance +
@@ -568,6 +575,7 @@ private fun MemoryRow(
                 if (item.active) TextButton(onClick = onDelete) { Text("删除") } else TextButton(onClick = onRestore) { Text("恢复") }
             }
         }
+    }
     }
 }
 
