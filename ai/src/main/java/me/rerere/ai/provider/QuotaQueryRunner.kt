@@ -11,6 +11,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 private val TEMPLATE_VARIABLE = Regex("""\{\{\s*(\w+)\s*\}\}""")
 
@@ -20,6 +22,15 @@ fun renderQuotaTemplate(template: String, variable: (String) -> String?): String
         val name = match.groupValues[1]
         variable(name) ?: throw IllegalArgumentException("Unknown variable {{$name}}")
     }
+
+/** Only change the display value; never change the provider's quota or request. */
+internal fun formatQuotaValue(rawValue: String, query: QuotaQuery): String {
+    val amount = rawValue.toBigDecimalOrNull() ?: return rawValue
+    val divisor = query.displayDivisor.toBigDecimalOrNull()
+        ?.takeIf { it > BigDecimal.ZERO } ?: return rawValue
+    val converted = amount.divide(divisor, 2, RoundingMode.HALF_UP).toPlainString()
+    return query.currencySymbol.trim() + converted
+}
 
 /**
  * 执行 API Key 类提供商的自定义额度查询，没有开启时返回 null。
@@ -58,5 +69,5 @@ internal suspend fun OkHttpClient.runQuotaQuery(
         }
         .build()
     val value = json.parseToJsonElement(fetchBody(request)).jsonObject.getByKey(query.resultPath)
-    ProviderQuota.Balance(value.toDoubleOrNull()?.let { "%.2f".format(it) } ?: value)
+    ProviderQuota.Balance(formatQuotaValue(value, query))
 }
