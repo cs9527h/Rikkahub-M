@@ -114,50 +114,29 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                 }
                 val source = response.body?.source() ?: throw IOException("服务器没有返回内容")
 
-                var accumulated = 0
+                val parser = MateSseParser()
+                var accumulated = ""
                 var terminal = false
-                val data = StringBuilder()
-
-                suspend fun flushEvent() {
-                    if (data.isEmpty()) return
-                    val snapshot = data.toString()
-                    data.clear()
-                    val obj = runCatching { json.parseToJsonElement(snapshot).jsonObject }
-                        .getOrElse { throw IOException("服务器返回了无法解析的数据") }
-                    val id = obj["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (id != requestId) throw IOException("网关请求标识不匹配，已停止接收")
-                    val type = obj["type"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val state = obj["state"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val text = obj["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    val error = obj["error"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                    if (text.length > 200_000) throw IOException("服务器回复过长")
-                    when {
-                        type == "error" || state == "failed" || state == "expired" ->
-                            throw IOException(error.ifBlank { "服务器处理这条消息失败" })
-                        state == "uncertain" ->
-                            throw IOException("网络中断，服务器状态未知；这条消息不会被自动重发")
-                    }
-                    if (text.length > accumulated) {
-                        emit(StreamChunk.TextDelta(partId, text.substring(accumulated)))
-                        accumulated = text.length
-                    }
-                    if (type == "done" || state == "done") terminal = true
-                }
-
                 while (true) {
-                    val line = source.readUtf8Line() ?: break
-                    if (line.isEmpty()) {
-                        flushEvent()
-                        if (terminal) break
-                        continue
+                    val eof = source.exhausted()
+                    val line = if (eof) "" else source.readUtf8LineStrict(800_000L)
+                    val payloadText = parser.line(line)
+                    if (payloadText != null) {
+                        val event = MateWire.parseSnapshot(payloadText, requestId)
+                        if (event.type == "error" || event.state in setOf("error", "failed", "expired", "uncertain")) {
+                            throw IOException(event.error.ifBlank { "服务器未完成这条消息，请检查会话状态" })
+                        }
+                        if (!event.text.startsWith(accumulated)) {
+                            throw IOException("服务器回复与已接收的内容不一致")
+                        }
+                        if (event.text.length > accumulated.length) {
+                            emit(StreamChunk.TextDelta(partId, event.text.substring(accumulated.length)))
+                            accumulated = event.text
+                        }
+                        terminal = event.type == "done" || event.state == "done"
                     }
-                    if (line.startsWith(":")) continue
-                    if (!line.startsWith("data:")) continue
-                    val value = line.substring(5).removePrefix(" ")
-                    if (data.isNotEmpty()) data.append('\n')
-                    data.append(value)
+                    if (terminal || eof) break
                 }
-                flushEvent()
                 if (!terminal) {
                     throw IOException("网络中断，没收到服务器的最终状态；请不要重复发送")
                 }

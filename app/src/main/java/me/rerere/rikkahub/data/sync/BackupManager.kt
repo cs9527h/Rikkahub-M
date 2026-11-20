@@ -9,6 +9,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
@@ -49,7 +51,9 @@ class BackupManager(
             val settings = settingsStore.awaitLoaded()
             ZipOutputStream(FileOutputStream(archive)).use { zip ->
                 zip.putNextEntry(ZipEntry("settings.json"))
-                val settingsJson = json.encodeSettings(settings, settingsStore.launchCountFlow.first())
+                val settingsJson = portableSettings(json.parseToJsonElement(
+                    json.encodeSettings(settings, settingsStore.launchCountFlow.first())
+                ).jsonObject).toString()
                 zip.write(settingsJson.toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
                 if (includeDatabase) {
@@ -175,6 +179,35 @@ class BackupManager(
 
         // 启动次数不在 Settings 里，备份文件里仍放在 settings.json 的这个字段，和旧备份保持一致
         private const val LAUNCH_COUNT_KEY = "launchCount"
+
+        // Apply only on archive export. Restore staging still accepts older archive formats.
+        internal fun portableSettings(settings: JsonObject): JsonObject {
+            val credentialFields = setOf(
+                "apiKey", "accessKeyId", "secretAccessKey", "password", "proxyPassword",
+                "privateKey", "passphrase", "credential", "oauth", "customHeaders", "headers",
+            )
+            fun clean(value: JsonElement): JsonElement = when (value) {
+                is JsonArray -> JsonArray(value.map(::clean))
+                is JsonObject -> JsonObject(value.filterKeys { it !in credentialFields }.mapValues { (key, child) ->
+                    // Tool schemas and user-authored JSON are data, not credential settings.
+                    if (key in setOf("inputSchema", "parameters", "customBodies")) child else clean(child)
+                })
+                else -> value
+            }
+            val connections = setOf(
+                "webDavConfig", "s3Config", "uploadS3Config", "providers", "searchServices",
+                "mediaGenerationProviders", "ttsProviders", "asrProviders", "networkSetting", "mcpServers",
+            )
+            return JsonObject(settings.mapValues { (key, value) ->
+                when (key) {
+                    "webServerEnabled" -> JsonPrimitive(false)
+                    "webServerAccessPassword" -> JsonPrimitive("")
+                    "assistants" -> JsonArray((value as JsonArray).map { JsonObject(it.jsonObject - "customHeaders") })
+                    in connections -> clean(value)
+                    else -> value
+                }
+            })
+        }
 
         private fun Json.encodeSettings(settings: Settings, launchCount: Int): String {
             val fields = encodeToJsonElement(settings).jsonObject + (LAUNCH_COUNT_KEY to JsonPrimitive(launchCount))
