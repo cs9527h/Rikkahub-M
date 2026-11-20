@@ -31,7 +31,16 @@ fun MateChangelogPage() {
                     style = MaterialTheme.typography.titleLarge)
             }
             item {
-                Text("0.3.0", style = MaterialTheme.typography.titleMedium)
+                Text("0.3.1", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "• 记忆中心先核对服务器真实能力：未接入记忆库、未配置浏览器、只读模式各有独立提示\n" +
+                    "• 读取失败不再被误判成「未开启记忆编辑」，404/401/403/503 都有中文说明\n" +
+                    "• 云服务器图标改为云加连接点，去掉上传箭头，深浅色下统一配色与尺寸",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            item {
+                Text("2026.11.20 · 0.3.0", style = MaterialTheme.typography.titleMedium)
                 Text("统一云服务器图标；文件和图片逐个上传；校验流式回复；恢复新备份后需重新授权连接。")
             }
             item {
