@@ -1933,5 +1933,4 @@
   <string name="mate_memory_title">Memory center</string>
   <string name="mate_memory_desc">Browse, search, edit and restore memory</string>
   <string name="mate_connection_desc">Pair, check, re-authorize</string>
-    <string name="mode_rule_system_role">System</string>
 </resources>
