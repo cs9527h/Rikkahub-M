@@ -83,8 +83,8 @@ class RikkaHubApp : Application() {
         }
         this.createNotificationChannel()
 
-        // 旧的 Mate 独立聊天库已经废弃：先备份，再从数据库目录移除，避免残留与误读
-        retireLegacyMateChatDatabase()
+        // Retired Mate databases and prior local backups are user data, not dead code.
+        // Do not open them for chat, but never delete them implicitly during an upgrade.
 
         // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
@@ -199,17 +199,6 @@ class RikkaHubApp : Application() {
                 Log.e(TAG, "checkWorkspaceIntegrity failed", it)
             }
         }
-    }
-
-    /** Legacy standalone Mate database is obsolete; the native Rikkahub-M DB is untouched. */
-    private fun retireLegacyMateChatDatabase() {
-        runCatching {
-            val dbDir = File(dataDir, "databases")
-            listOf("", "-wal", "-shm").forEach { suffix ->
-                File(dbDir, "mate_liyu_v1.db$suffix").delete()
-            }
-            File(filesDir, "legacy-mate-backup").deleteRecursively()
-        }.onFailure { Log.w(TAG, "retire legacy mate files failed", it) }
     }
 
     private fun deleteTempFiles() {
