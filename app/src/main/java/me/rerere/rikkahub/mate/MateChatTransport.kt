@@ -99,7 +99,14 @@ internal class MateChatTransport {
     }
 
     private fun boundedJson(response: Response, maxBytes: Int = 256_000): JSONObject {
-        if (!response.isSuccessful) throw IOException("网关 HTTP " + response.code)
+        if (!response.isSuccessful) {
+            // Peek only a bounded response and accept known-safe error identifiers.
+            // Never show upstream HTML, tokens or arbitrary private response text.
+            val code = runCatching {
+                JSONObject(response.peekBody(1024L).string()).optString("error")
+            }.getOrDefault("").takeIf { Regex("[a-z_]{1,64}").matches(it) }
+            throw IOException("网关 HTTP " + response.code + (if (code == null) "" else " " + code))
+        }
         val type = response.header("Content-Type", "").orEmpty()
         if (!type.startsWith("application/json")) throw IOException("网关响应格式无效")
         val input = response.body?.byteStream() ?: throw IOException("网关未返回数据")
