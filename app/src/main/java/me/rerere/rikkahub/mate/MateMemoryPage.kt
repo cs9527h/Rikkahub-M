@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -45,6 +46,14 @@ import org.json.JSONObject
  * 所有数据都来自网关 /memory 接口：写入关闭时只读展示，并对每个写操作给出服务器原话的错误，
  * 不做本地假成功。删除是软删除，可恢复；列表可切换显示回收站。
  */
+private data class AuditItem(
+    val seq: Long,
+    val memoryId: String,
+    val action: String,
+    val actor: String,
+    val at: Long,
+)
+
 private data class MemoryItem(
     val id: String,
     val content: String,
@@ -76,8 +85,43 @@ fun MateMemoryPage() {
     var editTags by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<MemoryItem?>(null) }
     var creating by remember { mutableStateOf(false) }
+    val selected = remember { mutableStateListOf<String>() }
+    var bulkConfirm by remember { mutableStateOf(false) }
+    var showAudit by remember { mutableStateOf(false) }
+    val auditItems = remember { mutableStateListOf<AuditItem>() }
 
     suspend fun connection(): MateConnection? = withContext(Dispatchers.IO) { store.load() }
+
+    suspend fun loadAudit() {
+        loading = true
+        try {
+            val connection = connection() ?: run {
+                status = "还没有连接云服务器，请先在「云服务器」完成配对"
+                auditItems.clear()
+                return
+            }
+            auditItems.clear()
+            val body = transport.get(connection, "/memory/audit?limit=40")
+            val list = body.optJSONArray("items") ?: JSONArray()
+            for (index in 0 until list.length()) {
+                val row = list.optJSONObject(index) ?: continue
+                auditItems += AuditItem(
+                    seq = row.optLong("seq"),
+                    memoryId = row.optString("memory_id"),
+                    action = row.optString("action"),
+                    actor = row.optString("actor"),
+                    at = row.optLong("at"),
+                )
+            }
+            status = if (auditItems.isEmpty()) "还没有操作记录" else "共 " + auditItems.size + " 条操作记录"
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            status = "读取审计失败：" + humanizeMemoryError(error.message)
+        } finally {
+            loading = false
+        }
+    }
 
     suspend fun load(reset: Boolean) {
         loading = true
@@ -108,7 +152,7 @@ fun MateMemoryPage() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            status = "读取失败：" + (error.message ?: "未知错误")
+            status = "读取失败：" + humanizeMemoryError(error.message)
         } finally {
             loading = false
         }
@@ -125,7 +169,7 @@ fun MateMemoryPage() {
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            snackbar.showSnackbar(error.message ?: "操作失败")
+            snackbar.showSnackbar(humanizeMemoryError(error.message))
         }
     }
 
@@ -165,8 +209,18 @@ fun MateMemoryPage() {
                     Button(onClick = { scope.launch { load(true) } }, enabled = !loading) {
                         Text(if (loading) "读取中…" else "搜索")
                     }
-                    TextButton(enabled = !loading, onClick = { showDeleted = !showDeleted; scope.launch { load(true) } }) {
+                    TextButton(enabled = !loading, onClick = {
+                        showDeleted = !showDeleted
+                        showAudit = false
+                        scope.launch { load(true) }
+                    }) {
                         Text(if (showDeleted) "显示正常记忆" else "查看回收站")
+                    }
+                    TextButton(enabled = !loading, onClick = {
+                        showAudit = !showAudit
+                        if (showAudit) scope.launch { loadAudit() } else scope.launch { load(true) }
+                    }) {
+                        Text(if (showAudit) "返回记忆" else "操作审计")
                     }
                     if (writeEnabled) {
                         TextButton(onClick = { creating = true }) { Text("新增") }
@@ -175,6 +229,15 @@ fun MateMemoryPage() {
             }
             item {
                 Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (writeEnabled && !showAudit && selected.isNotEmpty()) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("已选 " + selected.size + " 条", style = MaterialTheme.typography.labelLarge)
+                        TextButton(enabled = !loading, onClick = { selected.clear() }) { Text("取消选择") }
+                        TextButton(enabled = !loading, onClick = { bulkConfirm = true }) { Text("删除所选") }
+                    }
+                }
             }
             if (!writeEnabled) {
                 item {
@@ -185,14 +248,24 @@ fun MateMemoryPage() {
                     )
                 }
             }
-            items(items, key = { it.id }) { item ->
-                MemoryRow(
-                    item = item,
-                    canWrite = writeEnabled,
-                    onEdit = { editing = item; editText = item.content; editTags = item.tags },
-                    onDelete = { pendingDelete = item },
-                    onRestore = { scope.launch { sendAction(JSONObject().put("action", "restore").put("id", item.id), "已恢复") } },
-                )
+            if (showAudit) {
+                items(auditItems, key = { it.seq }) { row ->
+                    AuditRow(row)
+                }
+            } else {
+                items(items, key = { it.id }) { item ->
+                    MemoryRow(
+                        item = item,
+                        canWrite = writeEnabled,
+                        checked = selected.contains(item.id),
+                        onToggle = {
+                            if (selected.contains(item.id)) selected.remove(item.id) else selected.add(item.id)
+                        },
+                        onEdit = { editing = item; editText = item.content; editTags = item.tags },
+                        onDelete = { pendingDelete = item },
+                        onRestore = { scope.launch { sendAction(JSONObject().put("action", "restore").put("id", item.id), "已恢复") } },
+                    )
+                }
             }
             if (nextAfter != null) {
                 item {
@@ -200,6 +273,27 @@ fun MateMemoryPage() {
                 }
             }
         }
+    }
+
+    if (bulkConfirm) {
+        val ids = selected.toList()
+        AlertDialog(
+            onDismissRequest = { bulkConfirm = false },
+            title = { Text("删除选中的 " + ids.size + " 条记忆？") },
+            text = { Text("服务器会一次性软删除；任何一条失败都会整体回滚，不会出现删一半。删除后可在回收站恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    bulkConfirm = false
+                    val body = JSONObject()
+                        .put("action", "delete")
+                        .put("ids", JSONArray(ids))
+                        .put("confirm", true)
+                    selected.clear()
+                    scope.launch { sendAction(body, "已批量删除 " + ids.size + " 条") }
+                }) { Text("全部删除") }
+            },
+            dismissButton = { TextButton(onClick = { bulkConfirm = false }) { Text("取消") } },
+        )
     }
 
     editing?.let { item ->
@@ -336,6 +430,8 @@ private fun JSONObject.toMemoryItem(): MemoryItem {
 private fun MemoryRow(
     item: MemoryItem,
     canWrite: Boolean,
+    checked: Boolean,
+    onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onRestore: () -> Unit,
@@ -350,9 +446,55 @@ private fun MemoryRow(
         )
         if (canWrite) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (item.active) {
+                    Checkbox(checked = checked, onCheckedChange = { onToggle() })
+                }
                 TextButton(onClick = onEdit) { Text("编辑") }
                 if (item.active) TextButton(onClick = onDelete) { Text("删除") } else TextButton(onClick = onRestore) { Text("恢复") }
             }
         }
     }
+}
+
+@Composable
+private fun AuditRow(row: AuditItem) {
+    val action = when (row.action) {
+        "create" -> "新增"
+        "update" -> "修改"
+        "delete" -> "删除"
+        "restore" -> "恢复"
+        else -> row.action
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
+        Text(action + " · 记忆 #" + row.memoryId, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(row.at * 1000)) + " · 设备 " + row.actor.takeLast(6),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 把网关错误码翻成人话；认不出的原样显示，绝不假装成功。 */
+internal fun humanizeMemoryError(raw: String?): String {
+    val text = raw.orEmpty()
+    val table = mapOf(
+        "memory_write_disabled" to "服务器未开启记忆编辑（APP_MEMORY_WRITE_ENABLED=false）",
+        "memory_not_configured" to "服务器还没配置记忆库路径",
+        "memory_unavailable" to "服务器记忆库暂时打不开，请稍后再试",
+        "memory_not_found" to "这条记忆在服务器上已不存在",
+        "memory_changed_elsewhere" to "另一端已经改过这条记忆，请重新读取后再编辑",
+        "memory_rate_limited" to "操作太频繁，请稍后再试",
+        "confirmation_required" to "服务器要求二次确认（confirm）",
+        "nothing_to_update" to "没有需要保存的改动",
+        "invalid_memory_type" to "记忆类型不合法",
+        "invalid_memory_ids" to "要删除的记忆列表不合法",
+        "invalid_importance" to "重要度必须是 0~1 之间的数字",
+        "invalid_memory_query" to "查询条件不合法",
+        "ambiguous_memory_index_owner" to "这条记忆的索引归属不明确，已拒绝删除以防误删他人内容",
+        "device_authorization_required" to "这台设备还没有通过服务器授权",
+    )
+    table.forEach { (code, message) -> if (text.contains(code)) return message }
+    return if (text.isBlank()) "操作失败，服务器没有返回原因" else text
 }
