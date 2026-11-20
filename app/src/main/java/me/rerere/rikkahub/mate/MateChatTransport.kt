@@ -45,6 +45,7 @@ internal object MateWire {
         require(state in setOf("running", "done", "failed", "error", "uncertain", "expired")) {
             "未知服务器状态"
         }
+        require(type != "done" || state == "done") { "流结束事件与请求状态不一致" }
         require(text.length <= 200_000 && error.length <= 256) { "网关回复长度无效" }
         return MateSnapshot(id, state, type, text, error)
     }
