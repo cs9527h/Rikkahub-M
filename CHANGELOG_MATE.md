@@ -1,3 +1,11 @@
+## 0.3.3-preview（测试预览版，未真机验收）
+
+- 云聊天对齐网关 0.7.2：chat_version 4、conversation_id/request_id、能力协商、取消与断线恢复、409 中文提示。
+- `.md` / `.txt` 规则导入修复（不再报 Not a JSON file），注入保序与 SYSTEM 角色，云端规则经 AstrBot 插件真实注入系统提示词。
+- 记忆详情/编辑/软删/恢复/审计按能力显示；服务端对 history importance>1 读取归一（保留原值）。
+- 会话列表切片与导出路径减负；备份恢复模拟器用例纳入 CI；新增升级自检与通用包校验。
+- 仅生成签名通用 APK，包名 `com.rikkahub.mate`，versionCode 14；真机验收未完成，不作为稳定版发布。
+
 # Mate · 更新日志
 
 ## 0.3.2 — 通知身份、文案精简与性能基线（2026-11-20）
