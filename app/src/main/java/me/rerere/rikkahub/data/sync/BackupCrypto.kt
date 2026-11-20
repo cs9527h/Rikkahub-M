@@ -59,8 +59,6 @@ object BackupCrypto {
         } catch (e: Throwable) {
             output.delete()
             throw e
-        } finally {
-            key.destroy()
         }
     }
 
@@ -85,8 +83,6 @@ object BackupCrypto {
             } catch (e: Throwable) {
                 output.delete()
                 throw IllegalStateException("备份口令错误或文件已损坏", e)
-            } finally {
-                key.destroy()
             }
         }
     }
