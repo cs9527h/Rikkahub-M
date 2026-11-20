@@ -201,6 +201,16 @@ fun MateConnectionPage() {
                     val instance = paired?.instanceId.orEmpty()
                     var enabled by remember(instance) { mutableStateOf(MateDiagnostics.allowed(context, instance)) }
                     Column {
+                        val turnKey = "turn_" + instance
+                        var summary by remember(instance) { mutableStateOf(diagnosticPrefs.getString(turnKey, "").orEmpty()) }
+                        androidx.compose.runtime.DisposableEffect(instance) {
+                            val observer = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+                                if (key == turnKey) summary = prefs.getString(key, "").orEmpty()
+                            }
+                            diagnosticPrefs.registerOnSharedPreferenceChangeListener(observer)
+                            onDispose { diagnosticPrefs.unregisterOnSharedPreferenceChangeListener(observer) }
+                        }
+                        if (summary.isNotBlank()) Text(summary)
                         Text("自动诊断", style = MaterialTheme.typography.titleMedium)
                         Text("允许向当前云服务器发送版本、Android 版本和错误类别。聊天正文、设备令牌和异常原文不会上传。")
                         androidx.compose.material3.Switch(checked = enabled, onCheckedChange = {

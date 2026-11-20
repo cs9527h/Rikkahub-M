@@ -249,6 +249,7 @@ class ChatRequestFactory(
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): StepRequest {
         val assistant = turn.assistant
+        var injectionCount = 0
         val requestMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
@@ -284,6 +285,7 @@ class ChatRequestFactory(
             settings = turn.settings,
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
+            onInjections = { injectionCount = it },
         ).expandNotices()
         val params = TextGenerationParams(
             model = turn.model,
@@ -302,10 +304,7 @@ class ChatRequestFactory(
             },
             sessionId = turn.conversationId.toString(),
             currentUserMessageId = messages.lastOrNull { it.role == MessageRole.USER }?.id?.toString(),
-            requiresOrderedContext = turn.providerSetting.isMateGateway() && (
-                turn.settings.modeInjections.any { it.enabled && it.id in assistant.modeInjectionIds } ||
-                    turn.settings.lorebooks.any { it.enabled && it.id in assistant.lorebookIds }
-                ),
+            cloudInjectionCount = injectionCount,
         )
         return StepRequest(requestMessages, params)
     }

@@ -79,7 +79,10 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
         val versions = capabilities.optJSONArray("chat_versions")
         val isolated = versions != null && (0 until versions.length()).any { versions.optInt(it) == 4 }
         val ordered = isolated && capabilities.optBoolean("ordered_context_v1")
-        if (params.requiresOrderedContext && !ordered) {
+        val diagnosticKey = "turn_" + connection.instanceId
+        val prefs = MateDiagnostics.preferences(appContext)
+        if (params.cloudInjectionCount > 0 && !ordered) {
+            prefs.edit().putString(diagnosticKey, "云服务器未支持本次注入，已停止发送").apply()
             throw IOException("当前云服务器未启用有序提示词协议，本次注入未发送")
         }
         val lastUser = messages.lastOrNull {
@@ -152,6 +155,9 @@ class MateChatProvider(context: Context) : Provider<ProviderSetting.OpenAI> {
                     } else "发送失败，网关返回 HTTP " + response.code
                     throw IOException(reason)
                 }
+                val summary = if (ordered) "网关已接收有序上下文，匹配规则 " + params.cloudInjectionCount + " 条"
+                    else if (isolated) "独立会话，未发送注入规则" else "旧版网关使用共享会话，未发送注入规则"
+                prefs.edit().putString(diagnosticKey, summary).apply()
                 val contentType = response.header("Content-Type", "").orEmpty()
                 if (!contentType.startsWith("text/event-stream")) {
                     throw IOException("服务器返回的不是流式响应")

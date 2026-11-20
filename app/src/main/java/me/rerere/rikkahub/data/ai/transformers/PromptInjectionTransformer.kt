@@ -25,6 +25,7 @@ object PromptInjectionTransformer : InputMessageTransformer {
             assistant = ctx.assistant,
             modeInjections = ctx.settings.modeInjections,
             lorebooks = ctx.settings.lorebooks,
+            onInjections = ctx.onInjections,
         )
     }
 }
@@ -37,6 +38,7 @@ internal fun transformMessages(
     assistant: Assistant,
     modeInjections: List<PromptInjection.ModeInjection>,
     lorebooks: List<Lorebook>,
+    onInjections: ((Int) -> Unit)? = null,
 ): List<UIMessage> {
     // 收集所有需要注入的内容
     val injections = collectInjections(
@@ -46,6 +48,7 @@ internal fun transformMessages(
         lorebooks = lorebooks,
     )
 
+    onInjections?.invoke(injections.size)
     if (injections.isEmpty()) {
         return messages
     }
