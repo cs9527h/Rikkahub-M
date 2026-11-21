@@ -91,7 +91,7 @@ jobs:
       - name: Unit tests and Kotlin build
         run: |
           chmod +x ./gradlew
-          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest :app:lintGithubDebug :app:assembleGithubDebug --stacktrace --no-daemon
+          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest :app:assembleGithubDebug --stacktrace --no-daemon
       - name: Upload test results for independently counted evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -131,7 +131,7 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: false
-          script: ./gradlew :app:connectedGithubDebugAndroidTest --stacktrace --no-daemon
+          script: bash scripts/run-connected-verification.sh
       - name: Upload full instrumented results and generated schemas
         if: always()
         uses: actions/upload-artifact@v4
@@ -141,6 +141,18 @@ jobs:
             app/build/outputs/androidTest-results/**
             app/build/reports/androidTests/**
             app/schemas/**
+            evidence/long-chat-database-perf.log
+          if-no-files-found: warn
+
+      - name: Android Lint (required, independent of preceding test result)
+        if: ${{ !cancelled() }}
+        run: ./gradlew :app:lintGithubDebug --stacktrace --no-daemon
+      - name: Upload full lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Standalone-lint-results
+          path: app/build/reports/lint-results*
           if-no-files-found: warn
 
   android-smoke:

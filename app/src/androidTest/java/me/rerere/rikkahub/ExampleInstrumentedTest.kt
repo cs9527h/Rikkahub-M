@@ -17,6 +17,7 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("me.rerere.rikkahub", appContext.packageName)
+        val expectedPackage = if (BuildConfig.DEBUG) "com.rikkahub.mate.debug" else "com.rikkahub.mate"
+        assertEquals(expectedPackage, appContext.packageName)
     }
 }

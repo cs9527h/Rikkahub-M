@@ -28,6 +28,8 @@ jobs:
     name: Build signed Rikkahub-M APKs
     runs-on: ubuntu-latest
     timeout-minutes: 70
+    outputs:
+      signed_apk_ready: ${{ steps.signed_apk_upload.outcome == 'success' }}
     env:
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
     steps:
@@ -102,7 +104,7 @@ jobs:
       - name: Unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest :app:lintGithubDebug --stacktrace --no-daemon
+          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest --stacktrace --no-daemon
       - name: Upload unit and static verification reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,7 +125,7 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: false
-          script: ./gradlew :app:connectedGithubDebugAndroidTest --stacktrace --no-daemon
+          script: bash scripts/run-connected-verification.sh
       - name: Upload instrumented verification reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -133,6 +135,7 @@ jobs:
             app/build/outputs/androidTest-results/**
             app/build/reports/androidTests/**
             app/schemas/**
+            evidence/long-chat-database-perf.log
           if-no-files-found: warn
       - name: Build signed release APKs
         run: ./gradlew :app:assembleGithubRelease --stacktrace --no-daemon
@@ -181,6 +184,7 @@ jobs:
           ls -lh dist
           cat dist/SHA256SUMS.txt
       - name: Upload verified APKs
+        id: signed_apk_upload
         uses: actions/upload-artifact@v4
         with:
           name: Rikkahub-M-signed-apk
@@ -191,9 +195,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Android Lint (required; never ignored for publication)
+        if: ${{ !cancelled() }}
+        run: ./gradlew :app:lintGithubDebug --stacktrace --no-daemon
+      - name: Upload full lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release-lint-results
+          path: app/build/reports/lint-results*
+          if-no-files-found: warn
+
   upgrade:
     name: Verify signed upgrade from 0.2.4
     needs: build
+    # A verified candidate can be tested even if lint is red; publish still requires build SUCCESS.
+    if: always() && needs.build.outputs.signed_apk_ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -228,7 +245,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [build, upgrade]
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/master'
+    if: needs.build.result == 'success' && needs.upgrade.result == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: write

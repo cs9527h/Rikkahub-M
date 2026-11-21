@@ -22,6 +22,9 @@ class WorkflowContractsTest(unittest.TestCase):
         self.assertIsNotNone(needs)
         self.assertEqual({"build", "upgrade"}, {value.strip() for value in needs[1].split(",")})
         self.assertNotIn("continue-on-error:", RELEASE)
+        self.assertIn("needs.build.result == 'success'", publish)
+        self.assertIn("needs.upgrade.result == 'success'", publish)
+        self.assertNotIn("always()", publish)
         self.assertIn("github.ref == 'refs/heads/master'", publish)
         self.assertIn("inputs.publish_release == true", publish)
         self.assertIn("github.event_name == 'workflow_dispatch'", publish)
@@ -49,8 +52,10 @@ class WorkflowContractsTest(unittest.TestCase):
     def test_full_instrumentation_static_analysis_and_failure_reports_are_wired(self):
         for workflow in (RELEASE, PREVIEW):
             self.assertIn(":app:lintGithubDebug", workflow)
-            self.assertIn(":app:connectedGithubDebugAndroidTest", workflow)
-            app_test_commands = [line for line in workflow.splitlines() if ":app:connectedGithubDebugAndroidTest" in line]
+            self.assertIn("script: bash scripts/run-connected-verification.sh", workflow)
+            wrapper = (ROOT / "scripts/run-connected-verification.sh").read_text()
+            self.assertIn(":app:connectedGithubDebugAndroidTest", wrapper)
+            app_test_commands = [line for line in wrapper.splitlines() if ":app:connectedGithubDebugAndroidTest" in line]
             for command in app_test_commands:
                 self.assertNotIn("testInstrumentationRunnerArguments.class=", command)
             self.assertIn("app/build/outputs/androidTest-results/**", workflow)
@@ -58,6 +63,16 @@ class WorkflowContractsTest(unittest.TestCase):
             self.assertIn("app/schemas/**", workflow)
             self.assertIn("if: always()", workflow)
         self.assertNotIn("continue-on-error:", PREVIEW)
+
+    def test_signed_upgrade_uses_release_package_artifacts_and_data_contract(self):
+        script = (ROOT / "scripts/compare-installed-screens.sh").read_text()
+        self.assertIn("signed) candidate_dir=dist; candidate_package=com.rikkahub.mate", script)
+        self.assertIn("python3 scripts/upgrade_data_contract.py prepare", script)
+        self.assertIn("python3 scripts/upgrade_data_contract.py verify --version-code 16", script)
+        self.assertIn('capture "$candidate_package" candidate', script)
+        self.assertNotIn('capture com.rikkahub.mate.debug candidate', script)
+        self.assertIn('ERROR: $label($theme) window not confirmed', script)
+        self.assertNotIn('WARN: $label($theme) window not confirmed', script)
 
     def test_workflow_secrets_are_environment_values_not_interpolated_shell(self):
         for workflow in (RELEASE, PREVIEW):
