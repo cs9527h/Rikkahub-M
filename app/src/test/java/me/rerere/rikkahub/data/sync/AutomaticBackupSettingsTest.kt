@@ -19,6 +19,7 @@ class AutomaticBackupSettingsTest {
         assertEquals(1234L, config.lastBackupTime)
         assertEquals(6, config.autoSettingsIntervalHours)
         assertEquals(72, config.autoChatsIntervalHours)
+        assertEquals(0, config.autoRetainVersions)
         assertTrue(config.autoBackupStates.isEmpty())
     }
 

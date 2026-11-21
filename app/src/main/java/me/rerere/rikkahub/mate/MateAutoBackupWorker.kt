@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.mate
 
 import android.content.Context
+import android.util.Log
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -103,6 +104,19 @@ class MateAutoBackupWorker(
                                     if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
                                     lastAutoBackupError = if (fingerprint == null) config.lastAutoBackupError else "",
                                 ))
+                            }
+                            if (fingerprint != null) {
+                                val keep = settings.backupReminderConfig.autoRetainVersions
+                                if (keep > 0) {
+                                    // Retention failures must not turn a successful backup into a retry.
+                                    runCatching {
+                                        if (transport == "webdav") {
+                                            webDavSync.trimAutomaticBackups(dav, kind, keep)
+                                        } else {
+                                            s3Sync.trimAutomaticBackups(s3, kind, keep)
+                                        }
+                                    }.onFailure { Log.w("MateAutoBackup", "旧版本清理失败", it) }
+                                }
                             }
                         } catch (error: CancellationException) {
                             throw error

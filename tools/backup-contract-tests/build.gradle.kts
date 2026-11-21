@@ -12,6 +12,7 @@ sourceSets {
         kotlin.include("me/rerere/rikkahub/data/sync/BackupKind.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/BackupFingerprint.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/AutoBackupPolicy.kt")
+        kotlin.include("me/rerere/rikkahub/data/sync/BackupRetention.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/MemoryBackupCodec.kt")
         kotlin.include("me/rerere/rikkahub/data/model/MemoryPaths.kt")
     }
@@ -24,6 +25,7 @@ sourceSets {
         kotlin.include("me/rerere/rikkahub/data/sync/EncryptedBackupSessionTest.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/BackupFingerprintTest.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/AutoBackupPolicyTest.kt")
+        kotlin.include("me/rerere/rikkahub/data/sync/BackupRetentionTest.kt")
         kotlin.include("me/rerere/rikkahub/data/sync/MemoryBackupCodecTest.kt")
     }
 }

@@ -32,6 +32,7 @@ import java.time.Instant
 private val ReminderIntervals = listOf(1, 3, 7, 14, 30)
 private val AutoSettingsIntervals = listOf(6, 12, 24)
 private val AutoChatsIntervals = listOf(24, 72, 168)
+private val AutoRetainOptions = listOf(0, 5, 10, 20)
 
 @Composable
 fun ReminderTab(vm: BackupVM) {
@@ -102,6 +103,33 @@ fun ReminderTab(vm: BackupVM) {
                         selected = config.autoChatsIntervalHours,
                         onSelect = { hours -> updateConfig { it.copy(autoChatsIntervalHours = hours) } },
                     ) { hours, selected -> ConnectedChoiceLabel(text = hours.toString(), selected = selected) }
+                }
+                formItem(
+                    headlineContent = { Text(stringResource(R.string.backup_page_auto_retention)) },
+                    supportingContent = { Text(stringResource(R.string.backup_page_auto_retention_desc)) },
+                    trailingContent = {
+                        CardGroupValue(
+                            if (config.autoRetainVersions == 0) {
+                                stringResource(R.string.backup_page_auto_retention_all)
+                            } else {
+                                stringResource(
+                                    R.string.backup_page_auto_retention_keep,
+                                    config.autoRetainVersions,
+                                )
+                            }
+                        )
+                    },
+                ) {
+                    ConnectedChoiceButtons(
+                        options = AutoRetainOptions,
+                        selected = config.autoRetainVersions,
+                        onSelect = { keep -> updateConfig { it.copy(autoRetainVersions = keep) } },
+                    ) { keep, selected ->
+                        ConnectedChoiceLabel(
+                            text = if (keep == 0) "∞" else keep.toString(),
+                            selected = selected,
+                        )
+                    }
                 }
                 for (transport in listOf("webdav", "s3")) {
                     for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {

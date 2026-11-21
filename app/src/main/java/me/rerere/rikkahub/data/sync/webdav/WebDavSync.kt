@@ -11,6 +11,8 @@ import me.rerere.rikkahub.data.sync.AutoBackupState
 import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.data.sync.BackupManager
+import me.rerere.rikkahub.data.sync.BackupRetention
+import me.rerere.rikkahub.data.sync.BackupVersion
 import me.rerere.rikkahub.utils.fileSizeToString
 import java.io.File
 import java.time.Instant
@@ -100,6 +102,26 @@ class WebDavSync(
             }
             .sortedByDescending { it.lastModified }
     }
+
+    /** Deletes only older AUTOMATIC archives of [kind]; manual archives are never selected. */
+    suspend fun trimAutomaticBackups(config: WebDavConfig, kind: BackupKind, keep: Int): Int =
+        withContext(Dispatchers.IO) {
+            if (keep <= 0) return@withContext 0
+            val items = listBackupFiles(config)
+            val expired = BackupRetention.selectExpired(
+                items.map { BackupVersion(it.displayName, it.lastModified.toEpochMilli()) },
+                kind,
+                keep,
+            )
+            var deleted = 0
+            for (version in expired) {
+                val item = items.firstOrNull { it.displayName == version.name } ?: continue
+                runCatching { deleteBackupFile(config, item).getOrThrow() }
+                    .onSuccess { deleted++ }
+                    .onFailure { Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本") }
+            }
+            deleted
+        }
 
     suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, passphrase: CharArray? = null) = withContext(
         Dispatchers.IO

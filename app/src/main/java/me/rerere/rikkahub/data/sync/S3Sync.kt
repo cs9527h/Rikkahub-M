@@ -109,6 +109,26 @@ class S3Sync(
             .sortedByDescending { it.lastModified }
     }
 
+    /** Deletes only older AUTOMATIC archives of [kind]; manual archives are never selected. */
+    suspend fun trimAutomaticBackups(config: S3Config, kind: BackupKind, keep: Int): Int =
+        withContext(Dispatchers.IO) {
+            if (keep <= 0) return@withContext 0
+            val items = listBackupFiles(config)
+            val expired = BackupRetention.selectExpired(
+                items.map { BackupVersion(it.displayName, it.lastModified.toEpochMilli()) },
+                kind,
+                keep,
+            )
+            var deleted = 0
+            for (version in expired) {
+                val item = items.firstOrNull { it.displayName == version.name } ?: continue
+                runCatching { deleteS3BackupFile(config, item).getOrThrow() }
+                    .onSuccess { deleted++ }
+                    .onFailure { Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本") }
+            }
+            deleted
+        }
+
     suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, passphrase: CharArray? = null) = withContext(
         Dispatchers.IO
     ) {

@@ -158,6 +158,7 @@ private fun Settings.withValuesInRange(): Settings = copy(
     backupReminderConfig = backupReminderConfig.copy(
         autoSettingsIntervalHours = backupReminderConfig.autoSettingsIntervalHours.coerceIn(1, 720),
         autoChatsIntervalHours = backupReminderConfig.autoChatsIntervalHours.coerceIn(1, 720),
+        autoRetainVersions = backupReminderConfig.autoRetainVersions.coerceIn(0, 50),
     ),
 )
 

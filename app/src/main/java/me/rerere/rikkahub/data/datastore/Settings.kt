@@ -210,5 +210,7 @@ data class BackupReminderConfig(
     val lastAutoBackupError: String = "",
     val autoSettingsIntervalHours: Int = 6,
     val autoChatsIntervalHours: Int = 72,
+    /** 0 表示保留全部自动版本；只影响自动生成的同类型归档，不动手动备份。 */
+    val autoRetainVersions: Int = 0,
     val autoBackupStates: Map<String, me.rerere.rikkahub.data.sync.AutoBackupState> = emptyMap(),
 )
