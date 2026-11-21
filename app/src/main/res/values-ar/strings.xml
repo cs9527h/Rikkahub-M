@@ -1980,4 +1980,6 @@
   <string name="backup_page_change_key">تغيير العبارة</string>
   <string name="backup_page_disable_key">إيقاف التشفير</string>
   <string name="backup_page_setup_key">تعيين عبارة الاستعادة</string>
+  <string name="about_page_checking_update">جارٍ فحص التحديثات…</string>
+  <string name="about_page_new_version_detail">Rikkahub-M %1$s · اضغط لفتح صفحة التنزيل</string>
 </resources>

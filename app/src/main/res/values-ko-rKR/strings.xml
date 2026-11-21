@@ -1982,4 +1982,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="backup_page_change_key">암호 변경</string>
   <string name="backup_page_disable_key">암호화 끄기</string>
   <string name="backup_page_setup_key">복원 암호 설정</string>
+  <string name="about_page_checking_update">업데이트 확인 중…</string>
+  <string name="about_page_new_version_detail">Rikkahub-M %1$s · 탭하여 다운로드 페이지 열기</string>
 </resources>

@@ -1982,4 +1982,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="backup_page_change_key">合言葉を変更</string>
   <string name="backup_page_disable_key">暗号化をオフ</string>
   <string name="backup_page_setup_key">復元用合言葉を設定</string>
+  <string name="about_page_checking_update">更新を確認中…</string>
+  <string name="about_page_new_version_detail">Rikkahub-M %1$s · タップでダウンロードページへ</string>
 </resources>

@@ -1979,4 +1979,6 @@
   <string name="backup_page_change_key">Change passphrase</string>
   <string name="backup_page_disable_key">Turn off encryption</string>
   <string name="backup_page_setup_key">Set recovery passphrase</string>
+  <string name="about_page_checking_update">Checking for updates…</string>
+  <string name="about_page_new_version_detail">Rikkahub-M %1$s · tap to open the release page</string>
 </resources>

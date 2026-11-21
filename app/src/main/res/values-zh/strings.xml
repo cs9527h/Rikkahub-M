@@ -1981,4 +1981,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_change_key">更换口令</string>
   <string name="backup_page_disable_key">关闭加密</string>
   <string name="backup_page_setup_key">设置恢复口令</string>
+  <string name="about_page_checking_update">正在检查更新…</string>
+  <string name="about_page_new_version_detail">Rikkahub-M %1$s · 点击打开下载页</string>
 </resources>
