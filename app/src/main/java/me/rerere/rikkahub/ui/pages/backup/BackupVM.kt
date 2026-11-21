@@ -176,8 +176,10 @@ class BackupVM(
     fun updateLocalBackupItems(items: List<WebDavConfig.BackupItem>) {
         if (items.isEmpty()) return
         localBackupItems.value = items
-        settingsStore.update { current ->
-            current.copy(backupReminderConfig = current.backupReminderConfig.copy(localBackupItems = items))
+        viewModelScope.launch {
+            settingsStore.update { current ->
+                current.copy(backupReminderConfig = current.backupReminderConfig.copy(localBackupItems = items))
+            }
         }
     }
 

@@ -129,7 +129,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 val export = vm.exportToFile()
                 try {
                     requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
-                        .use { out -> FileInputStream(export).use { it.copyTo(out) } }
+                        .use { out -> FileInputStream(export).use { copyTo(out, it) } }
                     vm.recordLocalExportSuccess()
                 } finally {
                     export.delete()
@@ -148,7 +148,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             var oneTimePassphrase: CharArray? = null
             try {
                 requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取备份文件" }
-                    .use { input -> FileOutputStream(temp).use { it.copyTo(input) } }
+                    .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
                 while (true) {
                     try {
                         vm.restoreFromLocalFile(temp, oneTimePassphrase)
@@ -725,7 +725,7 @@ private fun ImportSheet(
                         val temp = File(context.cacheDir, "chatbox_${System.currentTimeMillis()}.zip")
                         try {
                             context.contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(temp).use { it.copyTo(input) }
+                                FileOutputStream(temp).use { copyTo(it, input) }
                             }
                             vm.restoreFromChatBox(temp)
                         } finally {
@@ -737,7 +737,7 @@ private fun ImportSheet(
                         val temp = File(context.cacheDir, "cherry_${System.currentTimeMillis()}.zip")
                         try {
                             context.contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(temp).use { it.copyTo(input) }
+                                FileOutputStream(temp).use { copyTo(it, input) }
                             }
                             vm.restoreFromCherryStudio(temp)
                         } finally {
@@ -782,5 +782,15 @@ private fun ImportSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(if (busy) "导入中…" else "选择文件并导入") }
         }
+    }
+}
+
+/** 字节流复制：不解码内容，避免大备份对象在内存里变形。 */
+private fun copyTo(output: java.io.OutputStream, input: java.io.InputStream) {
+    val buffer = ByteArray(64 * 1024)
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        output.write(buffer, 0, read)
     }
 }
