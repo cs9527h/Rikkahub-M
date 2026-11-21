@@ -23,8 +23,8 @@ import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.GenerationPhase
 import me.rerere.rikkahub.data.model.generationPhase
-import me.rerere.rikkahub.utils.cancelNotification
 import me.rerere.rikkahub.utils.NotificationAvatar
+import me.rerere.rikkahub.utils.cancelNotification
 import me.rerere.rikkahub.utils.sendNotification
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
@@ -46,6 +46,7 @@ class ChatNotificationManager(
 ) {
     private val isForeground = MutableStateFlow(false)
     private val liveUpdateLastSentAt = ConcurrentHashMap<Uuid, Long>()
+
     // 同一会话只有一条完成通知；重复事件按预览内容与时间去重，避免刷屏。
     private val doneNotificationAt = ConcurrentHashMap<Uuid, Pair<String, Long>>()
 
@@ -85,7 +86,10 @@ class ChatNotificationManager(
         liveUpdateLastSentAt[event.conversationId] = now
 
         sendLiveUpdateNotification(
-            event.conversationId, event.lastMessage, resolveSenderName(event.senderName), event.senderAvatar
+            event.conversationId,
+            event.lastMessage,
+            resolveSenderName(event.senderName),
+            event.senderAvatar
         )
     }
 
@@ -104,7 +108,10 @@ class ChatNotificationManager(
         }
         doneNotificationAt[event.conversationId] = contentPreview to now
         sendGenerationDoneNotification(
-            event.conversationId, resolveSenderName(event.senderName), contentPreview, event.senderAvatar
+            event.conversationId,
+            resolveSenderName(event.senderName),
+            contentPreview,
+            event.senderAvatar
         )
     }
 
@@ -184,12 +191,9 @@ class ChatNotificationManager(
             )
         }
 
-    /** 发送者身份以助手为准；事件丢失名字时回退到当前默认助手，不显示连接类型。 */
-    private fun resolveSenderName(raw: String): String {
-        if (raw.isNotBlank()) return raw
-        return settingsStore.settingsFlow.value.assistants.firstOrNull()?.name?.takeIf { it.isNotBlank() }
-            ?: context.getString(R.string.assistant_page_default_assistant)
-    }
+    /** Missing sender identity must not silently impersonate the first assistant. */
+    private fun resolveSenderName(raw: String): String =
+        raw.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name)
 
     private fun cancelLiveUpdateNotification(conversationId: Uuid) {
         liveUpdateLastSentAt.remove(conversationId)

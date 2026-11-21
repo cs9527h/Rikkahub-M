@@ -17,6 +17,7 @@ import me.rerere.rikkahub.CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.conversationIntent
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.utils.NotificationAvatar
 import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
@@ -36,6 +37,7 @@ class ChatGenerationForegroundService : Service() {
         private const val EXTRA_GENERATION_ID = "generation_id"
         private const val EXTRA_CONVERSATION_ID = "conversation_id"
         private const val EXTRA_ACTIVITY = "activity"
+        private const val EXTRA_ASSISTANT_ID = "assistant_id"
 
         const val NOTIFICATION_ID = 2002
 
@@ -43,12 +45,14 @@ class ChatGenerationForegroundService : Service() {
             context: Context,
             generationId: Uuid,
             conversationId: Uuid,
+            assistantId: Uuid? = null,
             activity: SessionActivity = SessionActivity.Generating,
         ): Boolean {
             val intent = Intent(context, ChatGenerationForegroundService::class.java).apply {
                 action = ACTION_ACQUIRE
                 putExtra(EXTRA_GENERATION_ID, generationId.toString())
                 putExtra(EXTRA_CONVERSATION_ID, conversationId.toString())
+                assistantId?.let { putExtra(EXTRA_ASSISTANT_ID, it.toString()) }
                 putExtra(EXTRA_ACTIVITY, activity.name)
             }
             return runCatching {
@@ -72,7 +76,11 @@ class ChatGenerationForegroundService : Service() {
         }
     }
 
-    private data class ActiveGeneration(val conversationId: String, val activity: SessionActivity)
+    private data class ActiveGeneration(
+        val conversationId: String,
+        val activity: SessionActivity,
+        val assistantId: String?,
+    )
 
     private val activeGenerations = linkedMapOf<String, ActiveGeneration>()
     private var isForeground = false
@@ -119,7 +127,7 @@ class ChatGenerationForegroundService : Service() {
         val conversationId = intent.getStringExtra(EXTRA_CONVERSATION_ID) ?: return stopSelf(startId)
         val activity = SessionActivity.entries.find { it.name == intent.getStringExtra(EXTRA_ACTIVITY) }
             ?: SessionActivity.Generating
-        val generation = ActiveGeneration(conversationId, activity)
+        val generation = ActiveGeneration(conversationId, activity, intent.getStringExtra(EXTRA_ASSISTANT_ID))
         activeGenerations[generationId] = generation
         updateForegroundNotification(generation)
     }
@@ -166,8 +174,11 @@ class ChatGenerationForegroundService : Service() {
     }
 
     private fun buildNotification(generation: ActiveGeneration): android.app.Notification {
-        // 通知身份是助手，不是连接类型或应用名
-        val assistant = settingsStore.settingsFlow.value.assistants.firstOrNull()
+        // Never attribute a notification to another assistant if the selected id is missing.
+        val assistant = resolveForegroundAssistant(
+            generation.assistantId,
+            settingsStore.settingsFlow.value.assistants,
+        )
         val senderName = assistant?.name?.takeIf { it.isNotBlank() } ?: getString(R.string.app_name)
         return NotificationCompat.Builder(this, CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
@@ -191,9 +202,13 @@ class ChatGenerationForegroundService : Service() {
     private fun getConversationPendingIntent(conversationId: String): PendingIntent {
         return PendingIntent.getActivity(
             this,
-            NOTIFICATION_ID,
+            conversationId.hashCode(),
             conversationIntent(this, conversationId),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
 }
+
+/** Never attribute a notification to another assistant if the selected ID is missing. */
+internal fun resolveForegroundAssistant(assistantId: String?, assistants: List<Assistant>): Assistant? =
+    assistants.firstOrNull { it.id.toString() == assistantId }

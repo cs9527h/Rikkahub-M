@@ -284,10 +284,17 @@ class ChatService(
 
         return appScope.launch(start = CoroutineStart.LAZY) {
             val generationId = Uuid.random()
+            // Resolve this conversation's own assistant before the notification appears.
+            // A brand-new, not-yet-persisted conversation uses the currently selected assistant.
+            val notificationAssistantId = runCatching {
+                conversationRepo.getConversationById(conversationId)?.assistantId
+                    ?: settingsStore.awaitLoaded().getCurrentAssistant().id
+            }.getOrNull()
             val foregroundStarted = ChatGenerationForegroundService.acquire(
                 context = context,
                 generationId = generationId,
                 conversationId = conversationId,
+                assistantId = notificationAssistantId,
                 activity = activity,
             )
             try {
@@ -761,7 +768,12 @@ class ChatService(
                                 // 通知等边缘副作用由 ChatNotificationManager 消费；
                                 // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
                                 appEventBus.tryEmit(
-                                    AppEvent.ChatGenerationUpdate(conversationId, event.message, senderName, senderAvatar)
+                                    AppEvent.ChatGenerationUpdate(
+                                        conversationId,
+                                        event.message,
+                                        senderName,
+                                        senderAvatar
+                                    )
                                 )
                             }
 
@@ -794,9 +806,13 @@ class ChatService(
                             conversationId = conversationId,
                             senderName = senderName,
                             // 取消/失败不发完成通知；只有真正结束且有内容才提示
-                            contentPreview = if (finishReason == null) null else finished.currentMessages
-                                .lastOrNull()?.toText()?.replace(Regex("\\s+"), " ")?.trim()
-                                ?.take(120)?.takeIf { it.isNotBlank() },
+                            contentPreview = if (finishReason == null) {
+                                null
+                            } else {
+                                finished.currentMessages
+                                    .lastOrNull()?.toText()?.replace(Regex("\\s+"), " ")?.trim()
+                                    ?.take(120)?.takeIf { it.isNotBlank() }
+                            },
                             senderAvatar = senderAvatar,
                         )
                     )
