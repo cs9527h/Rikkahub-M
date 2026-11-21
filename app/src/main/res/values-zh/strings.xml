@@ -1970,4 +1970,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_auto_never">自动备份尚无成功记录</string>
   <string name="backup_page_auto_failed">最近失败：%1$s</string>
   <string name="about_standalone_summary">独立 AI 客户端：模型直连，人格与记忆保存在本地，云端仅用于加密备份。</string>
+  <string name="about_page_check_latest">已是最新版本</string>
+  <string name="about_page_check_failed">检查更新失败：%1$s</string>
+  <string name="about_page_checking">正在检查更新…</string>
+  <string name="about_page_new_version">发现新版本</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · 点击打开下载页</string>
+  <string name="backup_page_encryption_active">已开启 · 恢复口令已保存在本机</string>
+  <string name="backup_page_encryption_off">已关闭 · 备份为未加密 ZIP</string>
+  <string name="backup_page_key_ready_title">恢复口令已保存</string>
+  <string name="backup_page_change_key">更换口令</string>
+  <string name="backup_page_disable_key">关闭加密</string>
+  <string name="backup_page_setup_key">设置恢复口令</string>
 </resources>

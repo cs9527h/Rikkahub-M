@@ -1971,4 +1971,15 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="setting_provider_page_balance_divisor_hint">API の生値を表示用に割ります。</string>
   <string name="about_standalone_summary">独立型 AI クライアント。モデル API に直接接続し、ペルソナとメモリは端末内に保存。クラウドは暗号化バックアップ専用です。</string>
   <string name="mode_rule_system_role">システム</string>
+  <string name="about_page_check_latest">最新バージョンです</string>
+  <string name="about_page_check_failed">更新の確認に失敗しました: %1$s</string>
+  <string name="about_page_checking">更新を確認中…</string>
+  <string name="about_page_new_version">新しいバージョンがあります</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · タップでダウンロードページへ</string>
+  <string name="backup_page_encryption_active">オン · 復元用合言葉は端末に保存済み</string>
+  <string name="backup_page_encryption_off">オフ · バックアップは非暗号化 ZIP</string>
+  <string name="backup_page_key_ready_title">復元用合言葉を保存しました</string>
+  <string name="backup_page_change_key">合言葉を変更</string>
+  <string name="backup_page_disable_key">暗号化をオフ</string>
+  <string name="backup_page_setup_key">復元用合言葉を設定</string>
 </resources>

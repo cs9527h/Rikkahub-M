@@ -1971,4 +1971,15 @@
   <string name="setting_provider_page_balance_divisor_hint">Делит исходное значение API только для отображения.</string>
   <string name="about_standalone_summary">Самостоятельный ИИ-клиент: прямые API моделей, образы и память хранятся локально. Облако используется только для зашифрованных копий.</string>
   <string name="mode_rule_system_role">Система</string>
+  <string name="about_page_check_latest">Установлена последняя версия</string>
+  <string name="about_page_check_failed">Не удалось проверить обновления: %1$s</string>
+  <string name="about_page_checking">Проверка обновлений…</string>
+  <string name="about_page_new_version">Доступна новая версия</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · нажмите, чтобы открыть страницу загрузки</string>
+  <string name="backup_page_encryption_active">Вкл · парольная фраза сохранена на устройстве</string>
+  <string name="backup_page_encryption_off">Выкл · резервные копии — незашифрованные ZIP</string>
+  <string name="backup_page_key_ready_title">Парольная фраза сохранена</string>
+  <string name="backup_page_change_key">Изменить фразу</string>
+  <string name="backup_page_disable_key">Отключить шифрование</string>
+  <string name="backup_page_setup_key">Задать фразу</string>
 </resources>

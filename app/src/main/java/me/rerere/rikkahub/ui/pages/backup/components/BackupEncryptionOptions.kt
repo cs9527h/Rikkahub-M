@@ -27,144 +27,163 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.formItem
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
 import me.rerere.ui.toast.ToastType
 
-/** Transient manual recovery input; local automatic-backup escrow requires an explicit action. */
+/**
+ * 日常只显示“已开启/未开启”，不出现口令输入框。
+ * 只有用户主动设置或更换恢复口令时才弹出一次对话框。
+ */
 @Composable
 fun BackupEncryptionOptions(vm: BackupVM) {
     val encrypted by vm.encryptBackups.collectAsStateWithLifecycle()
-    val passphrase by vm.backupPassphrase.collectAsStateWithLifecycle()
-    val confirmation by vm.backupPassphraseConfirmation.collectAsStateWithLifecycle()
-    val includeCredentials by vm.includeBackupCredentials.collectAsStateWithLifecycle()
     val keyConfigured by vm.automaticPassphraseConfigured.collectAsStateWithLifecycle()
-    val context = LocalContext.current
+    val includeCredentials by vm.includeBackupCredentials.collectAsStateWithLifecycle()
     val resources = LocalResources.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
-    var keyBusy by remember { mutableStateOf(false) }
-    var confirmForget by remember { mutableStateOf(false) }
-
-    fun updateKey(forget: Boolean) {
-        scope.launch {
-            keyBusy = true
-            try {
-                if (forget) vm.forgetAutomaticBackupPassphrase() else vm.savePassphraseForAutomaticBackup()
-                toaster.show(
-                    resources.getString(
-                        if (forget) R.string.backup_page_key_forgotten else R.string.backup_page_key_saved
-                    ),
-                    type = ToastType.Success,
-                )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                toaster.show(resources.getString(R.string.backup_page_key_failed), type = ToastType.Error)
-            } finally {
-                keyBusy = false
-            }
-        }
-    }
+    var setupDialog by remember { mutableStateOf(false) }
+    var confirmDisable by remember { mutableStateOf(false) }
 
     CardGroup(title = { Text(stringResource(R.string.backup_page_security)) }) {
         switchItem(
-            checked = encrypted,
-            onCheckedChange = {
-                vm.encryptBackups.value = it
-                if (!it) vm.includeBackupCredentials.value = false
+            checked = encrypted && keyConfigured,
+            onCheckedChange = { enabled ->
+                when {
+                    !enabled -> confirmDisable = true
+                    keyConfigured -> vm.encryptBackups.value = true
+                    else -> setupDialog = true
+                }
             },
             headlineContent = { Text(stringResource(R.string.backup_page_encrypt)) },
             supportingContent = {
                 Text(
                     stringResource(
-                        if (encrypted) {
-                            R.string.backup_page_encryption_warning
-                        } else {
-                            R.string.backup_page_plaintext_warning
+                        when {
+                            encrypted && keyConfigured -> R.string.backup_page_encryption_active
+                            else -> R.string.backup_page_encryption_off
                         }
                     )
                 )
             },
         )
-        formItem {
-            OutlinedTextField(
-                value = passphrase,
-                onValueChange = { vm.backupPassphrase.value = it },
-                label = { Text(stringResource(R.string.backup_page_passphrase)) },
-                supportingText = { Text(stringResource(R.string.backup_page_passphrase_hint)) },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (encrypted) {
-            formItem {
-                OutlinedTextField(
-                    value = confirmation,
-                    onValueChange = { vm.backupPassphraseConfirmation.value = it },
-                    label = { Text(stringResource(R.string.backup_page_confirm_passphrase)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = confirmation.isNotEmpty() && confirmation != passphrase,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        if (encrypted && keyConfigured) {
             switchItem(
                 checked = includeCredentials,
                 onCheckedChange = { vm.includeBackupCredentials.value = it },
                 headlineContent = { Text(stringResource(R.string.backup_page_include_credentials)) },
                 supportingContent = { Text(stringResource(R.string.backup_page_credentials_warning)) },
             )
-        }
-        formItem(
-            headlineContent = {
-                Text(
-                    stringResource(
-                        if (keyConfigured) {
-                            R.string.backup_page_auto_key_ready
-                        } else {
-                            R.string.backup_page_auto_key_missing
-                        }
-                    )
-                )
-            },
-            supportingContent = { Text(stringResource(R.string.backup_page_local_key_desc)) },
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    enabled = !keyBusy && encrypted && passphrase.length in 8..1024 && passphrase == confirmation,
-                    onClick = { updateKey(forget = false) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.backup_page_store_auto_passphrase))
-                }
-                if (keyConfigured) {
-                    TextButton(enabled = !keyBusy, onClick = { confirmForget = true }) {
-                        Text(stringResource(R.string.backup_page_forget_key))
+            formItem(
+                headlineContent = { Text(stringResource(R.string.backup_page_key_ready_title)) },
+                supportingContent = { Text(stringResource(R.string.backup_page_local_key_desc)) },
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { setupDialog = true }, modifier = Modifier.weight(1f)) {
+                        Text(stringResource(R.string.backup_page_change_key))
                     }
+                    TextButton(onClick = { confirmDisable = true }) {
+                        Text(stringResource(R.string.backup_page_disable_key))
+                    }
+                }
+            }
+        }
+        if (!encrypted || !keyConfigured) {
+            formItem(
+                headlineContent = { Text(stringResource(R.string.backup_page_plaintext_warning)) },
+                supportingContent = { Text(stringResource(R.string.backup_page_passphrase_hint)) },
+            ) {
+                FilledTonalButton(onClick = { setupDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.backup_page_setup_key))
                 }
             }
         }
     }
 
-    if (confirmForget) {
-        AlertDialog(
-            onDismissRequest = { confirmForget = false },
-            title = { Text(stringResource(R.string.backup_page_forget_key)) },
-            text = { Text(stringResource(R.string.backup_page_forget_key_confirm)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmForget = false
-                    updateKey(forget = true)
-                }) { Text(stringResource(R.string.confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmForget = false }) { Text(stringResource(R.string.cancel)) }
+    if (setupDialog) {
+        PassphraseDialog(
+            onDismiss = { setupDialog = false },
+            onConfirm = { passphrase ->
+                setupDialog = false
+                scope.launch {
+                    try {
+                        vm.configureBackupKey(passphrase)
+                        toaster.show(resources.getString(R.string.backup_page_key_saved), type = ToastType.Success)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        toaster.show(resources.getString(R.string.backup_page_key_failed), type = ToastType.Error)
+                    }
+                }
             },
         )
     }
+
+    if (confirmDisable) {
+        AlertDialog(
+            onDismissRequest = { confirmDisable = false },
+            title = { Text(stringResource(R.string.backup_page_disable_key)) },
+            text = { Text(stringResource(R.string.backup_page_forget_key_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDisable = false
+                    scope.launch { vm.disableBackupEncryption() }
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDisable = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+}
+
+/** 仅设置/更换恢复口令时出现；日常备份与恢复不再要求输入。 */
+@Composable
+private fun PassphraseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray) -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    val tooShort = value.length in 1..7
+    val mismatch = confirmation.isNotEmpty() && confirmation != value
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_page_setup_key)) },
+        text = {
+            androidx.compose.foundation.layout.Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(stringResource(R.string.backup_page_local_key_desc))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    label = { Text(stringResource(R.string.backup_page_passphrase)) },
+                    isError = tooShort,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    value = confirmation,
+                    onValueChange = { confirmation = it },
+                    label = { Text(stringResource(R.string.backup_page_confirm_passphrase)) },
+                    isError = mismatch,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = value.length in 8..1024 && value == confirmation,
+                onClick = { onConfirm(value.toCharArray()) },
+            ) { Text(stringResource(R.string.confirm)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

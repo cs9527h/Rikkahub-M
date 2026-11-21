@@ -6,61 +6,157 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import me.rerere.common.http.await
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
+/** 只认本仓库的正式 Release，绝不把上游 RikkaHub 的版本当成更新。 */
+private const val RELEASES_API = "https://api.github.com/repos/cs9527h/Rikkahub-M/releases"
+private const val CHECK_INTERVAL_MILLIS = 12L * 60 * 60 * 1000
+
+sealed interface UpdateCheckResult {
+    data object UpToDate : UpdateCheckResult
+    data class Available(val info: UpdateInfo) : UpdateCheckResult
+    data class Failed(val reason: String) : UpdateCheckResult
+}
+
+@Serializable
+data class ReleaseAsset(val name: String, val size: Long, val url: String)
+
+@Serializable
+data class ReleaseNote(
+    val tag: String,
+    val name: String,
+    val body: String,
+    val publishedAt: String,
+    val prerelease: Boolean,
+)
 
 class UpdateChecker(
     private val client: OkHttpClient,
-    appScope: AppScope,
+    private val appScope: AppScope,
+    private val context: Context,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val prefs = context.getSharedPreferences("update-check", Context.MODE_PRIVATE)
+    private val state = MutableStateFlow<UiState<UpdateInfo>>(UiState.Idle)
 
-    val updateState: StateFlow<UiState<UpdateInfo>> = checkUpdate().stateIn(
-        scope = appScope,
-        started = SharingStarted.Lazily,
-        initialValue = UiState.Loading,
-    )
+    val updateState: StateFlow<UiState<UpdateInfo>> = state.asStateFlow()
 
-    // This fork must not present upstream RikkaHub APKs as Mate updates.
-    // Until signed Mate Releases have a verified feed, keep automatic checks offline.
-    private fun checkUpdate(): Flow<UiState<UpdateInfo>> = flow {
-        emit(UiState.Loading)
+    init {
+        // 启动后异步检查，不阻塞首屏；间隔与“本版不再提醒”都记录在本地。
+        appScope.launch {
+            runCatching { refresh(force = false) }
+        }
+    }
+
+    /** 手动点击版本号时调用，忽略间隔限制。 */
+    suspend fun checkNow(): UpdateCheckResult = refresh(force = true)
+
+    suspend fun refresh(force: Boolean): UpdateCheckResult = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val last = prefs.getLong(KEY_LAST_CHECK, 0L)
+        if (!force && now - last < CHECK_INTERVAL_MILLIS) {
+            return@withContext state.value.toResult()
+        }
+        val request = Request.Builder()
+            .url("$RELEASES_API?per_page=10")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
+            .build()
+        val result = runCatching {
+            val body = client.newCall(request).await().use { response ->
+                if (!response.isSuccessful) error("检查更新失败：HTTP ${response.code}")
+                response.body.string()
+            }
+            val releases = json.decodeFromString(ListSerializer(ReleaseNote.serializer()), body)
+            val latest = releases.firstOrNull { !it.prerelease && Version(it.tag.removePrefix("v")) > Version(BuildConfig.VERSION_NAME) }
+            if (latest == null) {
+                state.value = UiState.Idle
+                UpdateCheckResult.UpToDate
+            } else {
+                val info = UpdateInfo(
+                    version = latest.tag.removePrefix("v"),
+                    publishedAt = latest.publishedAt,
+                    changelog = latest.body,
+                    downloads = releaseDownloads(latest.tag),
+                )
+                state.value = UiState.Success(info)
+                UpdateCheckResult.Available(info)
+            }
+        }.getOrElse { error ->
+            state.value = UiState.Error(error)
+            UpdateCheckResult.Failed(error.message ?: "网络不可用")
+        }
+        prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+        result
+    }
+
+    private suspend fun releaseDownloads(tag: String): List<UpdateDownload> = runCatching {
+        val request = Request.Builder()
+            .url("$RELEASES_API/tags/$tag")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
+            .build()
+        val body = client.newCall(request).await().use { it.body.string() }
+        val assets = json.decodeFromString(ListSerializer(ReleaseAsset.serializer()),
+            json.parseToJsonElement(body).jsonObject["assets"].toString())
+        assets.filter { it.name.endsWith(".apk", ignoreCase = true) }.map {
+            UpdateDownload(name = it.name, url = it.url, size = "${it.size / 1024} KB")
+        }
+    }.getOrDefault(emptyList())
+
+    private fun UiState<UpdateInfo>.toResult(): UpdateCheckResult = when (this) {
+        is UiState.Success -> UpdateCheckResult.Available(data)
+        is UiState.Error -> UpdateCheckResult.Failed(error.message ?: "网络不可用")
+        else -> UpdateCheckResult.Failed("上次检查未完成")
+    }
+
+    /** 更新日志页直接用同一份 GitHub 数据，避免应用里再维护一份会过期的版本列表。 */
+    suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$RELEASES_API?per_page=20")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
+            .build()
+        val body = client.newCall(request).await().use { response ->
+            if (!response.isSuccessful) error("HTTP ${response.code}")
+            response.body.string()
+        }
+        json.decodeFromString(ListSerializer(ReleaseNote.serializer()), body)
     }
 
     fun downloadUpdate(context: Context, download: UpdateDownload) {
         runCatching {
             val request = DownloadManager.Request(download.url.toUri()).apply {
-                // 设置下载时通知栏的标题和描述
                 setTitle(download.name)
                 setDescription("正在下载更新包...")
-                // 下载完成后通知栏可见
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                // 设置文件保存路径
                 setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, download.name)
-                // 允许下载的文件类型
                 setMimeType("application/vnd.android.package-archive")
             }
-            // 获取系统的DownloadManager
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             dm.enqueue(request)
-            // 你可以保存返回的downloadId到本地，以便后续查询下载进度或状态
         }.onFailure {
-            Toast.makeText(context, "Failed to update", Toast.LENGTH_SHORT).show()
-            context.openUrl(download.url) // 跳转到下载页面
+            Toast.makeText(context, "下载失败，正在打开下载页", Toast.LENGTH_SHORT).show()
+            context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases")
         }
+    }
+
+    private companion object {
+        const val KEY_LAST_CHECK = "last_check"
     }
 }
 

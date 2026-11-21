@@ -1969,4 +1969,15 @@
   <string name="setting_provider_page_balance_divisor_hint">Teilt den rohen API-Wert nur für die Anzeige.</string>
   <string name="about_standalone_summary">Eigenständiger KI-Client: direkte Modell-APIs, Personas und Gedächtnis lokal. Die Cloud dient nur verschlüsselten Backups.</string>
   <string name="mode_rule_system_role">System</string>
+  <string name="about_page_check_latest">Du bist auf dem neuesten Stand</string>
+  <string name="about_page_check_failed">Update-Prüfung fehlgeschlagen: %1$s</string>
+  <string name="about_page_checking">Suche nach Updates…</string>
+  <string name="about_page_new_version">Neue Version verfügbar</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · tippen für die Downloadseite</string>
+  <string name="backup_page_encryption_active">Ein · Wiederherstellungs-Passphrase auf diesem Gerät gespeichert</string>
+  <string name="backup_page_encryption_off">Aus · Backups sind unverschlüsselte ZIP-Dateien</string>
+  <string name="backup_page_key_ready_title">Wiederherstellungs-Passphrase gespeichert</string>
+  <string name="backup_page_change_key">Passphrase ändern</string>
+  <string name="backup_page_disable_key">Verschlüsselung ausschalten</string>
+  <string name="backup_page_setup_key">Passphrase festlegen</string>
 </resources>

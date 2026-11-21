@@ -21,6 +21,7 @@ import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.sync.S3BackupItem
+import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
@@ -67,23 +68,17 @@ class BackupVM(
         includeBackupCredentials.value = false
     }
 
+    /** 本机保存的恢复口令是唯一日常凭据；界面不再要求每次输入。 */
     private suspend fun <T> withPassphrase(export: Boolean, block: suspend (CharArray?, Boolean) -> T): T =
         archiveMutex.withLock {
             val includeCredentials = export && encryptBackups.value && includeBackupCredentials.value
-            val passphrase = if (export) {
-                BackupArchiveFormat.exportPassphrase(
-                    encryptBackups.value,
-                    backupPassphrase.value,
-                    backupPassphraseConfirmation.value,
-                    includeCredentials,
-                )
-            } else {
-                backupPassphrase.value.takeIf { it.isNotEmpty() }?.toCharArray()
-            }
+            require(!includeCredentials || encryptBackups.value) { "包含凭据的备份必须加密" }
+            val stored = if (encryptBackups.value) backupPassphraseStore.read() else null
+            if (export && encryptBackups.value && stored == null) throw MissingBackupPassphraseException()
             try {
-                block(passphrase, includeCredentials)
+                block(stored, includeCredentials)
             } finally {
-                passphrase?.fill('\u0000')
+                stored?.fill('\u0000')
             }
         }
 
@@ -98,14 +93,32 @@ class BackupVM(
         loadS3BackupFileItems()
     }
 
-    suspend fun savePassphraseForAutomaticBackup() = withPassphrase(export = true) { passphrase, _ ->
-        requireNotNull(passphrase) { "自动备份必须使用加密口令" }
-        // Changing the recovery passphrase must publish fresh encrypted versions even when data is unchanged.
+    /** 只设置一次恢复口令：之后手动/自动备份都不再弹输入框。 */
+    suspend fun configureBackupKey(passphrase: CharArray) {
+        require(passphrase.size in 8..1024) { "恢复口令需为 8 至 1024 位" }
         settingsStore.update { current ->
             current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap()))
         }
         backupPassphraseStore.save(passphrase)
         automaticPassphraseConfigured.value = true
+        encryptBackups.value = true
+    }
+
+    /** 关闭加密备份：仅允许手动明文备份，自动备份同时停止。 */
+    suspend fun disableBackupEncryption() {
+        settingsStore.update { current ->
+            current.copy(
+                backupReminderConfig = current.backupReminderConfig.copy(
+                    autoBackupOnAppLifecycle = false,
+                    autoBackupStates = emptyMap(),
+                )
+            )
+        }
+        me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
+        backupPassphraseStore.clear()
+        automaticPassphraseConfigured.value = false
+        encryptBackups.value = false
+        includeBackupCredentials.value = false
     }
 
     suspend fun forgetAutomaticBackupPassphrase() {
@@ -153,7 +166,10 @@ class BackupVM(
         recordBackupTime()
     }
 
-    suspend fun restore(item: WebDavBackupItem) = withPassphrase(export = false) { passphrase, _ ->
+    suspend fun restore(item: WebDavBackupItem, oneTimePassphrase: CharArray? = null) =
+        if (oneTimePassphrase != null) {
+            webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = oneTimePassphrase)
+        } else withPassphrase(export = false) { passphrase, _ ->
         webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = passphrase)
     }
 
@@ -171,7 +187,14 @@ class BackupVM(
 
     suspend fun recordLocalExportSuccess() = recordBackupTime()
 
-    suspend fun restoreFromLocalFile(file: File) = withPassphrase(export = false) { passphrase, _ ->
+    suspend fun restoreFromLocalFile(file: File, oneTimePassphrase: CharArray? = null) =
+        if (oneTimePassphrase != null) {
+            webDavSync.restoreFromLocalFile(
+                file,
+                settings.value.webDavConfig.copy(items = localBackupItems.value),
+                oneTimePassphrase,
+            )
+        } else withPassphrase(export = false) { passphrase, _ ->
         webDavSync.restoreFromLocalFile(
             file,
             settings.value.webDavConfig.copy(items = localBackupItems.value),

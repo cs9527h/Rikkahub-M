@@ -59,12 +59,28 @@ import me.rerere.rikkahub.ui.components.ui.rememberAppLogoLayers
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.SoundEffectPlayer
+import me.rerere.rikkahub.utils.UpdateCheckResult
+import me.rerere.rikkahub.utils.UpdateInfo
+import me.rerere.ui.toast.ToastType
+import org.koin.compose.koinInject
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalResources
+import me.rerere.hugeicons.stroke.Download01
+import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
 import me.rerere.ui.easteregg.EmojiBurstHost
 
 @Composable
 fun SettingAboutPage() {
+    val updateChecker = koinInject<me.rerere.rikkahub.utils.UpdateChecker>()
+    val toaster = me.rerere.rikkahub.ui.context.LocalToaster.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var checking by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var pendingUpdate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<me.rerere.rikkahub.utils.UpdateInfo?>(null) }
+
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val context = LocalContext.current
     val navController = LocalNavController.current
@@ -186,15 +202,35 @@ fun SettingAboutPage() {
                     CardGroup {
                         item(
                             modifier = Modifier.combinedClickable(
-                                onClick = {},
+                                onClick = { checking = true; scope.launch {
+                                    val result = updateChecker.checkNow()
+                                    checking = false
+                                    when (result) {
+                                        is UpdateCheckResult.UpToDate -> toaster.show(resources.getString(R.string.about_page_check_latest), type = ToastType.Success)
+                                        is UpdateCheckResult.Available -> pendingUpdate = result.info
+                                        is UpdateCheckResult.Failed -> toaster.show(resources.getString(R.string.about_page_check_failed, result.reason), type = ToastType.Error)
+                                    }
+                                } },
                                 onLongClick = { navController.navigate(Screen.Debug) },
                             ),
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = {
                                 Text("${BuildConfig.VERSION_NAME} / ${BuildConfig.VERSION_CODE}")
                             },
-                            headlineContent = { Text(stringResource(R.string.about_page_version)) },
+                            headlineContent = { Text(stringResource(if (checking) R.string.about_page_checking_update else R.string.about_page_version)) },
                         )
+                        pendingUpdate?.let { info ->
+                            item {
+                                CardGroup {
+                                    item(
+                                        onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases/tag/v${info.version}"); pendingUpdate = null },
+                                        leadingContent = { CardGroupIcon(HugeIcons.Download01, containerColor = containerColor, contentColor = contentColor) },
+                                        supportingContent = { Text(stringResource(R.string.about_page_new_version_detail, info.version)) },
+                                        headlineContent = { Text(stringResource(R.string.about_page_new_version)) },
+                                    )
+                                }
+                            }
+                        }
                         item(
                             leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
                             supportingContent = {

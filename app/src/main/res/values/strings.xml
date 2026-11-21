@@ -1968,4 +1968,15 @@
   <string name="backup_page_auto_never">No successful automatic backup yet</string>
   <string name="backup_page_auto_failed">Last failure: %1$s</string>
   <string name="about_standalone_summary">Standalone AI client: direct model APIs, local personas and memory. The cloud is used only for encrypted backups.</string>
+  <string name="about_page_check_latest">You are on the latest version</string>
+  <string name="about_page_check_failed">Update check failed: %1$s</string>
+  <string name="about_page_checking">Checking for updates…</string>
+  <string name="about_page_new_version">New version available</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · tap to open the release page</string>
+  <string name="backup_page_encryption_active">On · recovery passphrase saved on this device</string>
+  <string name="backup_page_encryption_off">Off · backups are unencrypted ZIP files</string>
+  <string name="backup_page_key_ready_title">Recovery passphrase saved</string>
+  <string name="backup_page_change_key">Change passphrase</string>
+  <string name="backup_page_disable_key">Turn off encryption</string>
+  <string name="backup_page_setup_key">Set recovery passphrase</string>
 </resources>

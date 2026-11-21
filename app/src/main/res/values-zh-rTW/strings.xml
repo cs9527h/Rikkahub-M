@@ -1918,4 +1918,15 @@
   <string name="quick_start_page_deepseek_import_another">匯入另一個 ZIP</string>
   <string name="setting_page_share_text">Rikkahub-M · 開源 Android AI 用戶端\n原始碼：https://github.com/cs9527h/Rikkahub-M</string>
   <string name="about_standalone_summary">獨立 AI 客戶端：模型直連，人格與記憶保存在本機，雲端僅用於加密備份。</string>
+  <string name="about_page_check_latest">已是最新版本</string>
+  <string name="about_page_check_failed">檢查更新失敗：%1$s</string>
+  <string name="about_page_checking">正在檢查更新…</string>
+  <string name="about_page_new_version">發現新版本</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · 點擊開啟下載頁</string>
+  <string name="backup_page_encryption_active">已開啟 · 恢復口令已保存在本機</string>
+  <string name="backup_page_encryption_off">已關閉 · 備份為未加密 ZIP</string>
+  <string name="backup_page_key_ready_title">恢復口令已儲存</string>
+  <string name="backup_page_change_key">更換口令</string>
+  <string name="backup_page_disable_key">關閉加密</string>
+  <string name="backup_page_setup_key">設定恢復口令</string>
 </resources>

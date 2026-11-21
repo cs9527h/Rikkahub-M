@@ -1969,4 +1969,15 @@
   <string name="setting_provider_page_balance_divisor_hint">يقسم قيمة API الخام للعرض فقط.</string>
   <string name="about_standalone_summary">عميل ذكاء اصطناعي مستقل: اتصال مباشر بواجهات النماذج، والشخصيات والذاكرة محفوظة محليًا. السحابة للنسخ المشفّرة فقط.</string>
   <string name="mode_rule_system_role">النظام</string>
+  <string name="about_page_check_latest">أنت على أحدث إصدار</string>
+  <string name="about_page_check_failed">فشل فحص التحديثات: %1$s</string>
+  <string name="about_page_checking">جارٍ فحص التحديثات…</string>
+  <string name="about_page_new_version">إصدار جديد متاح</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · اضغط لفتح صفحة التنزيل</string>
+  <string name="backup_page_encryption_active">مفعّل · عبارة الاستعادة محفوظة على الجهاز</string>
+  <string name="backup_page_encryption_off">متوقف · النسخ الاحتياطية ZIP غير مشفّرة</string>
+  <string name="backup_page_key_ready_title">تم حفظ عبارة الاستعادة</string>
+  <string name="backup_page_change_key">تغيير العبارة</string>
+  <string name="backup_page_disable_key">إيقاف التشفير</string>
+  <string name="backup_page_setup_key">تعيين عبارة الاستعادة</string>
 </resources>

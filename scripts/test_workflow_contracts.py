@@ -81,5 +81,16 @@ class WorkflowContractsTest(unittest.TestCase):
             self.assertNotIn('echo "keyPassword=${{', workflow)
 
 
+    def test_every_screen_has_a_navigation_entry(self):
+        """Every `data object X : Screen` must be registered with entry<Screen.X> in RouteActivity."""
+        import pathlib, re
+        source = pathlib.Path("app/src/main/java/me/rerere/rikkahub/RouteActivity.kt").read_text(encoding="utf-8")
+        defined = set(re.findall(r"data object ([A-Za-z0-9_]+) : Screen", source))
+        registered = set(re.findall(r"entry<Screen\.([A-Za-z0-9_]+)>", source))
+        missing = sorted(defined - registered)
+        self.assertEqual(missing, [], "screens missing navigation entry: " + ", ".join(missing))
+
+
+
 if __name__ == "__main__":
     unittest.main()

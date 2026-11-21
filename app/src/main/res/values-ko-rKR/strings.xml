@@ -1971,4 +1971,15 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="setting_provider_page_balance_divisor_hint">API 원시 값을 표시용으로 나눕니다.</string>
   <string name="about_standalone_summary">독립형 AI 클라이언트입니다. 모델 API에 직접 연결하고 페르소나와 기억은 기기에 저장하며, 클라우드는 암호화 백업에만 사용합니다.</string>
   <string name="mode_rule_system_role">시스템</string>
+  <string name="about_page_check_latest">최신 버전입니다</string>
+  <string name="about_page_check_failed">업데이트 확인 실패: %1$s</string>
+  <string name="about_page_checking">업데이트 확인 중…</string>
+  <string name="about_page_new_version">새 버전이 있습니다</string>
+  <string name="about_page_new_detail">Rikkahub-M %1$s · 탭하여 다운로드 페이지 열기</string>
+  <string name="backup_page_encryption_active">켜짐 · 복원 암호가 기기에 저장됨</string>
+  <string name="backup_page_encryption_off">꺼짐 · 백업은 암호화되지 않은 ZIP</string>
+  <string name="backup_page_key_ready_title">복원 암호 저장됨</string>
+  <string name="backup_page_change_key">암호 변경</string>
+  <string name="backup_page_disable_key">암호화 끄기</string>
+  <string name="backup_page_setup_key">복원 암호 설정</string>
 </resources>
