@@ -3,6 +3,15 @@
   "updatedAt": "2026-11-21",
   "releases": [
     {
+      "version": "0.5.0",
+      "tag": "v0.5.0",
+      "title": "Rikkahub-M 0.5.0",
+      "body": "## 上游融合\n\n- 合入 RB 3.3.1 之后的修复：Google 兼容接口缺 displayName 时回退 modelId、模型名最多两行、Markdown 导出带消息时间、无障碍服务被系统停用时的识别与提示、bettertext 0.1.6。\n\n## 性能\n\n- 消息渲染：正则替换结果按（文本, 助手规则）记忆化，避免每次重组重新生成字符串并触发 Markdown 重新解析。\n\n## 版本\n\n- 0.5.0 / versionCode 21，包名与签名不变，可覆盖升级 0.4.5。\n- 备份界面与流程保持不变。",
+      "publishedAt": "2026-11-22T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled"
+    },
+    {
       "version": "0.4.5",
       "tag": "v0.4.5",
       "title": "Rikkahub-M 0.4.5",
