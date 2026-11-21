@@ -1986,4 +1986,6 @@ mDNS 주소: .local 호스트네임을 사용하며, IP를 몰라도 같은 네�
   <string name="backup_page_setup_key">복원 암호 설정</string>
   <string name="about_page_checking_update">업데이트 확인 중…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · 탭하여 다운로드 페이지 열기</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">시스템 설정에는 켜짐으로 표시되지만 시스템이 접근성 서비스를 중지했습니다(최근 앱에서 앱을 밀어서 종료하면 이렇게 되는 기기가 있습니다). 이 스위치를 껐다가 다시 켜서 설정으로 이동한 뒤, \"RikkaHub Phone Use\"를 껐다가 다시 켜세요. 최근 앱에서 RikkaHub를 고정하고 자동 실행을 허용하면 다시 발생하지 않습니다.</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">접근성 설정에서 \"RikkaHub Phone Use\"를 껐다가 다시 켜세요</string>
 </resources>

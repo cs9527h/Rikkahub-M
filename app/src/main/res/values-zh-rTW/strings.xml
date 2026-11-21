@@ -1933,4 +1933,6 @@
   <string name="backup_page_setup_key">設定恢復口令</string>
   <string name="about_page_checking_update">正在檢查更新…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · 點擊開啟下載頁</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">無障礙服務已被系統停止，但系統設定仍顯示為開啟（部分手機在最近任務中滑掉應用後會如此）。請將此開關關閉再開啟以進入設定，然後把 \"RikkaHub Phone Use\" 關閉再重新開啟。在最近任務中鎖定 Rikkahub 並允許自動啟動，可避免再次發生。</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">請在無障礙設定中將 \"RikkaHub Phone Use\" 關閉再重新開啟</string>
 </resources>

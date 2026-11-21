@@ -1986,4 +1986,6 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="backup_page_setup_key">復元用合言葉を設定</string>
   <string name="about_page_checking_update">更新を確認中…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · タップでダウンロードページへ</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">システム設定では有効と表示されているのに、システムがユーザー補助サービスを停止しました（最近使ったアプリからスワイプして消すと、こうなる機種があります）。このスイッチをいったんオフにしてからオンにすると設定画面が開きます。そこで \"RikkaHub Phone Use\" をオフにしてから再度オンにしてください。最近使ったアプリで RikkaHub をロックし、自動起動を許可すると再発を防げます。</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">ユーザー補助設定で \"RikkaHub Phone Use\" をオフにしてから再度オンにしてください</string>
 </resources>

@@ -1984,4 +1984,6 @@
   <string name="backup_page_setup_key">Passphrase festlegen</string>
   <string name="about_page_checking_update">Suche nach Updates…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · tippen für die Downloadseite</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">Das System hat den Bedienungshilfen-Dienst beendet, obwohl er in den Einstellungen weiterhin als aktiv angezeigt wird (manche Geräte tun das, nachdem die App aus den letzten Apps gewischt wurde). Schalte diesen Schalter aus und wieder ein, um die Einstellungen zu öffnen, und schalte dort \"RikkaHub Phone Use\" aus und wieder ein. RikkaHub in den letzten Apps zu sperren und Autostart zu erlauben, verhindert ein erneutes Auftreten.</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">Schalte \"RikkaHub Phone Use\" in den Bedienungshilfen-Einstellungen aus und wieder ein</string>
 </resources>
