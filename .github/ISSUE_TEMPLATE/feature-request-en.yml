@@ -1,0 +1,32 @@
+name: "Feature request (English)"
+description: "Request a new feature or improvement (English)"
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check for existing suggestions first. Requests are assessed based on user need, maintenance cost, and architectural fit.
+
+        > Do not publish API keys, private conversations, persona prompts, or other sensitive information.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Proposed feature"
+      description: "What would you like to add or improve?"
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: "Use case"
+      description: "Explain when you would use this and what problem it solves."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives considered"
+      description: "Optional workarounds or implementation alternatives."
+    validations:
+      required: false
