@@ -193,6 +193,8 @@
   <string name="backup_page_reminder_title">バックアップのリマインダー</string>
   <string name="backup_page_restart_app">アプリを再起動</string>
   <string name="backup_page_restart_desc">設定を有効にするにはアプリを再起動する必要があります。</string>
+  <string name="backup_page_restore_key_title">古い暗号化バックアップです</string>
+  <string name="backup_page_restore_key_desc">作成時のパスフレーズを入力すると復元できます。旧形式のみ一度だけ必要です。</string>
   <string name="backup_page_restore">復元</string>
   <string name="backup_page_restore_failed">復元失敗: %s</string>
   <string name="backup_page_restore_now">復元</string>

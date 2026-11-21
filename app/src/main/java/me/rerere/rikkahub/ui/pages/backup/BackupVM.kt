@@ -56,15 +56,12 @@ class BackupVM(
 
     // Deliberately not persisted in Settings, SavedStateHandle, archives or logs.
     val encryptBackups = MutableStateFlow(true)
-    val backupPassphrase = MutableStateFlow("")
-    val backupPassphraseConfirmation = MutableStateFlow("")
     val includeBackupCredentials = MutableStateFlow(false)
     val automaticPassphraseConfigured = MutableStateFlow(false)
     private val archiveMutex = Mutex()
 
+    /** 离开页面时清掉敏感开关，不动本机已保存的恢复口令。 */
     fun clearBackupPassphrase() {
-        backupPassphrase.value = ""
-        backupPassphraseConfirmation.value = ""
         includeBackupCredentials.value = false
     }
 
@@ -309,9 +306,12 @@ class BackupVM(
         recordBackupTime()
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem) = withPassphrase(export = false) { passphrase, _ ->
-        s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
-    }
+    suspend fun restoreFromS3(item: S3BackupItem, oneTimePassphrase: CharArray? = null) =
+        if (oneTimePassphrase != null) {
+            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = oneTimePassphrase)
+        } else withPassphrase(export = false) { passphrase, _ ->
+            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
+        }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)

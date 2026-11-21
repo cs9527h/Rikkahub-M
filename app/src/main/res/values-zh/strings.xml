@@ -1928,6 +1928,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_encrypt">加密新备份</string>
   <string name="backup_page_encryption_warning">在客户端加密，忘记口令将无法恢复。口令不会上传；默认仅在本页保留，也可单独保存到本机安全存储供自动备份使用。</string>
   <string name="backup_page_plaintext_warning">明文 ZIP 会移除凭据，但聊天和记忆正文仍可读取。</string>
+  <string name="backup_page_restore_key_title">这是一份旧加密备份</string>
+  <string name="backup_page_restore_key_desc">输入创建它时使用的口令即可恢复，仅这一次需要输入。</string>
   <string name="backup_page_passphrase">备份 / 恢复口令</string>
   <string name="backup_page_passphrase_hint">新建加密备份至少 8 位；恢复时填写原口令。</string>
   <string name="backup_page_confirm_passphrase">确认备份口令</string>

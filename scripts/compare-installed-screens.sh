@@ -76,7 +76,11 @@ fi
 adb install -r "${apks[0]}" || { echo "candidate install failed"; exit 1; }
 capture "$candidate_package" candidate
 if [ "$mode" = signed ]; then
-  python3 scripts/upgrade_data_contract.py verify --version-code 16
+  # 版本号从构建脚本读取，避免每次改版本都要手改这里的常量。
+  expected_code=$(sed -n 's/.*versionCode *= *\([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -1)
+  test -n "$expected_code" || { echo "ERROR: cannot read versionCode from app/build.gradle.kts"; exit 1; }
+  echo "expected version code: $expected_code"
+  python3 scripts/upgrade_data_contract.py verify --version-code "$expected_code"
 fi
 echo "evidence written to $(pwd)/evidence"
 

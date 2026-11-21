@@ -1926,6 +1926,8 @@
   <string name="backup_page_encrypt">Encrypt new backups</string>
   <string name="backup_page_encryption_warning">Client-side encryption. Forgotten passphrases cannot be recovered. The passphrase is never uploaded. It stays on this page unless you explicitly save it locally for automatic backups.</string>
   <string name="backup_page_plaintext_warning">Unencrypted ZIP: credentials are removed, but chats and memories remain readable.</string>
+  <string name="backup_page_restore_key_title">This backup is encrypted with an older passphrase</string>
+  <string name="backup_page_restore_key_desc">Enter the passphrase it was created with. This is only asked once for legacy archives.</string>
   <string name="backup_page_passphrase">Backup / restore passphrase</string>
   <string name="backup_page_passphrase_hint">At least 8 characters for a new encrypted backup. Enter the original passphrase to restore.</string>
   <string name="backup_page_confirm_passphrase">Confirm backup passphrase</string>

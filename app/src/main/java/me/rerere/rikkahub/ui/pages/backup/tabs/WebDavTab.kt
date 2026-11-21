@@ -30,8 +30,11 @@ import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
 import me.rerere.rikkahub.ui.pages.backup.components.BackupFileInfo
 import me.rerere.rikkahub.ui.pages.backup.components.BackupFilesSheet
+import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.ui.pages.backup.components.RemoteBackupLayout
 import me.rerere.rikkahub.ui.pages.backup.components.RemoteBackupStatus
+import me.rerere.rikkahub.ui.pages.backup.components.RestorePassphraseDialog
+import me.rerere.rikkahub.ui.pages.backup.components.rememberRestorePassphrasePrompt
 import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 
 @Composable
@@ -49,6 +52,8 @@ fun WebDavTab(
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
     var isBackingUp by remember { mutableStateOf(false) }
+    val passphrasePrompt = rememberRestorePassphrasePrompt()
+    RestorePassphraseDialog(passphrasePrompt)
 
     fun updateWebDavConfig(newConfig: WebDavConfig) {
         vm.updateSettings { it.copy(webDavConfig = newConfig) }
@@ -208,15 +213,24 @@ fun WebDavTab(
             onRestore = { item ->
                 scope.launch {
                     restoringItemId = item.displayName
-                    runCatching {
-                        vm.restore(item = item)
+                    var oneTimePassphrase: CharArray? = null
+                    try {
+                        while (true) {
+                            try {
+                                vm.restore(item = item, oneTimePassphrase = oneTimePassphrase)
+                                break
+                            } catch (_: MissingBackupPassphraseException) {
+                                // 旧加密备份：只在这里索取一次原口令。
+                                oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
+                            }
+                        }
                         toaster.show(
                             resources.getString(R.string.backup_page_restore_success),
                             type = ToastType.Success
                         )
                         showBackupFiles = false
                         onShowRestartDialog()
-                    }.onFailure { err ->
+                    } catch (err: Exception) {
                         err.printStackTrace()
                         toaster.show(
                             resources.getString(
@@ -225,8 +239,10 @@ fun WebDavTab(
                             ),
                             type = ToastType.Error
                         )
+                    } finally {
+                        oneTimePassphrase?.fill('\u0000')
+                        restoringItemId = null
                     }
-                    restoringItemId = null
                 }
             },
             onDismiss = { showBackupFiles = false },

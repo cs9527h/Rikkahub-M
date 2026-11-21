@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ui.toast.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.s3ConnectionItems
@@ -23,6 +24,8 @@ import me.rerere.rikkahub.ui.pages.backup.components.BackupFileInfo
 import me.rerere.rikkahub.ui.pages.backup.components.BackupFilesSheet
 import me.rerere.rikkahub.ui.pages.backup.components.RemoteBackupLayout
 import me.rerere.rikkahub.ui.pages.backup.components.RemoteBackupStatus
+import me.rerere.rikkahub.ui.pages.backup.components.RestorePassphraseDialog
+import me.rerere.rikkahub.ui.pages.backup.components.rememberRestorePassphrasePrompt
 import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 
 @Composable
@@ -39,6 +42,8 @@ fun S3Tab(
     val scope = rememberCoroutineScope()
     var showBackupFiles by remember { mutableStateOf(false) }
     var restoringItemId by remember { mutableStateOf<String?>(null) }
+    val passphrasePrompt = rememberRestorePassphrasePrompt()
+    RestorePassphraseDialog(passphrasePrompt)
     var isBackingUp by remember { mutableStateOf(false) }
 
     fun updateS3Config(newConfig: S3Config) {
@@ -147,15 +152,23 @@ fun S3Tab(
             onRestore = { item ->
                 scope.launch {
                     restoringItemId = item.displayName
-                    runCatching {
-                        vm.restoreFromS3(item = item)
+                    var oneTimePassphrase: CharArray? = null
+                    try {
+                        while (true) {
+                            try {
+                                vm.restoreFromS3(item = item, oneTimePassphrase = oneTimePassphrase)
+                                break
+                            } catch (_: MissingBackupPassphraseException) {
+                                oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
+                            }
+                        }
                         toaster.show(
                             resources.getString(R.string.backup_page_restore_success),
                             type = ToastType.Success
                         )
                         showBackupFiles = false
                         onShowRestartDialog()
-                    }.onFailure { err ->
+                    } catch (err: Exception) {
                         err.printStackTrace()
                         toaster.show(
                             resources.getString(
@@ -164,8 +177,10 @@ fun S3Tab(
                             ),
                             type = ToastType.Error
                         )
+                    } finally {
+                        oneTimePassphrase?.fill('\u0000')
+                        restoringItemId = null
                     }
-                    restoringItemId = null
                 }
             },
             onDismiss = { showBackupFiles = false },

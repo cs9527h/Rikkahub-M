@@ -193,6 +193,8 @@
   <string name="backup_page_reminder_title">Напоминание о резервном копировании</string>
   <string name="backup_page_restart_app">Перезапустить приложение</string>
   <string name="backup_page_restart_desc">Приложение необходимо перезапустить, чтобы изменения вступили в силу.</string>
+  <string name="backup_page_restore_key_title">Это старая зашифрованная резервная копия</string>
+  <string name="backup_page_restore_key_desc">Введите пароль, с которым она создана. Для старых архивов это требуется один раз.</string>
   <string name="backup_page_restore">Восстановить</string>
   <string name="backup_page_restore_failed">Ошибка восстановления: %s</string>
   <string name="backup_page_restore_now">Восстановить</string>

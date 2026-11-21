@@ -68,7 +68,7 @@ class WorkflowContractsTest(unittest.TestCase):
         script = (ROOT / "scripts/compare-installed-screens.sh").read_text()
         self.assertIn("signed) candidate_dir=dist; candidate_package=com.rikkahub.mate", script)
         self.assertIn("python3 scripts/upgrade_data_contract.py prepare", script)
-        self.assertIn("python3 scripts/upgrade_data_contract.py verify --version-code 16", script)
+        self.assertIn('python3 scripts/upgrade_data_contract.py verify --version-code "$expected_code"', script)
         self.assertIn('capture "$candidate_package" candidate', script)
         self.assertNotIn('capture com.rikkahub.mate.debug candidate', script)
         self.assertIn('ERROR: $label($theme) window not confirmed', script)
@@ -89,6 +89,14 @@ class WorkflowContractsTest(unittest.TestCase):
         registered = set(re.findall(r"entry<Screen\.([A-Za-z0-9_]+)>", source))
         missing = sorted(defined - registered)
         self.assertEqual(missing, [], "screens missing navigation entry: " + ", ".join(missing))
+
+    def test_upgrade_verification_reads_version_code_from_gradle(self):
+        """升级校验必须按真实 versionCode 校验，不能写死某个版本的数字。"""
+        import pathlib
+        source = pathlib.Path("scripts/compare-installed-screens.sh").read_text(encoding="utf-8")
+        self.assertRegex(source, r"versionCode", "脚本必须从 app/build.gradle.kts 读取 versionCode")
+        hardcoded = re.findall(r"upgrade_data_contract\.py verify --version-code ([0-9]+)", source)
+        self.assertEqual(hardcoded, [], "升级校验不得写死 versionCode")
 
 
 

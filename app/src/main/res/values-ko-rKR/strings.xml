@@ -193,6 +193,8 @@
   <string name="backup_page_reminder_title">백업 알림</string>
   <string name="backup_page_restart_app">앱 재시작</string>
   <string name="backup_page_restart_desc">변경 사항을 적용하려면 앱을 다시 시작해야 합니다.</string>
+  <string name="backup_page_restore_key_title">이전 암호화 백업입니다</string>
+  <string name="backup_page_restore_key_desc">생성할 때 사용한 암호를 입력하면 복원됩니다. 이전 형식에만 한 번 필요합니다.</string>
   <string name="backup_page_restore">복원</string>
   <string name="backup_page_restore_failed">복원 실패: %s</string>
   <string name="backup_page_restore_now">복원</string>

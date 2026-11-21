@@ -153,6 +153,8 @@
   <string name="backup_page_reminder_title">Backup-Erinnerung</string>
   <string name="backup_page_restart_app">App neu starten</string>
   <string name="backup_page_restart_desc">Die App muss neu gestartet werden, damit die Änderungen wirksam werden.</string>
+  <string name="backup_page_restore_key_title">Dieses Backup ist mit einem älteren Passwort verschlüsselt</string>
+  <string name="backup_page_restore_key_desc">Gib das Passwort ein, mit dem es erstellt wurde. Nur bei alten Archiven einmalig nötig.</string>
   <string name="backup_page_restore">Wiederherstellen</string>
   <string name="backup_page_restore_failed">Wiederherstellung fehlgeschlagen: %s</string>
   <string name="backup_page_restore_now">Wiederherstellen</string>

@@ -36,13 +36,19 @@ import me.rerere.rikkahub.data.sync.importer.DeepSeekImportResult
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
+import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.ui.pages.backup.components.BackupActionIcon
+import me.rerere.rikkahub.ui.pages.backup.components.RestorePassphraseDialog
+import me.rerere.rikkahub.ui.pages.backup.components.rememberRestorePassphrasePrompt
 import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+/** 用户在旧加密备份的一次性口令框里取消恢复。 */
+private object RestoreCancelled : Exception("restore cancelled by user")
 
 @Composable
 fun ImportExportTab(
@@ -105,6 +111,41 @@ fun ImportExportTab(
         }
     }
 
+    val passphrasePrompt = rememberRestorePassphrasePrompt()
+    RestorePassphraseDialog(passphrasePrompt)
+
+    // 旧加密备份需要原口令时，在这里索取一次；新备份直接用本机保存的口令。
+    suspend fun restoreLocalBackup(sourceUri: android.net.Uri) {
+        val tempFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
+        try {
+            withContext(Dispatchers.IO) {
+                requireNotNull(context.contentResolver.openInputStream(sourceUri)) {
+                    "无法读取备份文件"
+                }.use { inputStream ->
+                    FileOutputStream(tempFile).use { outputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                }
+            }
+            var oneTimePassphrase: CharArray? = null
+            try {
+                while (true) {
+                    try {
+                        // The archive header, not its filename, decides whether a passphrase is required.
+                        vm.restoreFromLocalFile(tempFile, oneTimePassphrase)
+                        break
+                    } catch (_: MissingBackupPassphraseException) {
+                        oneTimePassphrase = passphrasePrompt.ask() ?: throw RestoreCancelled
+                    }
+                }
+            } finally {
+                oneTimePassphrase?.fill('\u0000')
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }
+
     // 创建文件选择的launcher
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -112,29 +153,9 @@ fun ImportExportTab(
         uri?.let { sourceUri ->
             scope.launch {
                 isRestoring = true
-                runCatching {
+                try {
                     when (importType) {
-                        "local" -> {
-                            // 本地备份导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
-
-                            try {
-                                withContext(Dispatchers.IO) {
-                                    requireNotNull(context.contentResolver.openInputStream(sourceUri)) {
-                                        "无法读取备份文件"
-                                    }.use { inputStream ->
-                                        FileOutputStream(tempFile).use { outputStream ->
-                                            inputStream.copyTo(outputStream)
-                                        }
-                                    }
-                                }
-                                // The archive header, not its filename, decides whether a passphrase is required.
-                                vm.restoreFromLocalFile(tempFile)
-                            } finally {
-                                tempFile.delete()
-                            }
-                        }
+                        "local" -> restoreLocalBackup(sourceUri)
 
                         "chatbox" -> {
                             // Chatbox Backup v2：处理 ZIP 文件
@@ -184,14 +205,17 @@ fun ImportExportTab(
                         )
                         onShowRestartDialog()
                     }
-                }.onFailure { e ->
+                } catch (_: RestoreCancelled) {
+                    // 用户在旧备份口令框里取消：不算失败。
+                } catch (e: Exception) {
                     e.printStackTrace()
                     toaster.show(
                         resources.getString(R.string.backup_page_restore_failed, e.message ?: ""),
                         type = ToastType.Error
                     )
+                } finally {
+                    isRestoring = false
                 }
-                isRestoring = false
             }
         }
     }

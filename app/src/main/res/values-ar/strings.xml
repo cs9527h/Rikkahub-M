@@ -216,6 +216,8 @@
   <string name="backup_page_reminder_title">تذكير النسخ الاحتياطي</string>
   <string name="backup_page_restart_app">إعادة تشغيل التطبيق</string>
   <string name="backup_page_restart_desc">يحتاج التطبيق إلى إعادة التشغيل لتصبح التغييرات سارية.</string>
+  <string name="backup_page_restore_key_title">هذه نسخة احتياطية مشفّرة قديمة</string>
+  <string name="backup_page_restore_key_desc">أدخل كلمة المرور التي أُنشئت بها. مطلوب مرة واحدة فقط للأرشيفات القديمة.</string>
   <string name="backup_page_restore">استعادة</string>
   <string name="backup_page_restore_failed">فشلت الاستعادة: %s</string>
   <string name="backup_page_restore_now">استعادة</string>
