@@ -32,6 +32,8 @@ jobs:
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -84,10 +86,22 @@ jobs:
           with open("app/google-services.json", "w", encoding="utf-8") as f:
             json.dump(config, f)
           PY
+      - name: Verify release and performance guard contracts
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Unit tests and Kotlin build
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testGithubDebugUnitTest :app:assembleGithubDebug --stacktrace --no-daemon
+          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest :app:lintGithubDebug :app:assembleGithubDebug --stacktrace --no-daemon
+      - name: Upload test results for independently counted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Standalone-unit-test-results
+          path: |
+            app/build/test-results/**
+            ai/build/test-results/**
+            app/build/reports/lint-results*
+          if-no-files-found: warn
       - name: Verify universal preview contents
         run: |
           python3 - <<'PY'
@@ -117,15 +131,24 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: false
-          script: ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.rikkahub.data.sync.BackupManagerTest,me.rerere.rikkahub.data.sync.DatabaseBackupTest --no-daemon
+          script: ./gradlew :app:connectedGithubDebugAndroidTest --stacktrace --no-daemon
+      - name: Upload full instrumented results and generated schemas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Standalone-instrumented-test-results
+          path: |
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+            app/schemas/**
+          if-no-files-found: warn
 
   android-smoke:
     name: Compare installed Android chat screens
     needs: preview
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # 证据型任务：模拟器截图与冷启动数据用于人工复核，装不上/窗口没出现过只记录不阻断代码验证
-    continue-on-error: true
+    # Emulator checks are mandatory smoke evidence, not physical-device acceptance.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -160,8 +183,7 @@ jobs:
     needs: preview
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # 模拟器数据波动大，只作趋势证据；稳定版发布仍以真机基线为准（见 docs/perf/README.md）
-    continue-on-error: true
+    # Do not hide benchmark failures behind an overall green run. Physical acceptance is still required.
     env:
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
     steps:
@@ -214,6 +236,9 @@ jobs:
       - name: Restore release keystore from secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.MATE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.MATE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MATE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "${KEYSTORE_BASE64:-}" || { echo "::error::MATE_KEYSTORE_BASE64 missing"; exit 1; }
@@ -221,10 +246,11 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keys/rikkahubm-release.jks"
           {
             echo "storeFile=$RUNNER_TEMP/keys/rikkahubm-release.jks"
-            echo "storePassword=${{ secrets.MATE_KEYSTORE_PASSWORD }}"
-            echo "keyAlias=${{ secrets.MATE_KEY_ALIAS }}"
-            echo "keyPassword=${{ secrets.MATE_KEY_PASSWORD }}"
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } >> local.properties
+          chmod 600 local.properties "$RUNNER_TEMP/keys/rikkahubm-release.jks"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

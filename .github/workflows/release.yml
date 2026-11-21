@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.4.0'
+  VERSION: '0.4.1'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -32,6 +32,10 @@ jobs:
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify release guard contracts
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -79,6 +83,9 @@ jobs:
       - name: Restore release keystore from secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.MATE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.MATE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.MATE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.MATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "${KEYSTORE_BASE64:-}" || { echo "::error::MATE_KEYSTORE_BASE64 secret is missing; refusing to publish an unsigned APK."; exit 1; }
@@ -87,14 +94,46 @@ jobs:
           test -s "$RUNNER_TEMP/keys/rikkahubm-release.jks"
           {
             echo "storeFile=$RUNNER_TEMP/keys/rikkahubm-release.jks"
-            echo "storePassword=${{ secrets.MATE_KEYSTORE_PASSWORD }}"
-            echo "keyAlias=${{ secrets.MATE_KEY_ALIAS }}"
-            echo "keyPassword=${{ secrets.MATE_KEY_PASSWORD }}"
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
           } >> local.properties
+          chmod 600 local.properties "$RUNNER_TEMP/keys/rikkahubm-release.jks"
       - name: Unit tests
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:testGithubDebugUnitTest --stacktrace --no-daemon
+          ./gradlew :ai:testDebugUnitTest :app:testGithubDebugUnitTest :app:lintGithubDebug --stacktrace --no-daemon
+      - name: Upload unit and static verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release-unit-static-results
+          path: |
+            app/build/test-results/**
+            ai/build/test-results/**
+            app/build/reports/lint-results*
+          if-no-files-found: warn
+      - name: Enable KVM for all instrumented tests
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: false
+          script: ./gradlew :app:connectedGithubDebugAndroidTest --stacktrace --no-daemon
+      - name: Upload instrumented verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release-instrumented-results
+          path: |
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+            app/schemas/**
+          if-no-files-found: warn
       - name: Build signed release APKs
         run: ./gradlew :app:assembleGithubRelease --stacktrace --no-daemon
       - name: "Verify universal APK - ABI, package, signature, checksum"
@@ -116,7 +155,7 @@ jobs:
           apk=${apks[0]}
           test -x "$APKANALYZER"
           test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
-          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 12
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 15
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -155,8 +194,6 @@ jobs:
   upgrade:
     name: Verify signed upgrade from 0.2.4
     needs: build
-    # 证据型任务：模拟器装不上不影响已通过校验的签名包发布
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -190,7 +227,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: [build, upgrade]
     if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
@@ -198,6 +235,8 @@ jobs:
     steps:
       # gh CLI 在没有 .git 的目录里无法推断仓库，必须 checkout（或显式 --repo）
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: Rikkahub-M-signed-apk
@@ -219,7 +258,14 @@ jobs:
           print('perf baseline status:', data.get('measured'), data.get('source',''))
           PY
           (cd dist && sha256sum -c SHA256SUMS.txt)
+          flags=()
+          if [[ "$VERSION" == *-* ]]; then
+            flags+=(--prerelease)
+          else
+            # A source build or a filled-out performance ledger is not stable acceptance.
+            python3 scripts/verify_release_acceptance.py "$VERSION" "docs/releases/${VERSION}-acceptance.json"
+          fi
           # Refuse to overwrite an existing published binary with another build.
           gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" \
             --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md"
