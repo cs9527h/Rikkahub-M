@@ -13,6 +13,9 @@
 
 ## 最新提交
 
+- `1ba477e2`：恢复前存储空间检查；编译成功；AI 312 + 应用 654 个 JVM 测试通过；仪器测试 `cases=18 failed=0`；smoke 成功。
+- 尝试通过 GitHub 设备授权补 workflow scope：一次性代码已生成，但未完成浏览器授权，token 仍只有 `gist/read:org/repo`；工作流门禁补丁仍不能推送。
+
 - `81449543`：编译成功；AI 312 + 应用 654 个 JVM 测试通过；仪器测试 `cases=18 failed=0`；安装截图 smoke 成功。性能 advisory 仍未完成，且基线 `measured=false`，不构成性能验收。
 
 - `97de5f51`：opt-in 自动版本保留（默认关闭，严格同类型自动命名）；本地契约 90/90。Android 运行结果以新 run 为准。
