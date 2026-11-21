@@ -229,8 +229,8 @@ class UpdateChecker(
 
     /** 更新日志：内置当前版本说明始终可读，联网后合并已发布的正式/预览版本。 */
     suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
-        val bundled = bundledNotes()
-        val remote = runCatching { fetchReleases() }.getOrDefault(emptyList())
+        val bundled: List<ReleaseNote> = bundledNotes()
+        val remote: List<ReleaseNote> = runCatching { fetchReleases() }.getOrNull() ?: emptyList()
         (bundled + remote)
             .distinctBy { it.version }
             .sortedByDescending { Version(it.version) }
@@ -239,7 +239,7 @@ class UpdateChecker(
     fun bundledNotes(): List<ReleaseNote> = runCatching {
         val text = context.assets.open("updates.json").bufferedReader().use { it.readText() }
         json.decodeFromString(MirrorManifest.serializer(), text).releases
-    }.getOrDefault(emptyList())
+    }.getOrNull() ?: emptyList()
 
     /** 下载 → 校验 SHA-256/包名/版本号/签名 → 交给系统安装器确认，绝不静默安装。 */
     suspend fun installUpdate(info: UpdateInfo): Result<File> = withContext(Dispatchers.IO) {
