@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.completeWith
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -284,12 +285,16 @@ class ChatService(
 
         return appScope.launch(start = CoroutineStart.LAZY) {
             val generationId = Uuid.random()
-            // Resolve this conversation's own assistant before the notification appears.
-            // A brand-new, not-yet-persisted conversation uses the currently selected assistant.
-            val notificationAssistantId = runCatching {
-                conversationRepo.getConversationById(conversationId)?.assistantId
-                    ?: settingsStore.awaitLoaded().getCurrentAssistant().id
-            }.getOrNull()
+            // Use the session's latest assistant before a possibly stale persisted snapshot.
+            // Unknown identities fall back to the app, never an unrelated selected assistant.
+            val notificationAssistantId = try {
+                getConversation(conversationId)?.assistantId
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+            currentCoroutineContext().ensureActive()
             val foregroundStarted = ChatGenerationForegroundService.acquire(
                 context = context,
                 generationId = generationId,

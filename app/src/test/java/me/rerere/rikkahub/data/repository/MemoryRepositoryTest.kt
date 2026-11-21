@@ -119,9 +119,15 @@ class MemoryRepositoryTest {
         assertEquals(listOf("/topics/hiking.md"), trashed.map { it.path })
         assertTrue(trashed.single().isDeleted)
 
-        // Same path written again becomes an active file, so the trash entry must not linger twice.
-        val recreated = repository.writeFile(assistant, "/topics/hiking.md", "- [stated] New note\n")
-        assertTrue(recreated is MemoryWriteResult.Success)
+        // Neither an unversioned UI save nor a new/stale tool write may destroy the recoverable content.
+        for (version in listOf(null, MemoryRepository.NEW_FILE_VERSION, file.version)) {
+            val recreated = repository.writeFile(assistant, "/topics/hiking.md", "synthetic replacement", version)
+            assertTrue(recreated is MemoryWriteResult.Rejected)
+            assertNull(repository.getFile(assistant, "/topics/hiking.md"))
+            assertEquals(file.content, repository.getDeletedFilesFlow(assistant).first().single().content)
+        }
+        assertTrue(repository.restoreFile(assistant, "/topics/hiking.md") is MemoryWriteResult.Success)
+        assertEquals(file.content, repository.getFile(assistant, "/topics/hiking.md")?.content)
         assertTrue(repository.getDeletedFilesFlow(assistant).first().isEmpty())
     }
 
@@ -141,6 +147,19 @@ class MemoryRepositoryTest {
         assertTrue(repository.purgeFile(assistant, "/people/dad.md"))
         assertTrue(repository.getDeletedFilesFlow(assistant).first().isEmpty())
         assertNull(repository.getFile(assistant, "/people/dad.md"))
+    }
+
+    @Test
+    fun `explicit purge permits reusing the path without touching another namespace`() = runBlocking {
+        val path = "/synthetic-reuse.md"
+        create(path, "synthetic deleted content")
+        repository.writeFile("other-synthetic-assistant", path, "synthetic isolated content")
+        repository.deleteFile(assistant, path)
+        assertTrue(repository.purgeFile(assistant, path))
+        val result = repository.writeFile(assistant, path, "synthetic replacement", MemoryRepository.NEW_FILE_VERSION)
+        assertTrue(result is MemoryWriteResult.Success)
+        assertEquals("synthetic replacement", repository.getFile(assistant, path)?.content)
+        assertEquals("synthetic isolated content", repository.getFile("other-synthetic-assistant", path)?.content)
     }
 
     @Test

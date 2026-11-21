@@ -52,8 +52,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import kotlin.math.roundToInt
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.ai.ui.UIMessage
@@ -71,10 +69,12 @@ import me.rerere.rikkahub.ui.pages.quickstart.QuickStartCard
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
 import me.rerere.ui.components.ListSelectableItem
+import kotlin.math.roundToInt
+import kotlin.uuid.Uuid
 
 private const val TAG = "ChatList"
-private const val LoadingIndicatorKey = "LoadingIndicator"
-private const val ScrollBottomKey = "ScrollBottomKey"
+private const val LOADING_INDICATOR_KEY = "LoadingIndicator"
+private const val SCROLL_BOTTOM_KEY = "ScrollBottomKey"
 
 @Composable
 fun ChatList(
@@ -244,7 +244,7 @@ private fun ChatListNormal(
     var isRecentScroll by remember { mutableStateOf(false) }
     val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
-    val activity = LocalContext.current as? me.rerere.rikkahub.RouteActivity
+    val activity = androidx.activity.compose.LocalActivity.current as? me.rerere.rikkahub.RouteActivity
 
     DisposableEffect(Unit) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
@@ -257,7 +257,9 @@ private fun ChatListNormal(
                     settings.displaySetting.volumeKeyScrollRatio
                 scope.launch { state.scrollBy(if (isVolumeUp) -scrollAmount else scrollAmount) }
                 true
-            } else false
+            } else {
+                false
+            }
         }
         activity?.volumeKeyListeners?.add(listener)
         onDispose {
@@ -298,9 +300,17 @@ private fun ChatListNormal(
     }
     val lastMessageIndex = conversation.messageNodes.lastIndex
     // 流式输出时会频繁重组，只在相关配置变了才重新查找模型
-    val needsSetup = remember(settings.init, settings.providers, settings.chatModelId, settings.assistants, conversation.assistantId, conversation.config) {
-        !settings.init && settings.getChatModelOf(conversation) == null
-    }
+    val needsSetup =
+        remember(
+            settings.init,
+            settings.providers,
+            settings.chatModelId,
+            settings.assistants,
+            conversation.assistantId,
+            conversation.config
+        ) {
+            !settings.init && settings.getChatModelOf(conversation) == null
+        }
 
     Box(
         modifier = Modifier
@@ -348,112 +358,113 @@ private fun ChatListNormal(
                     .topFadingEdge(innerPadding.calculateTopPadding() + 24.dp)
                     .hazeSource(state = hazeState),
             ) {
-            itemsIndexed(
-                items = conversation.messageNodes,
-                key = { index, item -> item.id },
-            ) { index, node ->
-                Column {
-                    ListSelectableItem(
-                        key = node.id,
-                        onSelectChange = {
-                            if (!selectedItems.contains(node.id)) {
-                                selectedItems.add(node.id)
-                            } else {
-                                selectedItems.remove(node.id)
-                            }
-                        },
-                        selectedKeys = selectedItems,
-                        enabled = selectionState.selecting,
-                    ) {
-                        ChatMessage(
-                            node = node,
-                            model = node.currentMessage.modelId?.let(modelById::get)
-                                ?: node.currentMessage.snapshotModel(),
-                            assistant = assistant,
-                            loading = loading && !compressing && index == lastMessageIndex,
-                            onRegenerate = {
-                                onRegenerate(node.currentMessage)
+                itemsIndexed(
+                    items = conversation.messageNodes,
+                    key = { index, item -> item.id },
+                ) { index, node ->
+                    Column {
+                        ListSelectableItem(
+                            key = node.id,
+                            onSelectChange = {
+                                if (!selectedItems.contains(node.id)) {
+                                    selectedItems.add(node.id)
+                                } else {
+                                    selectedItems.remove(node.id)
+                                }
                             },
-                            onEdit = {
-                                onEdit(node.currentMessage)
-                            },
-                            onFork = {
-                                onForkMessage(node.currentMessage)
-                            },
-                            onDelete = {
-                                onDelete(node.currentMessage)
-                            },
-                            onShare = {
-                                // 默认选中从第一条到这一条
-                                selectionState.start(
-                                    conversation.messageNodes.subList(0, index + 1).map { it.id }
-                                )
-                            },
-                            onUpdate = {
-                                onUpdateMessage(it)
-                            },
-                            isFavorite = node.isFavorite,
-                            onToggleFavorite = {
-                                onToggleFavorite?.invoke(node)
-                            },
-                            onTranslate = onTranslate,
-                            onClearTranslation = onClearTranslation,
-                            onToolApproval = onToolApproval,
-                            onToolAnswer = onToolAnswer,
-                            lastMessage = index == lastMessageIndex,
-                        )
-                    }
-                }
-            }
-
-            if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
-                item(key = "ConversationSystemPrompt") {
-                    ConversationSystemPromptButton(
-                        customSystemPrompt = conversation.customSystemPrompt,
-                        onSystemPromptChange = onConversationSystemPromptChange,
-                    )
-                }
-            }
-
-            // 压缩时也用这一行，processingStatus 显示的是压缩中
-            if (loading) {
-                item(LoadingIndicatorKey) {
-                    Row(
-                        modifier = Modifier.padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        ContainedLoadingIndicator(
-                            modifier = Modifier.size(28.dp)
-                        )
-                        AnimatedVisibility(
-                            visible = processingStatus != null,
+                            selectedKeys = selectedItems,
+                            enabled = selectionState.selecting,
                         ) {
-                            Text(
-                                text = processingStatus ?: "",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ChatMessage(
+                                node = node,
+                                model = node.currentMessage.modelId?.let(modelById::get)
+                                    ?: node.currentMessage.snapshotModel(),
+                                assistant = assistant,
+                                loading = loading && !compressing && index == lastMessageIndex,
+                                onRegenerate = {
+                                    onRegenerate(node.currentMessage)
+                                },
+                                onEdit = {
+                                    onEdit(node.currentMessage)
+                                },
+                                onFork = {
+                                    onForkMessage(node.currentMessage)
+                                },
+                                onDelete = {
+                                    onDelete(node.currentMessage)
+                                },
+                                onShare = {
+                                    // 默认选中从第一条到这一条
+                                    selectionState.start(
+                                        conversation.messageNodes.subList(0, index + 1).map { it.id }
+                                    )
+                                },
+                                onUpdate = {
+                                    onUpdateMessage(it)
+                                },
+                                isFavorite = node.isFavorite,
+                                onToggleFavorite = {
+                                    onToggleFavorite?.invoke(node)
+                                },
+                                onTranslate = onTranslate,
+                                onClearTranslation = onClearTranslation,
+                                onToolApproval = onToolApproval,
+                                onToolAnswer = onToolAnswer,
+                                lastMessage = index == lastMessageIndex,
                             )
                         }
                     }
                 }
-            }
 
-            // 没有可用模型就发不了消息，放在消息后面，空会话时在顶部、有消息时贴着输入框
-            if (needsSetup) {
-                item(key = "QuickStartCard") {
-                    QuickStartCard(modifier = Modifier.animateItem())
+                if (!loading && assistant?.allowConversationSystemPrompt == true &&
+                    onConversationSystemPromptChange != null) {
+                    item(key = "ConversationSystemPrompt") {
+                        ConversationSystemPromptButton(
+                            customSystemPrompt = conversation.customSystemPrompt,
+                            onSystemPromptChange = onConversationSystemPromptChange,
+                        )
+                    }
                 }
-            }
 
-            // 为了能正确滚动到这
-            item(ScrollBottomKey) {
-                Spacer(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(5.dp)
-                )
-            }
+                // 压缩时也用这一行，processingStatus 显示的是压缩中
+                if (loading) {
+                    item(LOADING_INDICATOR_KEY) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ContainedLoadingIndicator(
+                                modifier = Modifier.size(28.dp)
+                            )
+                            AnimatedVisibility(
+                                visible = processingStatus != null,
+                            ) {
+                                Text(
+                                    text = processingStatus ?: "",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 没有可用模型就发不了消息，放在消息后面，空会话时在顶部、有消息时贴着输入框
+                if (needsSetup) {
+                    item(key = "QuickStartCard") {
+                        QuickStartCard(modifier = Modifier.animateItem())
+                    }
+                }
+
+                // 为了能正确滚动到这
+                item(SCROLL_BOTTOM_KEY) {
+                    Spacer(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(5.dp)
+                    )
+                }
             }
         }
 
@@ -498,14 +509,18 @@ private fun ChatListNormal(
                 selectedMessages = if (showExportSheet) {
                     val ids = selectedItems.toHashSet()
                     conversation.messageNodes.mapNotNull { if (it.id in ids) it.currentMessage else null }
-                } else emptyList()
+                } else {
+                    emptyList()
+                }
             )
 
             val captureProgress = LocalScrollCaptureInProgress.current
 
             // 消息快速跳转
             MessageJumper(
-                show = isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper && !captureProgress,
+                show =
+                isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper &&
+                    !captureProgress,
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
                 state = state

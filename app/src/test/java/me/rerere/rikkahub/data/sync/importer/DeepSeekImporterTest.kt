@@ -14,7 +14,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -230,12 +229,23 @@ class DeepSeekImporterTest {
         assertEquals(DeepSeekImportResult(0, 0, 1, 0), result)
     }
 
-    /** Optional local verification; real chat data is never copied into test fixtures. */
+    /** Always exercise the archive-wide assertions with synthetic data, never a private export. */
     @Test
-    fun `imports only current branch textual fragments from a supplied real archive`() = runBlocking {
-        val path = System.getenv("DEEPSEEK_IMPORT_TEST_ARCHIVE")
-        assumeTrue(!path.isNullOrBlank())
-        val file = File(path!!)
+    fun `imports only current branch textual fragments from a synthetic archive`() = runBlocking {
+        val file = archive(session(
+            listOf(
+                message(1, null, "USER", "Synthetic question"),
+                """{"id":2,"parent_id":1,"role":"ASSISTANT","fragments":[
+                    {"type":"THINK","content":"Synthetic reasoning"},
+                    {"type":"RESPONSE","content":"Synthetic response"}
+                ]}""",
+                message(3, 2, "USER", "Synthetic current followup"),
+                message(4, 3, "ASSISTANT", "Synthetic current conclusion"),
+                message(5, 1, "ASSISTANT", "Synthetic excluded alternative"),
+                message(6, 5, "USER", "Synthetic excluded continuation"),
+            ).joinToString(),
+            current = 4,
+        ))
         val expectedText = mutableSetOf<String>()
         var sessionCount = 0
         ZipFile(file).use { zip ->

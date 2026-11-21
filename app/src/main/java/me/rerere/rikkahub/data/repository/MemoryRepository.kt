@@ -118,7 +118,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         val current = memoryDAO.getFileIncludingDeleted(assistantId, normalized)?.toMemoryFile()
             ?: return MemoryWriteResult.Conflict(null)
         if (current.deletedAt == 0L) return MemoryWriteResult.Success(current)
-        // 恢复也要保持大小上限：删除期间内容不会变，但旧记忆本来可能超限
+        // 只恢复删除标记；不裁剪旧正文，也不改变原更新时间。
         memoryDAO.markRestored(assistantId, normalized)
         MemoryWriteResult.Success(current.copy(deletedAt = 0))
     }
@@ -150,7 +150,11 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         edit: (current: String) -> Edit,
     ): MemoryWriteResult = writeLock.withLock {
         val normalized = MemoryFile.normalizePath(path) ?: return invalidPath(path)
-        val current = memoryDAO.getFile(assistantId, normalized)?.toMemoryFile()
+        val existing = memoryDAO.getFileIncludingDeleted(assistantId, normalized)
+        if (existing != null && existing.deletedAt != 0L) {
+            return MemoryWriteResult.Rejected("该路径的记忆仍在最近删除中，请先恢复或永久删除；未覆盖原内容。")
+        }
+        val current = existing?.toMemoryFile()
         val versionMatches = when (ifVersion) {
             null -> current != null || allowCreate
             NEW_FILE_VERSION -> current == null && allowCreate

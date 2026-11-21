@@ -197,7 +197,9 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     // ---- 截图 ----
 
     override suspend fun screenshot(maxSide: Int): ByteArray {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { "Screenshots need Android 11 or later." }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            throw IllegalStateException("Screenshots need Android 11 or later.")
+        }
         val bitmap = try {
             takeScreenshot()
         } catch (e: ScreenshotIntervalException) {
@@ -326,8 +328,10 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
         PhoneKey.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
         PhoneKey.NOTIFICATIONS -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
         PhoneKey.ENTER -> withContext(Dispatchers.Default) {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                "Enter needs Android 11 or later. Tap the search or send button on screen instead."
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                throw IllegalStateException(
+                    "Enter needs Android 11 or later. Tap the search or send button on screen instead."
+                )
             }
             focusedInput()?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id) == true
         }
