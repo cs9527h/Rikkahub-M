@@ -58,7 +58,9 @@ import me.rerere.ai.util.json
 import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
+import me.rerere.ai.util.HttpException
 import me.rerere.ai.util.parseErrorDetail
+import me.rerere.ai.util.rateLimitEntitlementMessage
 import me.rerere.ai.util.stringSafe
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonObjectOrNull
@@ -138,7 +140,9 @@ class ResponseAPI(
         // await() waits for the response headers; reading the body can still block.
         client.newCall(request).await().use { response ->
             if (!response.isSuccessful) {
-                throw Exception("Failed to get response: ${response.code} ${response.body.string()}")
+                val bodyText = response.body.string()
+                rateLimitEntitlementMessage(response.code, bodyText)?.let { throw HttpException(it) }
+                throw Exception("Failed to get response: ${response.code} $bodyText")
             }
 
             val bodyStr = response.body.string()
@@ -202,6 +206,7 @@ class ResponseAPI(
 
                 val bodyRaw = response?.body?.stringSafe()
                 try {
+                    rateLimitEntitlementMessage(response?.code ?: 0, bodyRaw)?.let { throw HttpException(it) }
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
                         println(bodyElement)
