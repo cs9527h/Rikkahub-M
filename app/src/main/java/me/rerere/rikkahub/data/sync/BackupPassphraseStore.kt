@@ -29,7 +29,10 @@ class BackupPassphraseStore(
     private val file = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
     private val mutex = Mutex()
 
-    suspend fun isConfigured(): Boolean = withContext(Dispatchers.IO) { file.isFile }
+    // AtomicFile can recover from its legacy .bak when the base file is missing.
+    suspend fun isConfigured(): Boolean = withContext(Dispatchers.IO) {
+        file.isFile || File(file.parentFile, file.name + ".bak").isFile
+    }
 
     suspend fun save(passphrase: CharArray) = withContext(Dispatchers.IO) {
         mutex.withLock {

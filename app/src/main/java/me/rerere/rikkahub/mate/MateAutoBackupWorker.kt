@@ -47,6 +47,7 @@ class MateAutoBackupWorker(
         }
 
         var keyAvailable = false
+        var hadFailure = false
         try {
             EncryptedBackupSession.run(passphraseStore::read) { passphrase ->
                 keyAvailable = true
@@ -60,50 +61,58 @@ class MateAutoBackupWorker(
                     for (transport in listOf("webdav", "s3")) {
                         val ready = if (transport == "webdav") davReady else s3Ready
                         if (!ready) continue
-                        val stateKey = AutoBackupPolicy.key(transport, kind)
-                        val currentState = settingsStore.awaitLoaded().backupReminderConfig.autoBackupStates[stateKey]
-                        val destinationId = if (transport == "webdav") {
-                            AutoBackupPolicy.destinationId("webdav", dav.url, dav.path, dav.username)
-                        } else {
-                            AutoBackupPolicy.destinationId(
-                                "s3",
-                                s3.endpoint,
-                                s3.bucket,
-                                s3.region,
-                                s3.pathStyle.toString(),
-                                s3.accessKeyId,
-                            )
-                        }
-                        val checkedAt = System.currentTimeMillis()
-                        if (currentState?.destinationId == destinationId &&
-                            !AutoBackupPolicy.isDue(currentState, kind, checkedAt, hours)
-                        ) {
-                            continue
-                        }
-                        val fingerprint = if (transport == "webdav") {
-                            webDavSync.backupAutomatically(dav, passphrase, includeCredentials, kind, currentState)
-                        } else {
-                            s3Sync.backupAutomatically(s3, passphrase, includeCredentials, kind, currentState)
-                        }
-                        settingsStore.update { current ->
-                            val config = current.backupReminderConfig
-                            val latest = config.autoBackupStates[stateKey]
-                            val updated = if (fingerprint == null) {
-                                AutoBackupPolicy.checked(latest, checkedAt)
+                        try {
+                            val stateKey = AutoBackupPolicy.key(transport, kind)
+                            val currentState =
+                                settingsStore.awaitLoaded().backupReminderConfig.autoBackupStates[stateKey]
+                            val destinationId = if (transport == "webdav") {
+                                AutoBackupPolicy.destinationId("webdav", dav.url, dav.path, dav.username)
                             } else {
-                                AutoBackupPolicy.uploaded(latest, checkedAt, fingerprint, destinationId)
+                                AutoBackupPolicy.destinationId(
+                                    "s3",
+                                    s3.endpoint,
+                                    s3.bucket,
+                                    s3.region,
+                                    s3.pathStyle.toString(),
+                                    s3.accessKeyId,
+                                )
                             }
-                            current.copy(backupReminderConfig = config.copy(
-                                autoBackupStates = config.autoBackupStates + (stateKey to updated),
-                                lastBackupTime = if (fingerprint == null) config.lastBackupTime else checkedAt,
-                                lastAutoBackupTime = if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
-                                lastAutoBackupError = if (fingerprint == null) config.lastAutoBackupError else "",
-                            ))
+                            val checkedAt = System.currentTimeMillis()
+                            if (currentState?.destinationId == destinationId &&
+                                !AutoBackupPolicy.isDue(currentState, kind, checkedAt, hours)
+                            ) {
+                                continue
+                            }
+                            val fingerprint = if (transport == "webdav") {
+                                webDavSync.backupAutomatically(dav, passphrase, includeCredentials, kind, currentState)
+                            } else {
+                                s3Sync.backupAutomatically(s3, passphrase, includeCredentials, kind, currentState)
+                            }
+                            settingsStore.update { current ->
+                                val config = current.backupReminderConfig
+                                val latest = config.autoBackupStates[stateKey]
+                                val updated = if (fingerprint == null) {
+                                    AutoBackupPolicy.checked(latest, checkedAt)
+                                } else {
+                                    AutoBackupPolicy.uploaded(latest, checkedAt, fingerprint, destinationId)
+                                }
+                                current.copy(backupReminderConfig = config.copy(
+                                    autoBackupStates = config.autoBackupStates + (stateKey to updated),
+                                    lastBackupTime = if (fingerprint == null) config.lastBackupTime else checkedAt,
+                                    lastAutoBackupTime =
+                                    if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
+                                    lastAutoBackupError = if (fingerprint == null) config.lastAutoBackupError else "",
+                                ))
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            // One unreachable destination or type must not cancel the others.
+                            hadFailure = true
                         }
                     }
                 }
             }
-            return Result.success()
         } catch (error: CancellationException) {
             throw error
         } catch (_: MissingBackupPassphraseException) {
@@ -116,6 +125,11 @@ class MateAutoBackupWorker(
             )
             return if (keyAvailable && runAttemptCount < 2) Result.retry() else Result.failure()
         }
+        if (hadFailure) {
+            recordFailure("部分备份目标暂不可用，稍后重试")
+            return if (runAttemptCount < 2) Result.retry() else Result.failure()
+        }
+        return Result.success()
     }
 
     private suspend fun recordFailure(message: String) {
