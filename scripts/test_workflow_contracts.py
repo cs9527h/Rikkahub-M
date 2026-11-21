@@ -44,7 +44,7 @@ class WorkflowContractsTest(unittest.TestCase):
         code = int(re.search(r'versionCode = (\d+)', source)[1])
         self.assertIn("VERSION: '" + version + "'", RELEASE)
         self.assertGreater(code, 15)
-        self.assertIn('manifest version-code "$apk")" -gt 15', RELEASE)
+        self.assertIn('manifest version-code "$apk")" -gt ' + str(code - 1), RELEASE)
         self.assertIn('"$cert" = "$EXPECTED_CERT_SHA256"', RELEASE)
         self.assertIn('"$pkg" = "com.rikkahub.mate"', RELEASE)
         self.assertIn('"${#apks[@]}" -eq 1', RELEASE)

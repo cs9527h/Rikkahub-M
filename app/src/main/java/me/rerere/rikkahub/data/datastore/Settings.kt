@@ -199,13 +199,15 @@ data class WebDavConfig(
 }
 
 @Serializable
+enum class BackupTarget { LOCAL, WEBDAV, S3 }
+
+@Serializable
 data class BackupReminderConfig(
     val enabled: Boolean = false,
     val intervalDays: Int = 7,
     val lastBackupTime: Long = 0L,
     // 自动备份只在用户开启且本机已安全保存恢复口令时执行，绝不回退到明文。
     val autoBackupOnAppLifecycle: Boolean = false,
-    val autoBackupIncludeCredentials: Boolean = false,
     val lastAutoBackupTime: Long = 0L,
     val lastAutoBackupError: String = "",
     val autoSettingsIntervalHours: Int = 6,
@@ -213,4 +215,8 @@ data class BackupReminderConfig(
     /** 0 表示保留全部自动版本；只影响自动生成的同类型归档，不动手动备份。 */
     val autoRetainVersions: Int = 0,
     val autoBackupStates: Map<String, me.rerere.rikkahub.data.sync.AutoBackupState> = emptyMap(),
+    /** 立即备份/恢复默认使用的存储位置；连接配置仍然分别保存在 WebDAV/S3 设置里。 */
+    val backupTarget: BackupTarget = BackupTarget.LOCAL,
+    /** 本机文件备份/恢复使用的范围，持久化后下次打开仍是同一份选择。 */
+    val localBackupItems: List<WebDavConfig.BackupItem> = WebDavConfig.BackupItem.entries,
 )

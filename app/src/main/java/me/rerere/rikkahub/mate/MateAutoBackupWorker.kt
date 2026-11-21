@@ -16,7 +16,6 @@ import me.rerere.rikkahub.data.sync.AutoBackupPolicy
 import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.data.sync.BackupPassphraseStore
 import me.rerere.rikkahub.data.sync.EncryptedBackupSession
-import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import org.koin.core.component.KoinComponent
@@ -50,9 +49,9 @@ class MateAutoBackupWorker(
         var keyAvailable = false
         var hadFailure = false
         try {
-            EncryptedBackupSession.run(passphraseStore::read) { passphrase ->
+            EncryptedBackupSession.run(passphraseStore::readOrCreate) { passphrase ->
                 keyAvailable = true
-                val includeCredentials = settings.backupReminderConfig.autoBackupIncludeCredentials
+                val includeCredentials = false // 新策略：API Key / OAuth 等凭据一律不进备份
                 for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
                     val hours = when (kind) {
                         BackupKind.SETTINGS -> settings.backupReminderConfig.autoSettingsIntervalHours
@@ -133,13 +132,10 @@ class MateAutoBackupWorker(
             }
         } catch (error: CancellationException) {
             throw error
-        } catch (_: MissingBackupPassphraseException) {
-            recordFailure("请先在备份页设置并安全保存自动备份口令")
-            return Result.failure()
         } catch (_: Exception) {
             // Never persist provider exceptions, URLs or authentication material in settings/logs.
             recordFailure(
-                if (keyAvailable) "网络或备份存储暂不可用" else "本机备份口令不可用，请重新设置",
+                if (keyAvailable) "网络或备份存储暂不可用" else "本机备份密钥不可用",
             )
             return if (keyAvailable && runAttemptCount < 2) Result.retry() else Result.failure()
         }

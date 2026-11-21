@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -54,26 +55,27 @@ class BackupVM(
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
     val localBackupItems = MutableStateFlow(WebDavConfig.BackupItem.entries.toList())
 
-    // Deliberately not persisted in Settings, SavedStateHandle, archives or logs.
+    // 新备份一律加密：不再提供关闭加密或让用户输入口令的入口。
     val encryptBackups = MutableStateFlow(true)
-    val includeBackupCredentials = MutableStateFlow(false)
     val automaticPassphraseConfigured = MutableStateFlow(false)
+    val lastRestoreMessage = MutableStateFlow<String?>(null)
     private val archiveMutex = Mutex()
 
-    /** 离开页面时清掉敏感开关，不动本机已保存的恢复口令。 */
+    /** 离开页面只清提示，不动本机已保存的恢复密钥。 */
     fun clearBackupPassphrase() {
-        includeBackupCredentials.value = false
+        lastRestoreMessage.value = null
     }
 
-    /** 本机保存的恢复口令是唯一日常凭据；界面不再要求每次输入。 */
+    /**
+     * 日常零口令：本机没有密钥时静默生成一把，之后手动/自动备份与同机恢复都用它。
+     * 备份内容一律加密，API Key / OAuth 等凭据一律排除。
+     */
     private suspend fun <T> withPassphrase(export: Boolean, block: suspend (CharArray?, Boolean) -> T): T =
         archiveMutex.withLock {
-            val includeCredentials = export && encryptBackups.value && includeBackupCredentials.value
-            require(!includeCredentials || encryptBackups.value) { "包含凭据的备份必须加密" }
-            val stored = if (encryptBackups.value) backupPassphraseStore.read() else null
-            if (export && encryptBackups.value && stored == null) throw MissingBackupPassphraseException()
+            val stored = if (export) backupPassphraseStore.readOrCreate() else backupPassphraseStore.read()
+            if (export) automaticPassphraseConfigured.value = true
             try {
-                block(stored, includeCredentials)
+                block(stored, false)
             } finally {
                 stored?.fill('\u0000')
             }
@@ -86,36 +88,74 @@ class BackupVM(
 
     init {
         viewModelScope.launch { automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured() }
+        viewModelScope.launch {
+            localBackupItems.value = settingsStore.settingsFlow.first().backupReminderConfig.localBackupItems
+        }
         loadBackupFileItems()
         loadS3BackupFileItems()
     }
 
-    /** 只设置一次恢复口令：之后手动/自动备份都不再弹输入框。 */
-    suspend fun configureBackupKey(passphrase: CharArray) {
-        require(passphrase.size in 8..1024) { "恢复口令需为 8 至 1024 位" }
-        settingsStore.update { current ->
-            current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap()))
+    /** 导出恢复密钥文件：换机或重装后用它恢复，不依赖本机 Keystore。 */
+    suspend fun exportRecoveryKey(uri: android.net.Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val secret = backupPassphraseStore.readOrCreate()
+            try {
+                val text = me.rerere.rikkahub.data.sync.BackupRecoveryKey.encode(secret)
+                requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
+                    .use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                automaticPassphraseConfigured.value = true
+            } finally {
+                secret.fill('\u0000')
+            }
         }
-        backupPassphraseStore.save(passphrase)
-        automaticPassphraseConfigured.value = true
-        encryptBackups.value = true
     }
 
-    /** 关闭加密备份：仅允许手动明文备份，自动备份同时停止。 */
-    suspend fun disableBackupEncryption() {
+    /** 导入恢复密钥文件：只接受本应用导出的格式，覆盖本机密钥前先清掉自动备份状态。 */
+    suspend fun importRecoveryKey(uri: android.net.Uri): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val text = requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取所选文件" }
+                .use { it.reader(Charsets.UTF_8).readText() }
+            val secret = me.rerere.rikkahub.data.sync.BackupRecoveryKey.decode(text)
+            try {
+                settingsStore.update { current ->
+                    current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap()))
+                }
+                backupPassphraseStore.save(secret)
+                automaticPassphraseConfigured.value = true
+            } finally {
+                secret.fill('\u0000')
+            }
+        }
+    }
+
+    /** 一键备份：本机位置由 UI 走 SAF 导出，远端走各自的同步实现，都自动确保已加密。 */
+    suspend fun backupNow(target: me.rerere.rikkahub.data.datastore.BackupTarget) {
+        when (target) {
+            me.rerere.rikkahub.data.datastore.BackupTarget.WEBDAV -> backup()
+            me.rerere.rikkahub.data.datastore.BackupTarget.S3 -> backupToS3()
+            me.rerere.rikkahub.data.datastore.BackupTarget.LOCAL -> Unit
+        }
+    }
+
+    /** 打开自动备份：本机密钥缺失时静默生成，不需要用户输入口令。 */
+    suspend fun setAutoBackupEnabled(enabled: Boolean) {
+        if (enabled) backupPassphraseStore.readOrCreate().also { it.fill('\u0000') }
         settingsStore.update { current ->
             current.copy(
                 backupReminderConfig = current.backupReminderConfig.copy(
-                    autoBackupOnAppLifecycle = false,
+                    autoBackupOnAppLifecycle = enabled,
+                    // 同一个开关接管首页的「该备份了」提醒，不再单独给提醒一个入口。
+                    enabled = enabled,
                     autoBackupStates = emptyMap(),
                 )
             )
         }
-        me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
-        backupPassphraseStore.clear()
-        automaticPassphraseConfigured.value = false
-        encryptBackups.value = false
-        includeBackupCredentials.value = false
+        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
+        if (enabled) {
+            me.rerere.rikkahub.mate.MateAutoBackupWorker.schedule(context)
+        } else {
+            me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
+        }
     }
 
     suspend fun forgetAutomaticBackupPassphrase() {
@@ -134,7 +174,11 @@ class BackupVM(
     }
 
     fun updateLocalBackupItems(items: List<WebDavConfig.BackupItem>) {
+        if (items.isEmpty()) return
         localBackupItems.value = items
+        settingsStore.update { current ->
+            current.copy(backupReminderConfig = current.backupReminderConfig.copy(localBackupItems = items))
+        }
     }
 
     fun loadBackupFileItems() {

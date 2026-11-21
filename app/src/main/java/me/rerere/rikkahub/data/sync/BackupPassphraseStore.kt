@@ -28,6 +28,7 @@ class BackupPassphraseStore(
 ) {
     private val file = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
     private val mutex = Mutex()
+    private val initMutex = Mutex()
 
     // AtomicFile can recover from its legacy .bak when the base file is missing.
     suspend fun isConfigured(): Boolean = withContext(Dispatchers.IO) {
@@ -92,6 +93,14 @@ class BackupPassphraseStore(
                 plain.fill(0)
             }
         }
+    }
+
+    /**
+     * 日常零口令入口：已有密钥就复用，没有就用 CSPRNG 生成一个并落盘。
+     * 用独立互斥量串行化初始化，避免并发首次备份生成两把不同的钥匙。
+     */
+    suspend fun readOrCreate(): CharArray = initMutex.withLock {
+        read() ?: BackupRecoveryKey.generate().also { save(it) }
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {
