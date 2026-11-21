@@ -452,6 +452,29 @@ class BackupManagerTest {
         assertEquals(newest, dao.getFile(newest.assistantId, newest.path))
     }
 
+    @Test fun realMemoryDaoSoftDeleteHidesRowsUntilRestoredOrPurged() = runBlocking {
+        val dao = liveDatabase.memoryDao()
+        val entity = me.rerere.rikkahub.data.db.entity.MemoryFileEntity(
+            "synthetic-assistant",
+            "/profile.md",
+            "synthetic memory",
+            1,
+        )
+        dao.upsertFile(entity)
+
+        assertEquals(1, dao.markDeleted(entity.assistantId, entity.path, 99))
+        assertTrue(dao.getFilesOfAssistant(entity.assistantId).isEmpty())
+        assertEquals(null, dao.getFile(entity.assistantId, entity.path))
+        assertEquals(99L, dao.getFileIncludingDeleted(entity.assistantId, entity.path)?.deletedAt)
+
+        assertEquals(1, dao.markRestored(entity.assistantId, entity.path))
+        assertEquals(entity, dao.getFile(entity.assistantId, entity.path))
+
+        dao.markDeleted(entity.assistantId, entity.path, 100)
+        dao.purgeDeletedFilesOfAssistant(entity.assistantId)
+        assertEquals(null, dao.getFileIncludingDeleted(entity.assistantId, entity.path))
+    }
+
     @Test fun passphraseVaultRecoversFromAtomicFileBackupAfterInterruptedWrite() = runBlocking {
         withPassphraseVault { store, _ ->
             val secret = "synthetic passphrase 123".toCharArray()
