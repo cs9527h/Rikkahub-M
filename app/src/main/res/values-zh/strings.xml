@@ -1959,7 +1959,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_key_forgotten">本机口令已清除，自动备份已暂停</string>
   <string name="backup_page_key_failed">无法更新本机备份口令，请重试。</string>
   <string name="backup_page_auto_backup">自动加密备份</string>
-  <string name="backup_page_auto_desc">进入应用或切到后台时安排加密备份，默认不上传附件。请先保存本机口令；HTTPS 不能替代备份加密。</string>
+  <string name="backup_page_auto_desc">进入应用或切到后台时分别检查设置与聊天。备份一律加密；不自动上传聊天附件与生成文件。请先保存本机口令，HTTPS 不能替代备份加密。</string>
+  <string name="backup_page_auto_settings_interval">检查设置、人格、本地记忆与必要资源</string>
+  <string name="backup_page_auto_chats_interval">检查聊天记录</string>
+  <string name="backup_page_auto_interval_hours">每 %1$d 小时</string>
+  <string name="backup_page_auto_snapshot_status">%1$s：%2$s</string>
+  <string name="backup_page_auto_transport_webdav">WebDAV</string>
+  <string name="backup_page_auto_transport_s3">S3</string>
+  <string name="backup_page_auto_snapshot_settings">设置</string>
+  <string name="backup_page_auto_snapshot_chats">聊天</string>
+  <string name="backup_page_auto_snapshot_never">尚未上传</string>
   <string name="backup_page_auto_include_credentials">自动备份包含 API Key 与连接凭据</string>
   <string name="backup_page_auto_last_success">最近自动备份成功：%1$s</string>
   <string name="backup_page_auto_never">自动备份尚无成功记录</string>

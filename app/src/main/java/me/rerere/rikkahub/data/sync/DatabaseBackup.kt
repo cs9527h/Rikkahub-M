@@ -18,6 +18,19 @@ internal object DatabaseBackup {
         database.execSQL("VACUUM main INTO ?", arrayOf(destination.absolutePath))
     }
 
+    /** Read the latest committed WAL without migrating or writing to the live database. */
+    fun createSnapshot(context: Context, source: File, destination: File) {
+        require(source.isFile) { "原数据库不存在" }
+        check(!destination.exists()) { "快照目标已存在" }
+        val configuration = SQLiteConfiguration.configure(
+            context,
+            SQLiteDatabaseConfiguration(source.absolutePath, SQLiteDatabase.OPEN_READONLY),
+        )
+        SQLiteDatabase.openDatabase(configuration, null) { error("无法读取原数据库快照") }.use { database ->
+            database.execSQL("VACUUM main INTO ?", arrayOf(destination.absolutePath))
+        }
+    }
+
     /** Only opens the staged copy. The caller must place its matching WAL beside it first. */
     fun normalize(context: Context, databaseFile: File) {
         require(databaseFile.isFile && databaseFile.length() > 0) { "Backup database is missing or empty" }

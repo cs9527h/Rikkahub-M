@@ -11,12 +11,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
 import me.rerere.rikkahub.data.datastore.SettingsStore
-import me.rerere.rikkahub.data.datastore.WebDavConfig
+import me.rerere.rikkahub.data.sync.AutoBackupPolicy
+import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.data.sync.BackupPassphraseStore
 import me.rerere.rikkahub.data.sync.EncryptedBackupSession
 import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.S3Sync
-import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -51,29 +51,57 @@ class MateAutoBackupWorker(
             EncryptedBackupSession.run(passphraseStore::read) { passphrase ->
                 keyAvailable = true
                 val includeCredentials = settings.backupReminderConfig.autoBackupIncludeCredentials
-                if (davReady) {
-                    webDavSync.backup(
-                        // Large attachments are explicitly selected only for manual backups.
-                        dav.copy(items = listOf(WebDavConfig.BackupItem.DATABASE)),
-                        passphrase = passphrase,
-                        includeCredentials = includeCredentials,
-                    )
+                for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
+                    val hours = when (kind) {
+                        BackupKind.SETTINGS -> settings.backupReminderConfig.autoSettingsIntervalHours
+                        BackupKind.CHATS -> settings.backupReminderConfig.autoChatsIntervalHours
+                        BackupKind.FULL -> error("自动备份不使用整包策略")
+                    }
+                    for (transport in listOf("webdav", "s3")) {
+                        val ready = if (transport == "webdav") davReady else s3Ready
+                        if (!ready) continue
+                        val stateKey = AutoBackupPolicy.key(transport, kind)
+                        val currentState = settingsStore.awaitLoaded().backupReminderConfig.autoBackupStates[stateKey]
+                        val destinationId = if (transport == "webdav") {
+                            AutoBackupPolicy.destinationId("webdav", dav.url, dav.path, dav.username)
+                        } else {
+                            AutoBackupPolicy.destinationId(
+                                "s3",
+                                s3.endpoint,
+                                s3.bucket,
+                                s3.region,
+                                s3.pathStyle.toString(),
+                                s3.accessKeyId,
+                            )
+                        }
+                        val checkedAt = System.currentTimeMillis()
+                        if (currentState?.destinationId == destinationId &&
+                            !AutoBackupPolicy.isDue(currentState, kind, checkedAt, hours)
+                        ) {
+                            continue
+                        }
+                        val fingerprint = if (transport == "webdav") {
+                            webDavSync.backupAutomatically(dav, passphrase, includeCredentials, kind, currentState)
+                        } else {
+                            s3Sync.backupAutomatically(s3, passphrase, includeCredentials, kind, currentState)
+                        }
+                        settingsStore.update { current ->
+                            val config = current.backupReminderConfig
+                            val latest = config.autoBackupStates[stateKey]
+                            val updated = if (fingerprint == null) {
+                                AutoBackupPolicy.checked(latest, checkedAt)
+                            } else {
+                                AutoBackupPolicy.uploaded(latest, checkedAt, fingerprint, destinationId)
+                            }
+                            current.copy(backupReminderConfig = config.copy(
+                                autoBackupStates = config.autoBackupStates + (stateKey to updated),
+                                lastBackupTime = if (fingerprint == null) config.lastBackupTime else checkedAt,
+                                lastAutoBackupTime = if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
+                                lastAutoBackupError = "",
+                            ))
+                        }
+                    }
                 }
-                if (s3Ready) {
-                    s3Sync.backupToS3(
-                        s3.copy(items = listOf(S3Config.BackupItem.DATABASE)),
-                        passphrase = passphrase,
-                        includeCredentials = includeCredentials,
-                    )
-                }
-            }
-            settingsStore.update { current ->
-                val now = System.currentTimeMillis()
-                current.copy(backupReminderConfig = current.backupReminderConfig.copy(
-                    lastBackupTime = now,
-                    lastAutoBackupTime = now,
-                    lastAutoBackupError = "",
-                ))
             }
             return Result.success()
         } catch (error: CancellationException) {
@@ -83,7 +111,9 @@ class MateAutoBackupWorker(
             return Result.failure()
         } catch (_: Exception) {
             // Never persist provider exceptions, URLs or authentication material in settings/logs.
-            recordFailure(if (keyAvailable) "网络或备份存储暂不可用" else "本机备份口令不可用，请重新设置")
+            recordFailure(
+                if (keyAvailable) "网络或备份存储暂不可用" else "本机备份口令不可用，请重新设置",
+            )
             return if (keyAvailable && runAttemptCount < 2) Result.retry() else Result.failure()
         }
     }

@@ -29,7 +29,10 @@ class DatabaseBackupTest {
     }
 
     private fun open(file: File): SQLiteDatabase = SQLiteDatabase.openDatabase(
-        SQLiteConfiguration.configure(context, SQLiteDatabaseConfiguration(file.path, SQLiteDatabase.CREATE_IF_NECESSARY)),
+        SQLiteConfiguration.configure(
+            context,
+            SQLiteDatabaseConfiguration(file.path, SQLiteDatabase.CREATE_IF_NECESSARY)
+        ),
         null,
         null,
     )
@@ -75,6 +78,33 @@ class DatabaseBackupTest {
             assertEquals(1L, it.longForQuery("SELECT count(*) FROM messages", null))
             assertEquals(1L, it.longForQuery("SELECT count(*) FROM search WHERE search MATCH 'hello'", null))
         }
+    }
+
+    @Test fun readOnlySnapshotIncludesLatestWalWithoutChangingSourceBytes() {
+        val source = File(directory, "source")
+        val snapshot = File(directory, "readonly-snapshot")
+        createWalDatabase(source).use { live ->
+            val before = source.readBytes()
+            val beforeWal = File(source.path + "-wal").readBytes()
+            DatabaseBackup.createSnapshot(context, source, snapshot)
+            org.junit.Assert.assertArrayEquals(before, source.readBytes())
+            org.junit.Assert.assertArrayEquals(beforeWal, File(source.path + "-wal").readBytes())
+            assertEquals(1L, live.longForQuery("SELECT count(*) FROM messages", null))
+        }
+        open(snapshot).use {
+            assertEquals("committed only in WAL", it.stringForQuery("SELECT text FROM messages", null))
+        }
+    }
+
+    @Test fun unchangedDatabaseProducesStableSnapshotBytesForDirtyDetection() {
+        val source = File(directory, "source")
+        val first = File(directory, "first")
+        val second = File(directory, "second")
+        createWalDatabase(source).use {
+            DatabaseBackup.createSnapshot(context, source, first)
+            DatabaseBackup.createSnapshot(context, source, second)
+        }
+        org.junit.Assert.assertArrayEquals(first.readBytes(), second.readBytes())
     }
 
     @Test fun corruptDatabaseIsRejected() {

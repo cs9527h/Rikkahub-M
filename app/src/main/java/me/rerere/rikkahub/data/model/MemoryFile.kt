@@ -61,17 +61,9 @@ data class MemoryFile(
         const val PROFILE_PATH = "/profile.md"
         const val PREFERENCES_PATH = "/preferences.md"
         const val MAX_BYTES = 48 * 1024
-        private const val MAX_PATH_LENGTH = 128
 
         /** 规范化模型或用户给出的路径，不合法时返回 null */
-        fun normalizePath(raw: String): String? {
-            val path = raw.trim().let { if (it.startsWith("/")) it else "/$it" }
-            if (path.length > MAX_PATH_LENGTH || !path.endsWith(".md")) return null
-            if (path.any { it.isISOControl() || it == '\\' }) return null
-            val segments = path.removePrefix("/").split("/")
-            if (segments.any { it.isBlank() || it != it.trim() || it.startsWith(".") }) return null
-            return path
-        }
+        fun normalizePath(raw: String): String? = MemoryPaths.normalize(raw)
     }
 }
 

@@ -5,9 +5,12 @@ import android.util.Log
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import me.rerere.rikkahub.data.sync.BackupManager
-import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.datastore.WebDavConfig
+import me.rerere.rikkahub.data.sync.AutoBackupPolicy
+import me.rerere.rikkahub.data.sync.AutoBackupState
+import me.rerere.rikkahub.data.sync.BackupArchiveFormat
+import me.rerere.rikkahub.data.sync.BackupKind
+import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.utils.fileSizeToString
 import java.io.File
 import java.time.Instant
@@ -49,6 +52,34 @@ class WebDavSync(
         }
     }
 
+    /** Returns null when the verified content equals the last successfully uploaded version. */
+    suspend fun backupAutomatically(
+        config: WebDavConfig,
+        passphrase: CharArray,
+        includeCredentials: Boolean,
+        kind: BackupKind,
+        lastSuccess: AutoBackupState?,
+    ): String? = withContext(Dispatchers.IO) {
+        require(kind != BackupKind.FULL && passphrase.isNotEmpty())
+        val prepared = backupManager.prepareBackup(
+            includeDatabase = kind == BackupKind.CHATS,
+            includeFiles = false,
+            passphrase = passphrase,
+            includeCredentials = includeCredentials,
+            kind = kind,
+        )
+        try {
+            val destinationId = AutoBackupPolicy.destinationId("webdav", config.url, config.path, config.username)
+            if (AutoBackupPolicy.unchanged(lastSuccess, prepared.fingerprint, destinationId)) return@withContext null
+            val client = getClient(config)
+            client.ensureCollectionExists().getOrThrow()
+            client.put(prepared.file.name, prepared.file, "application/octet-stream").getOrThrow()
+            prepared.fingerprint
+        } finally {
+            if (prepared.file.exists() && !prepared.file.delete()) Log.w(TAG, "无法清理自动备份临时文件")
+        }
+    }
+
     suspend fun listBackupFiles(config: WebDavConfig): List<WebDavBackupItem> = withContext(Dispatchers.IO) {
         val client = getClient(config)
 
@@ -70,7 +101,9 @@ class WebDavSync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, passphrase: CharArray? = null) = withContext(Dispatchers.IO) {
+    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, passphrase: CharArray? = null) = withContext(
+        Dispatchers.IO
+    ) {
         val client = getClient(config)
         val backupFile = File.createTempFile("restore-", ".zip", context.cacheDir)
 
@@ -113,13 +146,16 @@ class WebDavSync(
         includeCredentials = includeCredentials,
     )
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: WebDavConfig, passphrase: CharArray?) = backupManager.stageRestore(
+    private suspend fun restoreFromBackupFile(
+        backupFile: File,
+        config: WebDavConfig,
+        passphrase: CharArray?,
+    ) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
         passphrase = passphrase,
     )
-
 }
 
 data class WebDavBackupItem(

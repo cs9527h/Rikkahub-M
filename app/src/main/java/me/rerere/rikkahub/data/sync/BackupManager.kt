@@ -49,40 +49,70 @@ class BackupManager(
         includeFiles: Boolean,
         passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
-    ): File = withContext(Dispatchers.IO) {
+        kind: BackupKind = BackupKind.FULL,
+    ): File = prepareBackup(includeDatabase, includeFiles, passphrase, includeCredentials, kind).file
+
+    internal suspend fun prepareBackup(
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        passphrase: CharArray? = null,
+        includeCredentials: Boolean = false,
+        kind: BackupKind = BackupKind.FULL,
+    ): PreparedBackup = withContext(Dispatchers.IO) {
         restoreMutex.withLock {
             require(!includeCredentials || (passphrase != null && passphrase.isNotEmpty())) {
                 "包含凭据的备份必须使用非空口令加密"
             }
             require(passphrase == null || passphrase.isNotEmpty()) { "备份口令不能为空" }
             val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-            val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
+            val archive = File.createTempFile("backup_${kind.wireName}_${timestamp}_", ".zip", context.cacheDir)
             val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
             try {
                 val settings = settingsStore.awaitLoaded()
-                val coreAssets = localCoreAssetFiles(settings)
+                val backupSettings = kind != BackupKind.CHATS
+                val backupDatabase = kind == BackupKind.CHATS || (kind == BackupKind.FULL && includeDatabase)
+                val coreAssets = if (backupSettings) localCoreAssetFiles(settings) else emptyMap()
                 val entries = mutableListOf<BackupManifestEntry>()
+                var settingsJsonForFingerprint: String? = null
                 ZipOutputStream(FileOutputStream(archive)).use { zip ->
-                    zip.putNextEntry(ZipEntry("settings.json"))
-                    val settingsJson = portableSettings(json.parseToJsonElement(
-                        json.encodeSettings(settings, settingsStore.launchCountFlow.first())
-                    ).jsonObject, includeCredentials).toString()
-                    val settingsBytes = settingsJson.toByteArray(Charsets.UTF_8)
-                    zip.write(settingsBytes)
-                    zip.closeEntry()
-                    entries += BackupManifest.entry("settings.json", settingsBytes)
-                    if (includeDatabase) {
+                    if (backupSettings) {
+                        zip.putNextEntry(ZipEntry("settings.json"))
+                        val settingsJson = portableSettings(json.parseToJsonElement(
+                            json.encodeSettings(settings, settingsStore.launchCountFlow.first())
+                        ).jsonObject, includeCredentials).toString()
+                        val settingsBytes = settingsJson.toByteArray(Charsets.UTF_8)
+                        zip.write(settingsBytes)
+                        zip.closeEntry()
+                        entries += BackupManifest.entry("settings.json", settingsBytes)
+                        settingsJsonForFingerprint = settingsJson
+                        if (!backupDatabase) {
+                            val memories = database.memoryDao().getAllFiles().map { memory ->
+                                MemoryBackupRecord(memory.assistantId, memory.path, memory.content, memory.updatedAt)
+                            }
+                            val memoryBytes = MemoryBackupCodec.encode(memories).toByteArray(Charsets.UTF_8)
+                            zip.putNextEntry(ZipEntry(MemoryBackupCodec.FILE_NAME))
+                            zip.write(memoryBytes)
+                            zip.closeEntry()
+                            entries += BackupManifest.entry(MemoryBackupCodec.FILE_NAME, memoryBytes)
+                        }
+                    }
+                    if (backupDatabase) {
                         val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
                         DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
                         entries += addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
                     }
-                    if (!includeFiles) {
+                    if (backupSettings && !includeFiles) {
                         for ((name, file) in coreAssets) {
                             if (name.substringBefore('/') !in CORE_ASSET_FOLDERS) entries += addFile(zip, file, name)
                         }
                     }
                     run {
-                        val folders = if (includeFiles) ATTACHMENT_FOLDERS else CORE_ASSET_FOLDERS
+                        val folders = when {
+                            !backupSettings && includeFiles -> listOf(FileFolders.UPLOAD, FileFolders.MEDIA_CREATION)
+                            !backupSettings -> emptyList()
+                            includeFiles -> ATTACHMENT_FOLDERS
+                            else -> CORE_ASSET_FOLDERS
+                        }
                         for (folder in folders) {
                             val directory = File(context.filesDir, folder)
                             val files = if (folder in NESTED_ATTACHMENT_FOLDERS) {
@@ -109,17 +139,21 @@ class BackupManager(
                         BackupManifest.encode(
                             entries,
                             System.currentTimeMillis(),
-                            me.rerere.rikkahub.BuildConfig.VERSION_NAME
+                            me.rerere.rikkahub.BuildConfig.VERSION_NAME,
+                            kind,
                         ).toByteArray(Charsets.UTF_8)
                     )
                     zip.closeEntry()
                 }
-                if (passphrase == null) return@withLock archive
-                val encrypted =
-                    File(context.cacheDir, "backup_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}")
+                val fingerprint = BackupFingerprint.calculate(kind, entries, settingsJsonForFingerprint)
+                if (passphrase == null) return@withLock PreparedBackup(archive, fingerprint, kind)
+                val encrypted = File(
+                    context.cacheDir,
+                    "backup_${kind.wireName}_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}",
+                )
                 BackupCrypto.encrypt(archive, encrypted, passphrase)
                 archive.delete()
-                return@withLock encrypted
+                return@withLock PreparedBackup(encrypted, fingerprint, kind)
             } catch (e: Throwable) {
                 archive.delete()
                 throw e
@@ -157,10 +191,31 @@ class BackupManager(
                         val seen = mutableSetOf<String>()
                         var restoredEntries = 0
                         var restoredSettings: Settings? = null
+                        var restoredKind = BackupKind.FULL
                         var restoredLaunchCount = 0
                         ZipFile(readable).use { zip ->
                             val coroutineContext = currentCoroutineContext()
-                            BackupManifest.verify(zip) { coroutineContext.ensureActive() }
+                            val verified = BackupManifest.verifyDetailed(zip) { coroutineContext.ensureActive() }
+                            restoredKind = verified.kind
+                            when (verified.kind) {
+                                BackupKind.SETTINGS -> require(
+                                    zip.getEntry("settings.json") != null &&
+                                        zip.getEntry(MemoryBackupCodec.FILE_NAME) != null &&
+                                        zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) == null
+                                ) { "设置备份的数据类型不完整或混入聊天数据库" }
+                                BackupKind.CHATS -> require(
+                                    zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) != null &&
+                                        zip.getEntry("settings.json") == null &&
+                                        zip.getEntry(MemoryBackupCodec.FILE_NAME) == null
+                                ) { "聊天备份的数据类型不完整或混入设置数据" }
+                                BackupKind.FULL -> require(
+                                    zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) == null ||
+                                        zip.getEntry(MemoryBackupCodec.FILE_NAME) == null
+                                ) { "完整备份含有重复的记忆数据源" }
+                            }
+                            zip.getEntry(MemoryBackupCodec.FILE_NAME)?.let { entry ->
+                                require(entry.size in 1..MemoryBackupCodec.MAX_BYTES) { "记忆备份超过安全上限" }
+                            }
                             val originalSettings = zip.getEntry("settings.json")?.let { entry ->
                                 require(entry.size in 1..MAX_SETTINGS_BYTES) { "设置备份大小无效或超过 64 MiB" }
                                 val text = zip.getInputStream(
@@ -178,6 +233,7 @@ class BackupManager(
                                 if (entry.isDirectory) continue
                                 val target = when (entry.name) {
                                     "settings.json" -> File(staging, "settings.json")
+                                    MemoryBackupCodec.FILE_NAME -> File(staging, MemoryBackupCodec.FILE_NAME)
                                     DatabaseBackup.ARCHIVE_DATABASE -> if (includeDatabase) stagedDatabase else null
                                     DatabaseBackup.WAL -> if (includeDatabase) stagedWal else null
                                     DatabaseBackup.SHM -> null // Rebuilt by SQLite; never restore shared-memory state.
@@ -226,6 +282,15 @@ class BackupManager(
                                 json.encodeSettings(settings, restoredLaunchCount)
                             )
                         }
+                        val memories = File(staging, MemoryBackupCodec.FILE_NAME)
+                        if (memories.isFile) {
+                            require(memories.length() <= MemoryBackupCodec.MAX_BYTES) { "记忆备份超过安全上限" }
+                            MemoryBackupCodec.decode(memories.readText())
+                        }
+                        PendingRestore.writeDurably(
+                            File(staging, PartialMemoryRestore.KIND_FILE),
+                            restoredKind.wireName
+                        )
                         currentCoroutineContext().ensureActive()
                         restore.publish(staging)
                     } finally {
@@ -370,6 +435,17 @@ class BackupManager(
 
         /** Must finish before Koin, Room, SettingsStore or any background consumers are initialized. */
         suspend fun applyPendingRestore(context: Context, json: Json): Boolean = withContext(Dispatchers.IO) {
+            try {
+                PartialMemoryRestore.prepare(context)
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException || error is RestoreFailedException) throw error
+                val pending = File(context.noBackupFilesDir, "backup-restore/pending")
+                if (!File(pending, "journal.json").exists() && !File(pending, "originals").exists()) {
+                    pending.deleteRecursively()
+                    throw RestoreFailedException(error)
+                }
+                throw error
+            }
             pendingRestore(context).apply { settingsJson ->
                 SettingsStore.restoreBeforeInitialization(
                     context = context,

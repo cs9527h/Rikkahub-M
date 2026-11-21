@@ -1957,7 +1957,16 @@
   <string name="backup_page_key_forgotten">Local passphrase removed; automatic backups paused</string>
   <string name="backup_page_key_failed">Could not update the local backup passphrase. Please retry.</string>
   <string name="backup_page_auto_backup">Automatic encrypted backups</string>
-  <string name="backup_page_auto_desc">Schedules encrypted backups when entering or leaving the app. Attachments are excluded by default. Save a local passphrase first; HTTPS alone is not backup encryption.</string>
+  <string name="backup_page_auto_desc">Checks settings and chat history separately when entering or leaving the app. Backups are encrypted; chat attachments and generated files are excluded. Save a local passphrase first; HTTPS alone is not backup encryption.</string>
+  <string name="backup_page_auto_settings_interval">Check settings, personas, local memory and essential assets</string>
+  <string name="backup_page_auto_chats_interval">Check chat history</string>
+  <string name="backup_page_auto_interval_hours">Every %1$d hours</string>
+  <string name="backup_page_auto_snapshot_status">%1$s: %2$s</string>
+  <string name="backup_page_auto_transport_webdav">WebDAV</string>
+  <string name="backup_page_auto_transport_s3">S3</string>
+  <string name="backup_page_auto_snapshot_settings">Settings</string>
+  <string name="backup_page_auto_snapshot_chats">Chats</string>
+  <string name="backup_page_auto_snapshot_never">not uploaded yet</string>
   <string name="backup_page_auto_include_credentials">Include API keys and connection credentials in automatic backups</string>
   <string name="backup_page_auto_last_success">Last automatic backup: %1$s</string>
   <string name="backup_page_auto_never">No successful automatic backup yet</string>

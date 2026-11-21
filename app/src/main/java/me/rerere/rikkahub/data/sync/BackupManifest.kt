@@ -17,6 +17,7 @@ import java.util.zip.CRC32
 import java.util.zip.ZipFile
 
 internal data class BackupManifestEntry(val path: String, val size: Long, val sha256: String)
+internal data class VerifiedBackupManifest(val entries: List<BackupManifestEntry>?, val kind: BackupKind)
 
 /**
  * Versioned, streaming archive integrity checks. SHA-256 detects corruption; it is not
@@ -38,13 +39,19 @@ internal object BackupManifest {
 
     fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
-    fun encode(entries: List<BackupManifestEntry>, createdAt: Long, appVersion: String): String {
+    fun encode(
+        entries: List<BackupManifestEntry>,
+        createdAt: Long,
+        appVersion: String,
+        kind: BackupKind = BackupKind.FULL,
+    ): String {
         validateEntries(entries)
         require(createdAt >= 0 && appVersion.isNotBlank()) { "备份版本信息无效" }
         return buildJsonObject {
             put("formatVersion", FORMAT_VERSION)
             put("createdAt", createdAt)
             put("appVersion", appVersion)
+            put("kind", kind.wireName)
             put("entries", buildJsonArray {
                 for (entry in entries) {
                     add(buildJsonObject {
@@ -58,7 +65,11 @@ internal object BackupManifest {
     }
 
     /** Returns null for an old ZIP without a manifest, never an unchecked success. */
-    fun verify(zip: ZipFile, onBlock: () -> Unit = {}): List<BackupManifestEntry>? {
+    fun verify(zip: ZipFile, onBlock: () -> Unit = {}): List<BackupManifestEntry>? =
+        verifyDetailed(zip, onBlock).entries
+
+    fun verifyDetailed(zip: ZipFile, onBlock: () -> Unit = {}): VerifiedBackupManifest {
+        var kind = BackupKind.FULL
         val files = zip.entries().asSequence().toList()
         require(files.size <= MAX_ENTRIES + 1) { "备份文件数量超过安全上限" }
         val names = mutableSetOf<String>()
@@ -69,11 +80,12 @@ internal object BackupManifest {
         val manifestFile = files.singleOrNull { it.name == FILE_NAME && !it.isDirectory }
         val expected = manifestFile?.let { file ->
             require(file.size in 1..MAX_MANIFEST_BYTES.toLong()) { "备份清单大小无效" }
-            val text = zip.getInputStream(file).use { readManifest(it, onBlock) }
+            val text = zip.getInputStream(file).use { readManifest(it, file.size, file.crc, onBlock) }
             val root = Json.parseToJsonElement(text).jsonObject
             require(root["formatVersion"]?.jsonPrimitive?.int == FORMAT_VERSION) { "不支持的备份版本" }
             require(root["createdAt"]?.jsonPrimitive?.long?.let { it >= 0 } == true) { "备份时间信息无效" }
             require(root["appVersion"]?.jsonPrimitive?.content?.isNotBlank() == true) { "备份应用版本缺失" }
+            kind = BackupKind.fromWireName(root["kind"]?.jsonPrimitive?.content ?: "full")
             val entries = (root["entries"] as? JsonArray ?: error("备份清单缺少文件列表")).map { element ->
                 val item = element.jsonObject
                 BackupManifestEntry(
@@ -115,19 +127,22 @@ internal object BackupManifest {
                 require(hex(digest.digest()) == expectedEntry.sha256) { "备份文件 SHA-256 校验失败" }
             }
         }
-        return expected?.values?.toList()
+        return VerifiedBackupManifest(expected?.values?.toList(), kind)
     }
 
-    private fun readManifest(input: InputStream, onBlock: () -> Unit): String {
+    private fun readManifest(input: InputStream, expectedSize: Long, expectedCrc: Long, onBlock: () -> Unit): String {
         val output = ByteArrayOutputStream()
+        val crc = CRC32()
         val buffer = ByteArray(8192)
         while (true) {
             onBlock()
             val count = input.read(buffer)
             if (count < 0) break
             require(output.size().toLong() + count <= MAX_MANIFEST_BYTES) { "备份清单过大" }
+            crc.update(buffer, 0, count)
             output.write(buffer, 0, count)
         }
+        require(output.size().toLong() == expectedSize && crc.value == expectedCrc) { "备份清单完整性校验失败" }
         return output.toString(Charsets.UTF_8.name())
     }
 

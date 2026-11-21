@@ -49,6 +49,43 @@ class S3Sync(
         }
     }
 
+    /** Returns null if this destination already holds the same successful content version. */
+    suspend fun backupAutomatically(
+        config: S3Config,
+        passphrase: CharArray,
+        includeCredentials: Boolean,
+        kind: BackupKind,
+        lastSuccess: AutoBackupState?,
+    ): String? = withContext(Dispatchers.IO) {
+        require(kind != BackupKind.FULL && passphrase.isNotEmpty())
+        val prepared = backupManager.prepareBackup(
+            includeDatabase = kind == BackupKind.CHATS,
+            includeFiles = false,
+            passphrase = passphrase,
+            includeCredentials = includeCredentials,
+            kind = kind,
+        )
+        try {
+            val destinationId = AutoBackupPolicy.destinationId(
+                "s3",
+                config.endpoint,
+                config.bucket,
+                config.region,
+                config.pathStyle.toString(),
+                config.accessKeyId,
+            )
+            if (AutoBackupPolicy.unchanged(lastSuccess, prepared.fingerprint, destinationId)) return@withContext null
+            getS3Client(config).putObject(
+                key = "rikkahub_backups/${prepared.file.name}",
+                file = prepared.file,
+                contentType = "application/octet-stream",
+            ).getOrThrow()
+            prepared.fingerprint
+        } finally {
+            if (prepared.file.exists() && !prepared.file.delete()) Log.w(TAG, "无法清理自动备份临时文件")
+        }
+    }
+
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
         val result = client.listObjects(
@@ -57,7 +94,10 @@ class S3Sync(
         ).getOrThrow()
 
         result.objects
-            .filter { it.key.startsWith("rikkahub_backups/") && BackupArchiveFormat.isBackupName(it.key.removePrefix("rikkahub_backups/")) }
+            .filter {
+                it.key.startsWith("rikkahub_backups/") &&
+                    BackupArchiveFormat.isBackupName(it.key.removePrefix("rikkahub_backups/"))
+            }
             .map { obj ->
                 S3BackupItem(
                     key = obj.key,
@@ -69,7 +109,9 @@ class S3Sync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, passphrase: CharArray? = null) = withContext(Dispatchers.IO) {
+    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, passphrase: CharArray? = null) = withContext(
+        Dispatchers.IO
+    ) {
         val client = getS3Client(config)
         val backupFile = File.createTempFile("restore-", ".zip", context.cacheDir)
 
@@ -108,13 +150,16 @@ class S3Sync(
         includeCredentials = includeCredentials,
     )
 
-    private suspend fun restoreFromBackupFile(backupFile: File, config: S3Config, passphrase: CharArray?) = backupManager.stageRestore(
+    private suspend fun restoreFromBackupFile(
+        backupFile: File,
+        config: S3Config,
+        passphrase: CharArray?,
+    ) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = S3Config.BackupItem.DATABASE in config.items,
         includeFiles = S3Config.BackupItem.FILES in config.items,
         passphrase = passphrase,
     )
-
 }
 
 data class S3BackupItem(

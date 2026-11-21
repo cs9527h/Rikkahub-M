@@ -128,6 +128,55 @@ class BackupManifestTest {
         expectFailure(file)
     }
 
+    @Test fun corruptManifestBytesAreRejectedBeforeParsingEvenWithValidPayload() {
+        val file = archive(stored = true)
+        val bytes = file.readBytes()
+        val manifestBytes = manifest().toByteArray()
+        val index = bytes.indices.first { start ->
+            start + manifestBytes.size <= bytes.size &&
+                bytes.copyOfRange(start, start + manifestBytes.size).contentEquals(manifestBytes)
+        }
+        // Keep JSON valid; a missing CRC check would still accept this altered timestamp.
+        val timestamp = "1234".toByteArray()
+        val pos = (index until index + manifestBytes.size).first { start ->
+            start + timestamp.size <= bytes.size &&
+                bytes.copyOfRange(start, start + timestamp.size).contentEquals(timestamp)
+        }
+        bytes[pos] = '9'.code.toByte()
+        file.writeBytes(bytes)
+        expectFailure(file)
+    }
+
+    @Test fun splitBackupKindRoundTripsAndUnknownKindsFailClosed() {
+        for (kind in BackupKind.entries) {
+            val file =
+                archive(
+                    manifest = BackupManifest.encode(
+                        listOf(BackupManifest.entry("settings.json", payload)),
+                        1234,
+                        "test-only",
+                        kind
+                    )
+                )
+            try {
+                ZipFile(file).use { assertEquals(kind, BackupManifest.verifyDetailed(it).kind) }
+            } finally {
+                file.delete()
+            }
+        }
+        expectFailure(archive(manifest = manifest().replace("\"kind\":\"full\"", "\"kind\":\"unknown\"")))
+    }
+
+    @Test fun olderVersionedManifestWithoutKindRemainsFull() {
+        val legacyManifest = manifest().replace("\"kind\":\"full\",", "")
+        val file = archive(manifest = legacyManifest)
+        try {
+            ZipFile(file).use { assertEquals(BackupKind.FULL, BackupManifest.verifyDetailed(it).kind) }
+        } finally {
+            file.delete()
+        }
+    }
+
     @Test fun duplicatePhysicalZipEntriesAreRejected() {
         val file = archive(files = mapOf("a.txt" to payload, "b.txt" to payload), manifest = null)
         val bytes = file.readBytes()

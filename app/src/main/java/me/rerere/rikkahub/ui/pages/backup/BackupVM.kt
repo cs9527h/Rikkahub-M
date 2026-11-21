@@ -100,6 +100,10 @@ class BackupVM(
 
     suspend fun savePassphraseForAutomaticBackup() = withPassphrase(export = true) { passphrase, _ ->
         requireNotNull(passphrase) { "自动备份必须使用加密口令" }
+        // Changing the recovery passphrase must publish fresh encrypted versions even when data is unchanged.
+        settingsStore.update { current ->
+            current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap()))
+        }
         backupPassphraseStore.save(passphrase)
         automaticPassphraseConfigured.value = true
     }

@@ -17,6 +17,9 @@ class AutomaticBackupSettingsTest {
         assertEquals(0L, config.lastAutoBackupTime)
         assertEquals("", config.lastAutoBackupError)
         assertEquals(1234L, config.lastBackupTime)
+        assertEquals(6, config.autoSettingsIntervalHours)
+        assertEquals(72, config.autoChatsIntervalHours)
+        assertTrue(config.autoBackupStates.isEmpty())
     }
 
     @Test fun automaticStatusRoundTripsWithoutContainingRecoveryPassphrase() {
@@ -25,6 +28,9 @@ class AutomaticBackupSettingsTest {
             autoBackupIncludeCredentials = true,
             lastAutoBackupTime = 1234,
             lastAutoBackupError = "网络或备份存储暂不可用",
+            autoBackupStates = mapOf(
+                "webdav_settings" to AutoBackupState(1234, 1234, "v1:" + "a".repeat(64))
+            ),
         )
         val encoded = Json.encodeToString(config)
         assertFalse(encoded.contains("passphrase", ignoreCase = true))

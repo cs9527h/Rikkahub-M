@@ -389,6 +389,63 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
+    @Test fun settingsOnlyArchiveCarriesNativeMemoryWithoutReplacingConversations() = runBlocking {
+        val dao = liveDatabase.memoryDao()
+        val archived = me.rerere.rikkahub.data.db.entity.MemoryFileEntity(
+            "synthetic-assistant",
+            "/profile.md",
+            "synthetic archived memory",
+            1234,
+        )
+        dao.upsertFile(archived)
+        val archive = manager.createBackup(false, false, kind = BackupKind.SETTINGS)
+        ZipFile(archive).use { zip ->
+            assertEquals(null, zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE))
+            assertTrue(zip.getEntry(MemoryBackupCodec.FILE_NAME) != null)
+            assertEquals(BackupKind.SETTINGS, BackupManifest.verifyDetailed(zip).kind)
+        }
+        dao.upsertFile(archived.copy(content = "synthetic newer live memory"))
+        manager.stageRestore(archive, false, false)
+        PartialMemoryRestore.prepare(context)
+        assertEquals("synthetic newer live memory", dao.getFile(archived.assistantId, archived.path)?.content)
+        val staged = File(context.noBackupFilesDir, "backup-restore/pending/payload/database/rikka_hub")
+        me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath).use { room ->
+            assertEquals(archived, room.memoryDao().getFile(archived.assistantId, archived.path))
+            assertEquals("live", probe(room))
+        }
+        // Preparing again must not replace the already-validated staged state.
+        PartialMemoryRestore.prepare(context)
+        assertEquals("live", probe(liveDatabase))
+    }
+
+    @Test fun chatsOnlyArchiveRetainsLatestLiveNativeMemoryAndOmitsSettings() = runBlocking {
+        val dao = liveDatabase.memoryDao()
+        val before = me.rerere.rikkahub.data.db.entity.MemoryFileEntity(
+            "synthetic-assistant",
+            "/notes.md",
+            "synthetic old memory",
+            12,
+        )
+        dao.upsertFile(before)
+        val archive = manager.createBackup(true, false, kind = BackupKind.CHATS)
+        ZipFile(archive).use { zip ->
+            assertTrue(zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) != null)
+            assertEquals(null, zip.getEntry("settings.json"))
+            assertEquals(null, zip.getEntry(MemoryBackupCodec.FILE_NAME))
+            assertEquals(BackupKind.CHATS, BackupManifest.verifyDetailed(zip).kind)
+        }
+        val newest = before.copy(content = "synthetic latest live memory", updatedAt = 99)
+        dao.upsertFile(newest)
+        manager.stageRestore(archive, true, false)
+        PartialMemoryRestore.prepare(context)
+        val staged = File(context.noBackupFilesDir, "backup-restore/pending/payload/database/rikka_hub")
+        me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath).use { room ->
+            assertEquals(newest, room.memoryDao().getFile(newest.assistantId, newest.path))
+            assertEquals("live", probe(room))
+        }
+        assertEquals(newest, dao.getFile(newest.assistantId, newest.path))
+    }
+
     private suspend fun withPassphraseVault(block: suspend (BackupPassphraseStore, String) -> Unit) {
         val alias = "rikkahub-contract-test-${java.util.UUID.randomUUID()}"
         val store = BackupPassphraseStore(context, alias)

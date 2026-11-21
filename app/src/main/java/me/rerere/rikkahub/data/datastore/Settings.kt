@@ -208,4 +208,7 @@ data class BackupReminderConfig(
     val autoBackupIncludeCredentials: Boolean = false,
     val lastAutoBackupTime: Long = 0L,
     val lastAutoBackupError: String = "",
+    val autoSettingsIntervalHours: Int = 6,
+    val autoChatsIntervalHours: Int = 72,
+    val autoBackupStates: Map<String, me.rerere.rikkahub.data.sync.AutoBackupState> = emptyMap(),
 )

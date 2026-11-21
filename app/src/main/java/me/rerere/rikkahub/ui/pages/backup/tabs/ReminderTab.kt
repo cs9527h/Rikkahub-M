@@ -17,6 +17,8 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clock01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.BackupReminderConfig
+import me.rerere.rikkahub.data.sync.AutoBackupPolicy
+import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.CardGroupValue
@@ -28,6 +30,8 @@ import me.rerere.rikkahub.utils.toLocalDateTime
 import java.time.Instant
 
 private val ReminderIntervals = listOf(1, 3, 7, 14, 30)
+private val AutoSettingsIntervals = listOf(6, 12, 24)
+private val AutoChatsIntervals = listOf(24, 72, 168)
 
 @Composable
 fun ReminderTab(vm: BackupVM) {
@@ -59,10 +63,77 @@ fun ReminderTab(vm: BackupVM) {
             )
             switchItem(
                 checked = config.autoBackupIncludeCredentials,
-                onCheckedChange = { include -> updateConfig { it.copy(autoBackupIncludeCredentials = include) } },
+                onCheckedChange = { include ->
+                    updateConfig { it.copy(autoBackupIncludeCredentials = include, autoBackupStates = emptyMap()) }
+                },
                 headlineContent = { Text(stringResource(R.string.backup_page_auto_include_credentials)) },
                 supportingContent = { Text(stringResource(R.string.backup_page_credentials_warning)) },
             )
+            if (config.autoBackupOnAppLifecycle) {
+                formItem(
+                    headlineContent = { Text(stringResource(R.string.backup_page_auto_settings_interval)) },
+                    trailingContent = {
+                        CardGroupValue(
+                            stringResource(R.string.backup_page_auto_interval_hours, config.autoSettingsIntervalHours)
+                        )
+                    },
+                ) {
+                    ConnectedChoiceButtons(
+                        options = AutoSettingsIntervals,
+                        selected = config.autoSettingsIntervalHours,
+                        onSelect = { hours -> updateConfig { it.copy(autoSettingsIntervalHours = hours) } },
+                    ) { hours, selected -> ConnectedChoiceLabel(text = hours.toString(), selected = selected) }
+                }
+                formItem(
+                    headlineContent = { Text(stringResource(R.string.backup_page_auto_chats_interval)) },
+                    trailingContent = {
+                        CardGroupValue(
+                            stringResource(R.string.backup_page_auto_interval_hours, config.autoChatsIntervalHours)
+                        )
+                    },
+                ) {
+                    ConnectedChoiceButtons(
+                        options = AutoChatsIntervals,
+                        selected = config.autoChatsIntervalHours,
+                        onSelect = { hours -> updateConfig { it.copy(autoChatsIntervalHours = hours) } },
+                    ) { hours, selected -> ConnectedChoiceLabel(text = hours.toString(), selected = selected) }
+                }
+                for (transport in listOf("webdav", "s3")) {
+                    for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
+                        val key = AutoBackupPolicy.key(transport, kind)
+                        val successAt = config.autoBackupStates[key]?.lastSuccessAt ?: 0L
+                        val destination = stringResource(
+                            if (transport ==
+                                "webdav") {
+                                R.string.backup_page_auto_transport_webdav
+                            } else {
+                                R.string.backup_page_auto_transport_s3
+                            }
+                        )
+                        val category = stringResource(
+                            if (kind == BackupKind.SETTINGS) {
+                                R.string.backup_page_auto_snapshot_settings
+                            } else {
+                                R.string.backup_page_auto_snapshot_chats
+                            }
+                        )
+                        item(
+                            headlineContent = {
+                                Text(stringResource(R.string.backup_page_auto_snapshot_status, destination, category))
+                            },
+                            supportingContent = {
+                                Text(
+                                    if (successAt == 0L) {
+                                        stringResource(R.string.backup_page_auto_snapshot_never)
+                                    } else {
+                                        Instant.ofEpochMilli(successAt).toLocalDateTime().toString()
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
+            }
             item(
                 headlineContent = {
                     Text(
