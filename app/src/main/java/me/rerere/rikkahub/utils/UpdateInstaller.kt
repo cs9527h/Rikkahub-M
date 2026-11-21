@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.os.Build
 import androidx.core.content.FileProvider
 import me.rerere.rikkahub.BuildConfig
@@ -18,6 +19,9 @@ import java.security.MessageDigest
  * 优先级：SHA-256 → 包名 → 版本号（必须更高）→ 与已安装应用相同的签名证书。
  * 校验全部通过后才交给系统安装器，用户仍需在系统弹窗里确认，绝不静默安装。
  */
+class InstallPermissionRequiredException(val apk: File) :
+    IllegalStateException("系统尚未允许 Rikkahub-M 安装应用")
+
 object UpdateInstaller {
 
     private const val UPDATE_DIR = "updates"
@@ -95,7 +99,26 @@ object UpdateInstaller {
         }
     }
 
+    /** Android 8 起，覆盖安装必须由用户为本应用单独打开「安装未知应用」。 */
+    fun canRequestPackageInstalls(context: Context): Boolean =
+        context.packageManager.canRequestPackageInstalls()
+
+    /** 带包名的授权页；个别 ROM 不认包名参数时退回应用列表页。 */
+    fun openInstallPermissionSettings(context: Context) {
+        val withPackage = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(withPackage) }.onFailure {
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+        }
+    }
+
     fun startSystemInstall(context: Context, apk: File) {
+        if (!canRequestPackageInstalls(context)) throw InstallPermissionRequiredException(apk)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")

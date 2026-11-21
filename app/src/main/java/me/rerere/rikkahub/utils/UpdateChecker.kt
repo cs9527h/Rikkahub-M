@@ -273,14 +273,11 @@ class UpdateChecker(
             url = download.url,
             expectedSha256 = download.sha256,
         )
-        result.onSuccess { file ->
+        result.mapCatching { file ->
+            // 没有「安装未知应用」授权时先不 panic，交给界面引导用户去设置一次。
             UpdateInstaller.startSystemInstall(context, file)
-        }.onFailure { error ->
-            // 备用源不可达时，退回到 GitHub 发布页，让用户手动下载。
-            runCatching { context.openUrl(info.pageUrl) }
-            Toast.makeText(context, "更新包校验或下载失败：" + (error.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+            file
         }
-        result
     }
 
     /** 兼容旧调用点：聊天页更新卡片点下载时也走校验流程。 */
@@ -292,7 +289,14 @@ class UpdateChecker(
                 changelog = "",
                 downloads = listOf(download),
             )
-            installUpdate(info)
+            installUpdate(info).exceptionOrNull()?.let { error ->
+                val message = if (error is InstallPermissionRequiredException) {
+                    "需要先在系统设置里允许 Rikkahub-M 安装应用"
+                } else {
+                    "更新失败：" + (error.message ?: "未知错误")
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
         }
     }
 

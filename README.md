@@ -10,9 +10,9 @@
 
 - [GitHub 正式版及历史版本](https://github.com/cs9527h/Rikkahub-M/releases)
 - [更新日志](CHANGELOG_MATE.md)
-- [v0.4.4 更新说明](docs/releases/0.4.4.md)
+- [v0.4.5 更新说明](docs/releases/0.4.5.md)
 
-当前版本：**0.4.4**，包名 `com.rikkahub.mate`。使用原签名制作单一 universal APK（包含 arm64-v8a 和 x86_64），支持从同签名旧版本覆盖安装。发布状态以 GitHub Releases 页面为准。
+当前版本：**0.4.5**，包名 `com.rikkahub.mate`。使用原签名制作单一 universal APK（包含 arm64-v8a 和 x86_64），支持从同签名旧版本覆盖安装。发布状态以 GitHub Releases 页面为准。
 
 **升级前建议先备份重要聊天与设置，勿卸载旧版或清除应用数据。** 旧版 `v0.4.0` 存在已记录的数据误删风险，不建议下载安装；详情见[历史风险说明](docs/releases/0.4.0.md)。
 

@@ -74,8 +74,13 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalResources
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.utils.InstallPermissionRequiredException
+import me.rerere.rikkahub.utils.UpdateInstaller
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import me.rerere.ui.easteregg.EmojiBurstHost
 
 @Composable
@@ -88,6 +93,11 @@ fun SettingAboutPage() {
     var pendingUpdate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<me.rerere.rikkahub.utils.UpdateInfo?>(null) }
     var installing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var installStage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    // 已校验通过、只等用户授权「安装未知应用」的安装包
+    var needsInstallPermission by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<java.io.File?>(null)
+    }
+    var installFailure by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val context = LocalContext.current
@@ -263,6 +273,58 @@ fun SettingAboutPage() {
                 }
             }
 
+            needsInstallPermission?.let { apk ->
+                val lifecycleOwner = LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME &&
+                            UpdateInstaller.canRequestPackageInstalls(context)
+                        ) {
+                            runCatching { UpdateInstaller.startSystemInstall(context, apk) }
+                            needsInstallPermission = null
+                            toaster.show("已获取安装权限，正在打开系统安装器", type = ToastType.Success)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+                AlertDialog(
+                    onDismissRequest = { needsInstallPermission = null },
+                    title = { Text("需要允许安装应用") },
+                    text = {
+                        Text(
+                            "系统当前不允许 Rikkahub-M 安装应用，所以点击更新后没有弹出安装界面。\n\n" +
+                                "请在下一页里为 Rikkahub-M 打开「允许安装未知应用」，返回后会自动继续安装。"
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { UpdateInstaller.openInstallPermissionSettings(context) }) {
+                            Text("去设置")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { needsInstallPermission = null }) { Text("稍后") }
+                    },
+                )
+            }
+
+            installFailure?.let { message ->
+                AlertDialog(
+                    onDismissRequest = { installFailure = null },
+                    title = { Text("更新未完成") },
+                    text = { Text(message) },
+                    confirmButton = {
+                        TextButton(onClick = { installFailure = null }) { Text("知道了") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            installFailure = null
+                            runCatching { context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases") }
+                        }) { Text("打开发布页") }
+                    },
+                )
+            }
+
             pendingUpdate?.let { info ->
                 AlertDialog(
                     onDismissRequest = { if (!installing) pendingUpdate = null },
@@ -292,11 +354,23 @@ fun SettingAboutPage() {
                                 scope.launch {
                                     val result = updateChecker.installUpdate(info)
                                     installing = false
-                                    if (result.isSuccess) {
-                                        installStage = "校验通过，请在系统弹窗中确认安装"
-                                        pendingUpdate = null
-                                    } else {
-                                        installStage = "下载或校验失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
+                                    val error = result.exceptionOrNull()
+                                    when {
+                                        result.isSuccess -> {
+                                            installStage = "校验通过，请在系统弹窗中确认安装"
+                                            pendingUpdate = null
+                                        }
+                                        error is InstallPermissionRequiredException -> {
+                                            // 只授权一次，不再重复弹同一个错误
+                                            pendingUpdate = null
+                                            installStage = null
+                                            needsInstallPermission = error.apk
+                                        }
+                                        else -> {
+                                            pendingUpdate = null
+                                            installStage = null
+                                            installFailure = error?.message ?: "未知错误"
+                                        }
                                     }
                                 }
                             },
