@@ -452,6 +452,29 @@ class BackupManagerTest {
         assertEquals(newest, dao.getFile(newest.assistantId, newest.path))
     }
 
+    @Test fun passphraseVaultRecoversFromAtomicFileBackupAfterInterruptedWrite() = runBlocking {
+        withPassphraseVault { store, _ ->
+            val secret = "synthetic passphrase 123".toCharArray()
+            try {
+                store.save(secret)
+                val base = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
+                val backup = File(base.parentFile, base.name + ".bak")
+                assertTrue(base.renameTo(backup))
+                assertFalse(base.exists())
+
+                assertTrue("Backup file must count as configured", store.isConfigured())
+                val read = store.read()
+                try {
+                    org.junit.Assert.assertArrayEquals(secret, read)
+                } finally {
+                    read?.fill('\u0000')
+                }
+            } finally {
+                secret.fill('\u0000')
+            }
+        }
+    }
+
     private suspend fun withPassphraseVault(block: suspend (BackupPassphraseStore, String) -> Unit) {
         val alias = "rikkahub-contract-test-${java.util.UUID.randomUUID()}"
         val store = BackupPassphraseStore(context, alias)
