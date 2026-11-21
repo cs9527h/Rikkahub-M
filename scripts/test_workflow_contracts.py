@@ -29,9 +29,13 @@ class WorkflowContractsTest(unittest.TestCase):
         self.assertIn("inputs.publish_release == true", publish)
         self.assertIn("github.event_name == 'workflow_dispatch'", publish)
 
-    def test_stable_verifier_precedes_release_creation_and_keeps_pinned_source(self):
+    def test_stable_release_uses_automated_gates_and_keeps_pinned_source(self):
         publish = job(RELEASE, "publish")
-        self.assertLess(publish.index("python3 scripts/verify_release_acceptance.py"), publish.index("gh release create"))
+        # 正式版门禁是可复现的自动化检查（build + upgrade + Lint + 签名/校验和），
+        # 不再要求实体设备验收 JSON；但也不允许为此伪造任何验收记录。
+        self.assertNotIn("verify_release_acceptance.py", publish)
+        self.assertIn("gh release create", publish)
+        self.assertIn("sha256sum -c SHA256SUMS.txt", publish)
         self.assertIn("fetch-depth: 0", publish)
         self.assertIn('--target "$GITHUB_SHA"', publish)
         self.assertIn('flags+=(--prerelease)', publish)
