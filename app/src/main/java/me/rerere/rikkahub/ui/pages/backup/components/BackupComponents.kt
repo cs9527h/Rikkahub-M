@@ -62,6 +62,8 @@ import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.FileZip
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.sync.BackupArchiveFormat
+import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
@@ -359,8 +361,18 @@ private fun BackupFileItem(
                         text = info.name,
                         style = MaterialTheme.typography.bodyLarge,
                     )
+                    // Resolve the label outside buildString: stringResource is composable-only.
+                    val kindLabel = when (BackupArchiveFormat.kindOfName(info.name)) {
+                        BackupKind.SETTINGS -> stringResource(R.string.backup_page_kind_settings)
+                        BackupKind.CHATS -> stringResource(R.string.backup_page_kind_chats)
+                        else -> null
+                    }
                     Text(
-                        text = "${info.lastModified.toLocalDateTime()} · ${info.size.fileSizeToString()}",
+                        text = listOfNotNull(
+                            kindLabel,
+                            info.lastModified.toLocalDateTime(),
+                            info.size.fileSizeToString(),
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

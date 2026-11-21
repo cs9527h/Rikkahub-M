@@ -1967,6 +1967,8 @@
   <string name="backup_page_auto_snapshot_settings">Settings</string>
   <string name="backup_page_auto_snapshot_chats">Chats</string>
   <string name="backup_page_auto_snapshot_never">not uploaded yet</string>
+  <string name="backup_page_kind_settings">Settings backup</string>
+  <string name="backup_page_kind_chats">Chat backup</string>
   <string name="memory_recently_deleted">Recently deleted</string>
   <string name="memory_restore">Restore to memory</string>
   <string name="memory_delete_forever">Delete permanently</string>

@@ -1969,6 +1969,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_auto_snapshot_settings">设置</string>
   <string name="backup_page_auto_snapshot_chats">聊天</string>
   <string name="backup_page_auto_snapshot_never">尚未上传</string>
+  <string name="backup_page_kind_settings">设置备份</string>
+  <string name="backup_page_kind_chats">聊天备份</string>
   <string name="memory_recently_deleted">最近删除</string>
   <string name="memory_restore">恢复到记忆库</string>
   <string name="memory_delete_forever">永久删除</string>

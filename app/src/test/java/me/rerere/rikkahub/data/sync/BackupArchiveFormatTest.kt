@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -14,7 +15,13 @@ class BackupArchiveFormatTest {
     }
 
     @Test fun unrelatedFilesAndNestedPathsAreNotBackups() {
-        for (name in listOf("report.zip", "backup_one.zip.part", "backup_a/other.zip", "backup_a\\other.rkmbak", "backup_a.txt")) {
+        for (name in listOf(
+            "report.zip",
+            "backup_one.zip.part",
+            "backup_a/other.zip",
+            "backup_a\\other.rkmbak",
+            "backup_a.txt"
+        )) {
             assertFalse(name, BackupArchiveFormat.isBackupName(name))
         }
     }
@@ -44,5 +51,17 @@ class BackupArchiveFormatTest {
         assertArrayEquals(original.toCharArray(), passphrase)
         passphrase.fill('\u0000')
         assertTrue(original == " pass word ")
+    }
+
+    @Test
+    fun backupKindComesFromTheAutomaticNameOnly() {
+        assertEquals(
+            BackupKind.SETTINGS,
+            BackupArchiveFormat.kindOfName("backup_settings_20261121_120000.rkmbak"),
+        )
+        assertEquals(BackupKind.CHATS, BackupArchiveFormat.kindOfName("backup_chats_20261121_120000.zip"))
+        assertEquals(BackupKind.FULL, BackupArchiveFormat.kindOfName("backup_20261121_120000.zip"))
+        assertNull(BackupArchiveFormat.kindOfName("notes.txt"))
+        assertNull(BackupArchiveFormat.kindOfName("../backup_settings_20261121.rkmbak"))
     }
 }
