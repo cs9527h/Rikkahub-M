@@ -1,9 +1,27 @@
-# Standalone Rikkahub-M (development branch)
+# Rikkahub-M 独立客户端架构与迁移说明
 
-The Mate/AstrBot chat gateway, pairing, device management and remote memory UI are retired. All conversation model requests use native provider integrations. Local prompt injection, local memory consolidation, chat history, and WebDAV/S3 backups remain.
+**状态：开发与验收中。** 本文件描述仓库中的架构迁移，并不代表已发布的 APK 已通过真机安全验收。参见[项目首页](../README.md)和[v0.4.0 风险警告](https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.4.0)。
 
-Migration drops only the retired built-in gateway provider and clears pointers to its legacy model ID; it retains assistant identity, system prompts, and local injection configurations. Users who relied on the gateway model must select a direct API model in app settings.
+## 架构变化
 
-Before shipping: run Gradle compilation and unit tests, install over an existing APK, verify restored local conversations and prompt injection (including new chats), verify local memory, WebDAV and S3 restore, and verify release signing continuity.
+- 客户端不再依赖 Mate/AstrBot 专用聊天网关、设备配对、设备管理及服务器记忆管理界面。
+- 对话请求使用客户端原生模型供应商直连接口。
+- 保留本地提示词注入、本地长期记忆、聊天记录及 WebDAV/S3 备份集成。
+- 可选云服务器仅规划承担备份存储，不再作为客户端聊天、人格注入和长期记忆的强制依赖。
 
-**This commit does not stop or delete any production cloud server.** Server cleanup requires separate authorized production actions. Existing server archives and the backup-only service must be explicitly provisioned. No personal chats, credentials, tokens, or persona contents are committed here.
+## 用户数据迁移
+
+旧专用网关提供商及其无效模型 ID 应从设置中安全迁移，但必须保留助手名称、系统提示词、本地注入配置和已有聊天记录。依赖旧网关模型的用户，需要在 App 中手动选择可用的直连 API 模型，不得静默绑定其他服务商。
+
+**注意：** v0.4.0 测试预览包的发布说明已指出旧聊天库及本地备份目录可能被隐式删除。任何迁移代码都不能擅自删除用户数据；应先修复误删路径、设计安全回滚，然后在真实设备上覆盖升级验收。
+
+## 正式发布前的最低验收
+
+1. Gradle 编译、单元测试和必要的静态检查通过。
+2. 旧版 APK 原位升级后助手、聊天、注入规则、附件与配置保持完整；失败可以恢复。
+3. 本地提示词导入在新建聊天、应用重启、切换助手后正常生效。
+4. 本地记忆创建、检索、编辑、删除和召回经过实际验证。
+5. WebDAV/S3 真实上传、下载、恢复及加密密钥管理经过验证。
+6. 核对签名连续性、单一通用 APK、长聊天性能、通知与动画。
+
+**代码合并不会自动停止或删除生产云服务器。** 服务器重装、停用与数据删除需要另外明确授权和备份。本仓库不得提交私人聊天、人格正文、API 密钥、设备凭据或服务器私钥。

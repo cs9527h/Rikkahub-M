@@ -1,0 +1,84 @@
+name: "Bug report (English)"
+description: "Report a bug or crash in Rikkahub-M (English)"
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Describe the steps to reproduce it and include the affected environment.
+
+        > Never post API keys, personal conversations, private persona prompts, or server credentials.
+        > Please verify factual details before submitting AI-assisted reports.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Problem and steps to reproduce"
+      description: "What happened and how can it be reproduced?"
+      placeholder: |
+        1. Open…
+        2. Tap…
+        3. Observe…
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior"
+      description: "What did you expect to happen?"
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: "Screenshots or recordings"
+      description: "Redact private chats, credentials, and personal data before attaching."
+    validations:
+      required: false
+  - type: input
+    id: provider
+    attributes:
+      label: "AI provider"
+      description: "Example: OpenAI, Anthropic, Google, DeepSeek, self-hosted."
+    validations:
+      required: false
+  - type: input
+    id: model
+    attributes:
+      label: "Model"
+      description: "Model identifier used when the issue occurred."
+    validations:
+      required: false
+  - type: dropdown
+    id: api-type
+    attributes:
+      label: "API protocol"
+      options:
+        - "OpenAI Chat Completions"
+        - "OpenAI Responses"
+        - "Google Gemini"
+        - "Anthropic"
+        - "Other / Unsure"
+    validations:
+      required: false
+  - type: input
+    id: app-version
+    attributes:
+      label: "App version"
+      placeholder: "0.4.0-preview"
+    validations:
+      required: true
+  - type: input
+    id: android-version
+    attributes:
+      label: "Android version"
+      placeholder: "Android 15"
+    validations:
+      required: true
+  - type: input
+    id: device-model
+    attributes:
+      label: "Device model"
+      placeholder: "Pixel 9"
+    validations:
+      required: true

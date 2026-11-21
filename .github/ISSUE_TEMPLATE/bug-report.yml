@@ -1,100 +1,90 @@
-name: Bug Report
-description: 报告APP Bug或者崩溃
+name: "错误反馈（中文）"
+description: "报告 Rikkahub-M 的故障、异常或崩溃"
 title: "bug: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢你花时间提交 Bug 报告！请尽量填写完整信息以便我们复现和修复问题。
-        Thanks for taking the time to report a bug! Please fill in as much detail as possible.
+        感谢反馈！请尽量提供复现步骤和必要的环境信息。
 
-        > **注意 | Note**
-        > 请勿提交由 AI 生成的 Issue，此类 Issue 将被直接关闭。
-        > Do not submit AI-generated issues — they will be closed without review.
-
+        > 请勿在公开 Issue 中粘贴 API Key、聊天记录、个人信息、真实人格提示词或服务器密钥。
+        > 请勿提交未经核实的 AI 生成问题报告。
   - type: textarea
     id: description
     attributes:
-      label: 问题描述 | Problem Description
-      description: 请详细描述你遇到的问题，包括复现步骤。 / Describe the issue in detail, including steps to reproduce.
+      label: "问题描述与复现步骤"
+      description: "说明出现了什么问题，以及怎样重复触发。"
       placeholder: |
-        1. 进入 ...
-        2. 点击 ...
-        3. 出现了 ...
+        1. 进入……
+        2. 点击……
+        3. 出现……
     validations:
       required: true
-
   - type: textarea
     id: expected
     attributes:
-      label: 期望行为 | Expected Behavior
-      description: 你期望应该发生什么？ / What did you expect to happen?
+      label: "预期行为"
+      description: "你原本希望程序怎样运行？"
     validations:
       required: false
-
   - type: textarea
     id: screenshots
     attributes:
-      label: 截图 | Screenshots
-      description: 如有相关截图或录屏，请粘贴到此处。 / Attach relevant screenshots or screen recordings here.
+      label: "截图或录屏"
+      description: "如有截图或录屏，请先遮盖私人聊天、密钥与个人信息。"
     validations:
       required: false
-
   - type: input
     id: provider
     attributes:
-      label: 使用的提供商 | Provider
-      description: 例如 OpenAI、Anthropic、Google、本地部署等 / e.g. OpenAI, Anthropic, Google, local deployment
-      placeholder: OpenAI
+      label: "模型服务商"
+      description: "例如 OpenAI、Anthropic、Google、DeepSeek、自建服务。"
+      placeholder: "DeepSeek"
     validations:
       required: false
-
   - type: input
     id: model
     attributes:
-      label: 使用的模型 | Model
-      description: 例如 gpt-4o、claude-3-5-sonnet 等 / e.g. gpt-4o, claude-3-5-sonnet
-      placeholder: gpt-4o
+      label: "模型名称"
+      description: "例如 deepseek-chat、gpt-4o、claude-sonnet 等。"
+      placeholder: "deepseek-chat"
     validations:
       required: false
-
   - type: dropdown
     id: api-type
     attributes:
-      label: 接口类型 | API Type
-      description: 使用的接口协议类型 / The API protocol type being used
+      label: "接口协议"
+      description: "选择所使用的接口类型。"
       options:
-        - OpenAI ChatCompletion
-        - Response API
-        - Google Gemini
-        - Anthropic
+        - "OpenAI Chat Completions"
+        - "OpenAI Responses"
+        - "Google Gemini"
+        - "Anthropic"
+        - "其他／不确定"
     validations:
       required: false
-
   - type: input
     id: app-version
     attributes:
-      label: APP 版本 | App Version
-      description: 例如 v1.2.3 / e.g. v1.2.3
-      placeholder: v1.2.3
+      label: "应用版本"
+      description: "例如 0.4.0，最好注明是否测试预览版。"
+      placeholder: "0.4.0"
     validations:
       required: true
-
   - type: input
     id: android-version
     attributes:
-      label: 安卓版本 | Android Version
-      description: 例如 Android 14 / e.g. Android 14
-      placeholder: Android 14
+      label: "Android 系统版本"
+      description: "例如 Android 15。"
+      placeholder: "Android 15"
     validations:
       required: true
-
   - type: input
     id: device-model
     attributes:
-      label: 手机型号 | Device Model
-      description: 例如 小米 14 / e.g. Xiaomi 14
-      placeholder: Xiaomi 14
+      label: "手机型号"
+      description: "例如小米 14。"
+      placeholder: "小米 14"
     validations:
       required: true
