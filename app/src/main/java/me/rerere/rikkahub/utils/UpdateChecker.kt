@@ -108,6 +108,7 @@ class UpdateChecker(
     private val prefs = context.getSharedPreferences("update-check", Context.MODE_PRIVATE)
     private val state = MutableStateFlow<UiState<UpdateInfo>>(UiState.Idle)
     private val lastError = MutableStateFlow<String?>(null)
+    private var fetchFailure: String? = null
 
     val updateState: StateFlow<UiState<UpdateInfo>> = state.asStateFlow()
 
@@ -128,68 +129,89 @@ class UpdateChecker(
         if (!force && now - last < CHECK_INTERVAL_MILLIS) {
             return@withContext state.value.toResult()
         }
-        val fetch = fetchReleases()
-        val result = fetch.fold(
-            onSuccess = { notes ->
-                lastError.value = null
-                saveCache(notes)
-                val latestStable = UpdateParsing.latestStable(notes, BuildConfig.VERSION_NAME)
-                if (latestStable == null) {
-                    // 自动检查只认正式版；手动点“检查更新”时把预览版也如实报出来。
-                    val latestPreview = notes.filter { it.prerelease }
-                        .maxByOrNull { Version(it.version) }
-                        ?.takeIf { Version(it.version) > Version(BuildConfig.VERSION_NAME) }
-                    if (!force || latestPreview == null) {
-                        state.value = UiState.Idle
-                        UpdateCheckResult.UpToDate
-                    } else {
-                        val info = UpdateInfo(
-                            version = latestPreview.version,
-                            publishedAt = latestPreview.publishedAt,
-                            changelog = latestPreview.body,
-                            downloads = downloadsOf(latestPreview),
-                            tag = latestPreview.tag,
-                            pageUrl = latestPreview.pageUrl,
-                            prerelease = true,
-                        )
-                        state.value = UiState.Idle
-                        UpdateCheckResult.Available(info)
-                    }
-                } else {
+        fetchFailure = null
+        val notes = fetchReleases()
+        val result: UpdateCheckResult = if (notes == null) {
+            val reason = fetchFailure ?: "网络不可用"
+            lastError.value = reason
+            state.value = UiState.Error(UpdateCheckException(reason))
+            UpdateCheckResult.Failed(reason)
+        } else {
+            lastError.value = null
+            saveCache(notes)
+            val latestStable = UpdateParsing.latestStable(notes, BuildConfig.VERSION_NAME)
+            if (latestStable != null) {
+                val info = UpdateInfo(
+                    version = latestStable.version,
+                    publishedAt = latestStable.publishedAt,
+                    changelog = latestStable.body,
+                    downloads = downloadsOf(latestStable),
+                    tag = latestStable.tag,
+                    pageUrl = latestStable.pageUrl,
+                )
+                state.value = UiState.Success(info)
+                UpdateCheckResult.Available(info)
+            } else {
+                // 自动检查只认正式版；手动点“检查更新”时把预览版也如实报出来。
+                val latestPreview = notes.filter { it.prerelease }
+                    .maxByOrNull { Version(it.version) }
+                    ?.takeIf { Version(it.version) > Version(BuildConfig.VERSION_NAME) }
+                if (force && latestPreview != null) {
                     val info = UpdateInfo(
-                        version = latestStable.version,
-                        publishedAt = latestStable.publishedAt,
-                        changelog = latestStable.body,
-                        downloads = downloadsOf(latestStable),
-                        tag = latestStable.tag,
-                        pageUrl = latestStable.pageUrl,
+                        version = latestPreview.version,
+                        publishedAt = latestPreview.publishedAt,
+                        changelog = latestPreview.body,
+                        downloads = downloadsOf(latestPreview),
+                        tag = latestPreview.tag,
+                        pageUrl = latestPreview.pageUrl,
+                        prerelease = true,
                     )
-                    state.value = UiState.Success(info)
+                    state.value = UiState.Idle
                     UpdateCheckResult.Available(info)
+                } else {
+                    state.value = UiState.Idle
+                    UpdateCheckResult.UpToDate
                 }
-            },
-            onFailure = { error ->
-                val reason = error.message ?: "网络不可用"
-                lastError.value = reason
-                state.value = UiState.Error(UpdateCheckException(reason))
-                UpdateCheckResult.Failed(reason)
-            },
-        )
+            }
+        }
         prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
         result
     }
 
-    /** 依次尝试 GitHub API、GitHub Atom（不吃 API 限流）、国内备用源、上次成功缓存。 */
-    private suspend fun fetchReleases(): Result<List<ReleaseNote>> {
+    /** 依次尝试 GitHub API、GitHub Atom（不吃 API 限流）、国内备用源、上次成功缓存；全失败返回 null。 */
+    private suspend fun fetchReleases(): List<ReleaseNote>? {
         val failures = mutableListOf<String>()
-        runCatching { apiReleases() }.onSuccess { return Result.success(it) }
-            .onFailure { failures += "GitHub 接口：" + it.describeNetworkFailure() }
-        runCatching { atomReleases() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
-            .onFailure { failures += "GitHub 发布页：" + it.describeNetworkFailure() }
-        runCatching { mirrorReleases() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
-            .onFailure { failures += "备用源：" + it.describeNetworkFailure() }
-        runCatching { loadCache() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
-        return Result.failure(UpdateCheckException(failures.joinToString("；")))
+        try {
+            return apiReleases()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failures += "GitHub 接口：" + e.describeNetworkFailure()
+        }
+        try {
+            val atom = atomReleases()
+            if (atom.isNotEmpty()) return atom
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failures += "GitHub 发布页：" + e.describeNetworkFailure()
+        }
+        try {
+            val mirror = mirrorReleases()
+            if (mirror.isNotEmpty()) return mirror
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failures += "备用源：" + e.describeNetworkFailure()
+        }
+        try {
+            val cached = loadCache()
+            if (cached.isNotEmpty()) return cached
+        } catch (e: Exception) {
+            failures += "本地缓存不可用"
+        }
+        fetchFailure = failures.joinToString("；")
+        return null
     }
 
     private suspend fun apiReleases(): List<ReleaseNote> {
@@ -230,10 +252,10 @@ class UpdateChecker(
     /** 更新日志：内置当前版本说明始终可读，联网后合并已发布的正式/预览版本。 */
     suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
         val bundled: List<ReleaseNote> = bundledNotes()
-        val remote: List<ReleaseNote> = runCatching { fetchReleases() }.getOrNull() ?: emptyList()
-        (bundled + remote)
-            .distinctBy { it.version }
-            .sortedByDescending { Version(it.version) }
+        val remote: List<ReleaseNote> = fetchReleases() ?: emptyList()
+        bundled.plus(remote)
+            .distinctBy { note -> note.version }
+            .sortedByDescending { note -> Version(note.version) }
     }
 
     fun bundledNotes(): List<ReleaseNote> = runCatching {
