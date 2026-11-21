@@ -32,7 +32,7 @@ import java.time.Instant
 private val ReminderIntervals = listOf(1, 3, 7, 14, 30)
 private val AutoSettingsIntervals = listOf(6, 12, 24)
 private val AutoChatsIntervals = listOf(24, 72, 168)
-private val AutoRetainOptions = listOf(0, 5, 10, 20)
+private val AutoRetainOptions = listOf(0, 5, 10, 20, 50)
 
 @Composable
 fun ReminderTab(vm: BackupVM) {
