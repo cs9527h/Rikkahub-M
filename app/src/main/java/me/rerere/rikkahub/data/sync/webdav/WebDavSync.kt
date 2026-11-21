@@ -3,7 +3,10 @@ package me.rerere.rikkahub.data.sync.webdav
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.sync.AutoBackupPolicy
@@ -115,10 +118,14 @@ class WebDavSync(
             )
             var deleted = 0
             for (version in expired) {
+                currentCoroutineContext().ensureActive()
                 val item = items.firstOrNull { it.displayName == version.name } ?: continue
                 runCatching { deleteBackupFile(config, item) }
                     .onSuccess { deleted++ }
-                    .onFailure { Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本") }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本")
+                    }
             }
             deleted
         }

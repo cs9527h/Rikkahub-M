@@ -87,7 +87,13 @@ class BackupManager(
                         settingsJsonForFingerprint = settingsJson
                         if (!backupDatabase) {
                             val memories = database.memoryDao().getAllFiles().map { memory ->
-                                MemoryBackupRecord(memory.assistantId, memory.path, memory.content, memory.updatedAt)
+                                MemoryBackupRecord(
+                                    memory.assistantId,
+                                    memory.path,
+                                    memory.content,
+                                    memory.updatedAt,
+                                    memory.deletedAt,
+                                )
                             }
                             val memoryBytes = MemoryBackupCodec.encode(memories).toByteArray(Charsets.UTF_8)
                             zip.putNextEntry(ZipEntry(MemoryBackupCodec.FILE_NAME))
@@ -201,8 +207,10 @@ class BackupManager(
                             verified.entries?.let { entries ->
                                 val needed = entries.sumOf { it.size }
                                 val available = staging.usableSpace
-                                if (needed > 0 && available > 0 && available < needed + 32L * 1024 * 1024) {
-                                    error("设备存储空间不足，至少还需要 ${(needed + 32L * 1024 * 1024) / (1024 * 1024)} MB")
+                                // 0 means the platform cannot report free space.
+                                if (needed > 0 && available > 0 && !BackupSpace.fits(needed, available)) {
+                                    val required = BackupSpace.requiredBytes(needed) / (1024 * 1024)
+                                    error("设备存储空间不足，至少还需要 $required MB")
                                 }
                             }
                             when (verified.kind) {

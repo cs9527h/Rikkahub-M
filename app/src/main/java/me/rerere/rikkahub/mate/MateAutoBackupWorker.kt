@@ -115,7 +115,11 @@ class MateAutoBackupWorker(
                                         } else {
                                             s3Sync.trimAutomaticBackups(s3, kind, keep)
                                         }
-                                    }.onFailure { Log.w("MateAutoBackup", "旧版本清理失败", it) }
+                                    }.onFailure {
+                                        if (it is CancellationException) throw it
+                                        // Transport exceptions may contain signed URLs or credentials.
+                                        Log.w("MateAutoBackup", "旧版本清理失败")
+                                    }
                                 }
                             }
                         } catch (error: CancellationException) {

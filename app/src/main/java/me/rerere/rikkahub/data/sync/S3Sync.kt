@@ -3,7 +3,10 @@ package me.rerere.rikkahub.data.sync
 import android.content.Context
 import android.util.Log
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.sync.s3.S3Client
 import me.rerere.rikkahub.data.sync.s3.S3Config
@@ -88,12 +91,16 @@ class S3Sync(
 
     suspend fun listBackupFiles(config: S3Config): List<S3BackupItem> = withContext(Dispatchers.IO) {
         val client = getS3Client(config)
-        val result = client.listObjects(
-            prefix = "rikkahub_backups/",
-            maxKeys = 1000
-        ).getOrThrow()
+        val objects = completeBackupListing { token ->
+            val page = client.listObjects(
+                prefix = "rikkahub_backups/",
+                maxKeys = 1000,
+                continuationToken = token,
+            ).getOrThrow()
+            BackupListingPage(page.objects, page.isTruncated, page.nextContinuationToken)
+        }
 
-        result.objects
+        objects.distinctBy { it.key }
             .filter {
                 it.key.startsWith("rikkahub_backups/") &&
                     BackupArchiveFormat.isBackupName(it.key.removePrefix("rikkahub_backups/"))
@@ -121,10 +128,14 @@ class S3Sync(
             )
             var deleted = 0
             for (version in expired) {
+                currentCoroutineContext().ensureActive()
                 val item = items.firstOrNull { it.displayName == version.name } ?: continue
                 runCatching { deleteS3BackupFile(config, item) }
                     .onSuccess { deleted++ }
-                    .onFailure { Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本") }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本")
+                    }
             }
             deleted
         }

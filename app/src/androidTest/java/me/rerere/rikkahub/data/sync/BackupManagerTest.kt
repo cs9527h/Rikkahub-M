@@ -421,6 +421,54 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
+    @Test fun encryptedSettingsRestoreKeepsTrashDeletedAndAssistantNamespacesIsolated() = runBlocking {
+        val dao = liveDatabase.memoryDao()
+        val trashed = me.rerere.rikkahub.data.db.entity.MemoryFileEntity(
+            "synthetic-assistant-a",
+            "/profile.md",
+            "synthetic trashed content",
+            1234,
+            5678,
+        )
+        val active = trashed.copy(
+            assistantId = "synthetic-assistant-b",
+            content = "synthetic active content",
+            deletedAt = 0,
+        )
+        dao.upsertFile(trashed)
+        dao.upsertFile(active)
+        val secret = "synthetic backup roundtrip passphrase".toCharArray()
+        try {
+            val archive = manager.createBackup(false, false, passphrase = secret, kind = BackupKind.SETTINGS)
+            manager.stageRestore(archive, false, false, passphrase = secret)
+            liveDatabase.openHelper.writableDatabase.execSQL(
+                "INSERT INTO backup_probe VALUES ('synthetic after staging')"
+            )
+            // Never install the synthetic settings into the real app's DataStore.
+            val pending = File(context.noBackupFilesDir, "backup-restore/pending")
+            assertTrue(File(pending, "settings.json").delete())
+            liveDatabase.close()
+            assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
+            liveDatabase = AppDatabaseFactory.create(context)
+            val restored = liveDatabase.memoryDao()
+            assertEquals(null, restored.getFile(trashed.assistantId, trashed.path))
+            assertEquals(trashed, restored.getFileIncludingDeleted(trashed.assistantId, trashed.path))
+            assertEquals(active, restored.getFile(active.assistantId, active.path))
+            assertEquals("live", probe(liveDatabase))
+            liveDatabase.openHelper.readableDatabase.query(
+                "SELECT COUNT(*) FROM backup_probe WHERE text = 'synthetic after staging'"
+            ).use {
+                assertTrue(it.moveToFirst())
+                assertEquals(1L, it.getLong(0))
+            }
+            assertEquals(1, restored.markRestored(trashed.assistantId, trashed.path))
+            assertEquals(trashed.copy(deletedAt = 0), restored.getFile(trashed.assistantId, trashed.path))
+            assertEquals(active, restored.getFile(active.assistantId, active.path))
+        } finally {
+            secret.fill('\u0000')
+        }
+    }
+
     @Test fun chatsOnlyArchiveRetainsLatestLiveNativeMemoryAndOmitsSettings() = runBlocking {
         val dao = liveDatabase.memoryDao()
         val before = me.rerere.rikkahub.data.db.entity.MemoryFileEntity(
