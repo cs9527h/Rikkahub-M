@@ -116,7 +116,7 @@ class WebDavSync(
             var deleted = 0
             for (version in expired) {
                 val item = items.firstOrNull { it.displayName == version.name } ?: continue
-                runCatching { deleteBackupFile(config, item).getOrThrow() }
+                runCatching { deleteBackupFile(config, item) }
                     .onSuccess { deleted++ }
                     .onFailure { Log.w(TAG, "trimAutomaticBackups: 无法删除旧版本") }
             }
