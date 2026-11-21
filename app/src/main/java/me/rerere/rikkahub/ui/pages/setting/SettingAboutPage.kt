@@ -172,7 +172,7 @@ fun SettingAboutPage() {
                             ),
                         )
                         Text(
-                            text = stringResource(R.string.mate_intro_summary),
+                            text = stringResource(R.string.about_standalone_summary),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -658,6 +659,7 @@ private fun TopBar(
         onUpdateTitle(it)
     }
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -700,7 +702,7 @@ private fun TopBar(
                     )
                     // 第二行只放助手身份，模型和供应商名称移到设置和连接详情里
                     Text(
-                        text = assistant.name.ifBlank { context.getString(R.string.assistant_page_default_assistant) },
+                        text = assistant.name.ifBlank { resources.getString(R.string.assistant_page_default_assistant) },
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
                         color = LocalContentColor.current.copy(0.65f),

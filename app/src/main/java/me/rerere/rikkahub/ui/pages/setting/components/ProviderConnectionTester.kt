@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +58,7 @@ fun ProviderConnectionTestDialog(
     val providerManager = koinInject<ProviderManager>()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     var model by remember(internalProvider) {
         mutableStateOf(internalProvider.models.firstOrNull { it.type == ModelType.CHAT })
@@ -193,7 +195,7 @@ fun ProviderConnectionTestDialog(
                                     .filterIsInstance<UIMessagePart.Tool>()
                                     .firstOrNull()
                                 val resultText = if (toolCall != null) {
-                                    context.getString(
+                                    resources.getString(
                                         R.string.setting_provider_page_test_tool_called,
                                         toolCall.toolName,
                                         toolCall.input
@@ -202,7 +204,7 @@ fun ProviderConnectionTestDialog(
                                     val text = message.parts
                                         .filterIsInstance<UIMessagePart.Text>()
                                         .joinToString("") { it.text }
-                                    context.getString(
+                                    resources.getString(
                                         R.string.setting_provider_page_test_tool_not_called,
                                         text
                                     )

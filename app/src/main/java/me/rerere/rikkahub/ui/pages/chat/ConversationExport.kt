@@ -66,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -145,6 +146,7 @@ fun ChatExportSheet(
     selectedMessages: List<UIMessage>
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -168,12 +170,12 @@ fun ChatExportSheet(
                 }
             }.onSuccess {
                 toaster.show(
-                    context.getString(R.string.chat_page_export_success, uri.displayName(context) ?: source.name),
+                    resources.getString(R.string.chat_page_export_success, uri.displayName(context) ?: source.name),
                     type = ToastType.Success,
                 )
             }.onFailure {
                 it.printStackTrace()
-                toaster.show(context.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
+                toaster.show(resources.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
             }
         }
     }
@@ -226,7 +228,7 @@ fun ChatExportSheet(
             }.onFailure {
                 if (it is CancellationException) throw it
                 it.printStackTrace()
-                toaster.show(context.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
+                toaster.show(resources.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
             }
             exporting = null
         }

@@ -10,6 +10,8 @@ case "$mode" in
   *) echo "ERROR: expected preview or signed mode"; exit 2 ;;
 esac
 mkdir -p evidence
+# Emulator system ANR/crash dialogs steal focus and hide the app window from uiautomator.
+adb shell settings put global hide_error_dialogs 1 >/dev/null 2>&1 || true
 
 capture() {
   local package=$1 label=$2 theme
@@ -24,6 +26,8 @@ capture() {
       adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || { sleep 2; continue; }
       adb pull /sdcard/window.xml "evidence/$label-$theme.xml" >/dev/null 2>&1 || { sleep 2; continue; }
       if grep -Fq "package=\"$package\"" "evidence/$label-$theme.xml"; then ready=1; break; fi
+      # A system dialog (launcher ANR) may cover the app; the activity is still resumed.
+      if adb shell dumpsys window 2>/dev/null | grep -Fq "mCurrentFocus=.*$package/"; then ready=1; break; fi
       sleep 2
     done
     adb exec-out screencap -p > "evidence/$label-$theme.png"

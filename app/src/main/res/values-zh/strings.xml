@@ -1924,22 +1924,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_quick_start">快速入门</string>
   <string name="setting_page_quick_start_desc">独立 API、服务器连接与 DeepSeek 导入</string>
   <string name="setting_page_share_text">Rikkahub-M · 开源 Android AI 客户端\n源码：https://github.com/cs9527h/Rikkahub-M</string>
-  <string name="mate_settings_group">连接与设备</string>
-  <string name="mate_connection_title">云服务器</string>
-  <string name="mate_memory_title">记忆中心</string>
-  <string name="mate_memory_desc">查看、搜索、编辑与恢复长期记忆</string>
-  <string name="mate_connection_desc">配对、检测、重新授权</string>
-  <string name="mate_intro_title">Rikkahub-M · 自然流畅的 AI 聊天</string>
-  <string name="mate_intro_summary">连接私人云服务器后即可开始聊天。</string>
-  <string name="mate_intro_connection_heading">连接云服务器</string>
-  <string name="mate_intro_connection_detail">首次使用需填写地址并完成配对。</string>
-  <string name="mate_intro_connect_button">连接服务器</string>
-  <string name="mate_intro_progress_heading">开发进度</string>
-  <string name="mate_intro_progress_detail">部分服务器能力仍在验证。</string>
-  <string name="mate_intro_old_app_heading">迁移提醒</string>
-  <string name="mate_intro_old_app_detail">旧版数据请保留原安装与备份。</string>
-  <string name="mate_intro_origin">本项目基于开源 RikkaHub 开发，遵守 AGPL-3.0 许可证。</string>
-  <string name="mate_intro_tab">云服务器</string>
   <string name="backup_page_security">备份加密</string>
   <string name="backup_page_encrypt">加密新备份</string>
   <string name="backup_page_encryption_warning">在客户端加密，忘记口令将无法恢复。口令不会上传；默认仅在本页保留，也可单独保存到本机安全存储供自动备份使用。</string>
@@ -1985,4 +1969,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="backup_page_auto_last_success">最近自动备份成功：%1$s</string>
   <string name="backup_page_auto_never">自动备份尚无成功记录</string>
   <string name="backup_page_auto_failed">最近失败：%1$s</string>
+  <string name="about_standalone_summary">独立 AI 客户端：模型直连，人格与记忆保存在本地，云端仅用于加密备份。</string>
 </resources>

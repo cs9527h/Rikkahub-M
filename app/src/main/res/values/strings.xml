@@ -1922,22 +1922,6 @@
   <string name="setting_page_quick_start">Quick Start</string>
   <string name="setting_page_quick_start_desc">Independent APIs, server pairing, DeepSeek import</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>
-  <string name="mate_intro_title">Rikkahub-M · 自然流畅的 AI 聊天</string>
-  <string name="mate_intro_summary">连接私人云服务器后即可开始聊天。</string>
-  <string name="mate_intro_connection_heading">连接云服务器</string>
-  <string name="mate_intro_connection_detail">首次使用需填写地址并完成配对。</string>
-  <string name="mate_intro_connect_button">连接服务器</string>
-  <string name="mate_intro_progress_heading">开发进度</string>
-  <string name="mate_intro_progress_detail">部分服务器能力仍在验证。</string>
-  <string name="mate_intro_old_app_heading">迁移提醒</string>
-  <string name="mate_intro_old_app_detail">旧版数据请保留原安装与备份。</string>
-  <string name="mate_intro_origin">本项目基于开源 RikkaHub 开发，遵守 AGPL-3.0 许可证。</string>
-  <string name="mate_intro_tab">云服务器</string>
-  <string name="mate_settings_group">Connection &amp; devices</string>
-  <string name="mate_connection_title">Cloud server</string>
-  <string name="mate_memory_title">Memory center</string>
-  <string name="mate_memory_desc">Browse, search, edit and restore memory</string>
-  <string name="mate_connection_desc">Pair, check, re-authorize</string>
   <string name="backup_page_security">Backup encryption</string>
   <string name="backup_page_encrypt">Encrypt new backups</string>
   <string name="backup_page_encryption_warning">Client-side encryption. Forgotten passphrases cannot be recovered. The passphrase is never uploaded. It stays on this page unless you explicitly save it locally for automatic backups.</string>
@@ -1983,4 +1967,5 @@
   <string name="backup_page_auto_last_success">Last automatic backup: %1$s</string>
   <string name="backup_page_auto_never">No successful automatic backup yet</string>
   <string name="backup_page_auto_failed">Last failure: %1$s</string>
+  <string name="about_standalone_summary">Standalone AI client: direct model APIs, local personas and memory. The cloud is used only for encrypted backups.</string>
 </resources>

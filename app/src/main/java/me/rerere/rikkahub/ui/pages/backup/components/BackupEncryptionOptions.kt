@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -40,6 +41,7 @@ fun BackupEncryptionOptions(vm: BackupVM) {
     val includeCredentials by vm.includeBackupCredentials.collectAsStateWithLifecycle()
     val keyConfigured by vm.automaticPassphraseConfigured.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     var keyBusy by remember { mutableStateOf(false) }
@@ -51,7 +53,7 @@ fun BackupEncryptionOptions(vm: BackupVM) {
             try {
                 if (forget) vm.forgetAutomaticBackupPassphrase() else vm.savePassphraseForAutomaticBackup()
                 toaster.show(
-                    context.getString(
+                    resources.getString(
                         if (forget) R.string.backup_page_key_forgotten else R.string.backup_page_key_saved
                     ),
                     type = ToastType.Success,
@@ -59,7 +61,7 @@ fun BackupEncryptionOptions(vm: BackupVM) {
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                toaster.show(context.getString(R.string.backup_page_key_failed), type = ToastType.Error)
+                toaster.show(resources.getString(R.string.backup_page_key_failed), type = ToastType.Error)
             } finally {
                 keyBusy = false
             }
