@@ -497,6 +497,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingAboutPage()
                             }
 
+                            entry<Screen.MateChangelog> {
+                                MateChangelogPage()
+                            }
+
                             entry<Screen.SettingSearch> {
                                 SettingSearchPage()
                             }
