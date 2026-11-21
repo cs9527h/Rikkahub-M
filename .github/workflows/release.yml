@@ -7,6 +7,10 @@ on:
         description: 'Publish a GitHub Release with the signed APKs'
         type: boolean
         default: false
+      prerelease:
+        description: 'Publish as pre-release: no physical-device acceptance gate (CI + emulator evidence only)'
+        type: boolean
+        default: true
   push:
     branches:
       - master
@@ -262,6 +266,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
@@ -276,7 +281,7 @@ jobs:
           PY
           (cd dist && sha256sum -c SHA256SUMS.txt)
           flags=()
-          if [[ "$VERSION" == *-* ]]; then
+          if [[ "$VERSION" == *-* || "${PRERELEASE:-false}" == "true" ]]; then
             flags+=(--prerelease)
           else
             # A source build or a filled-out performance ledger is not stable acceptance.
