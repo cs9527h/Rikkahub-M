@@ -1,10 +1,11 @@
 # Rikkahub-M · 简体中文
 
-**项目简体中文介绍已迁移至 [README.md](README.md)，并作为 GitHub 仓库默认首页。**
+本项目默认使用简体中文介绍，请阅读 [GitHub 项目首页](README.md)。
 
-语言：**[简体中文（默认）](README.md)** · [English](README_EN.md) · [繁體中文](README_ZH_TW.md)
+语言：[简体中文（默认）](README.md) · [English](README_EN.md) · [繁體中文](README_ZH_TW.md)
 
-> [!CAUTION]
-> v0.4.0 为尚未通过安全验收的测试预览版，存在旧聊天库及旧备份目录可能被误删的风险。请先阅读[版本警告](https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.4.0)，勿在修复验收前安装或启动该测试包。
+- [版本下载](https://github.com/cs9527h/Rikkahub-M/releases)
+- [0.4.3 更新说明](docs/releases/0.4.3.md)
+- [更新日志](CHANGELOG_MATE.md)
 
-请以 [简体中文项目首页](README.md)了解项目、当前开发状态、下载链接及隐私注意事项。本文件保留作兼容旧链接使用，避免长期维护两套简体中文介绍而产生冲突。
+历史 0.4.0 构建存在旧数据误删风险，详见 [0.4.0 风险说明](docs/releases/0.4.0.md)。请优先选择更新后的版本，覆盖安装前备份重要数据。
