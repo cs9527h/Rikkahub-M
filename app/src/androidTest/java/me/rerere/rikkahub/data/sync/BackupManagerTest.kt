@@ -375,7 +375,11 @@ class BackupManagerTest {
         assertEquals(assistant.id, restored.assistants.single().id)
         assertEquals(assistant.name, restored.assistants.single().name)
         val newUri = (restored.assistants.single().avatar as me.rerere.rikkahub.data.model.Avatar.Image).url
-        assertEquals(File(context.filesDir, "upload/avatar.png").absolutePath, java.net.URI(newUri).path)
+        // Android aliases /data/user/0 to /data/data; compare canonical targets, not URI spellings.
+        assertEquals(
+            File(context.filesDir, "upload/avatar.png").canonicalPath,
+            File(java.net.URI(newUri)).canonicalPath,
+        )
         assertEquals(newUri, restored.assistants.single().background)
         assertEquals(newUri, (restored.displaySetting.userAvatar as me.rerere.rikkahub.data.model.Avatar.Image).url)
         assertEquals("synthetic cross-device pixels", File(
