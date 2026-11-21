@@ -19,13 +19,13 @@ import json, pathlib, sys
 version, sha, size, notes, out = sys.argv[1:6]
 pathlib.Path(out).write_text(json.dumps({
     "format": 1,
-    "updatedAt": "auto",
+    "updatedAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "releases": [{
         "version": version,
         "tag": f"v{version}",
         "title": f"Rikkahub-M {version}",
         "body": pathlib.Path(notes).read_text(),
-        "publishedAt": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "publishedAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "prerelease": "-" in version,
         "apkUrl": f"https://8.133.167.195/updates/Rikkahub-M-{version}.apk",
         "sha256": sha,

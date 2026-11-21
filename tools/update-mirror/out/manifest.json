@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "updatedAt": "auto",
+  "releases": [
+    {
+      "version": "0.4.3",
+      "tag": "v0.4.3",
+      "title": "Rikkahub-M 0.4.3",
+      "body": "# Rikkahub-M 0.4.3\n\n状态：待真机验收的候选构建。0.4.2 同样保持待验收，不冒充正式版。\n\n## 更新系统\n\n- 检查更新不再只看 GitHub REST：接口 403/限流时自动改用 GitHub 发布页（`releases.atom`，不受 API 限流），再退到国内备用源和上次成功的本地缓存。\n- 修复解析：`tag_name`、`published_at`、`browser_download_url` 显式映射；更新日志不再出现“无法获取发布记录”。\n- 更新日志内置当前版本说明（`assets/updates.json`），断网也能看；已发布的预览版本照常展示并标注“预览”，自动升级只挑正式版本。\n- 下载更新后先校验 SHA-256、包名、版本号（必须高于已安装）和签名证书，全部通过才交给系统安装器，用户仍需在系统弹窗确认，不静默安装。\n- 检查失败会给出可区分的原因：限流、拒绝访问、超时、DNS、备用源不可达。\n\n## 关于页面\n\n- 只保留：应用名称、版本号、检查更新、更新日志、联系作者、项目主页、开源许可。\n- 去掉机型/SDK 行、重复的项目链接和冗长副标题；错误提示只保留一次。\n\n## 备份\n\n- 旧加密备份恢复时，仅当缺少本机密钥才弹一次原口令输入；日常备份与恢复不要求口令。\n\n## 备用更新源\n\n- 客户端支持 `https://8.133.167.195/updates/manifest.json` 作为备用源，字段与 GitHub 一致并带 `sha256`。\n- 服务端静态文件与上传脚本在 `tools/update-mirror/`；部署需要服务器 SSH 授权，本轮未部署，客户端在备用源不可达时自动回退 GitHub 发布页。\n\n## 版本\n\n- 0.4.3 / versionCode 18，包名 `com.rikkahub.mate`，沿用原签名，单一 universal APK。\n\n## 未验证\n\n- 真机冷启动、长列表滚动、流式回复性能数据未采集。\n- 备用源部署未完成（缺服务器登录授权），因此“GitHub 失败→备用源”链路只做了单元级逻辑校验。\n- 应用内下载安装全流程未在真机走完系统安装确认。\n",
+      "publishedAt": "2026-11-21T14:12:11Z",
+      "prerelease": false,
+      "apkUrl": "https://8.133.167.195/updates/Rikkahub-M-0.4.3.apk",
+      "sha256": "5036219a08ef3a3974c6639eaa3899b145f2eb349d756b210f84e2f0a9e03d4f",
+      "apkSize": 19353428,
+      "pageUrl": "https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.4.3",
+      "source": "mirror"
+    }
+  ]
+}
