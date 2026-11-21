@@ -10,16 +10,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import me.rerere.rikkahub.data.sync.BackupArchiveFormat
+import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
@@ -40,6 +40,8 @@ class BackupVM(
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
     private val deepSeekMigrator: DeepSeekMigrator,
+    private val backupPassphraseStore: me.rerere.rikkahub.data.sync.BackupPassphraseStore,
+    private val context: android.content.Context,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -56,6 +58,7 @@ class BackupVM(
     val backupPassphrase = MutableStateFlow("")
     val backupPassphraseConfirmation = MutableStateFlow("")
     val includeBackupCredentials = MutableStateFlow(false)
+    val automaticPassphraseConfigured = MutableStateFlow(false)
     private val archiveMutex = Mutex()
 
     fun clearBackupPassphrase() {
@@ -69,10 +72,14 @@ class BackupVM(
             val includeCredentials = export && encryptBackups.value && includeBackupCredentials.value
             val passphrase = if (export) {
                 BackupArchiveFormat.exportPassphrase(
-                    encryptBackups.value, backupPassphrase.value,
-                    backupPassphraseConfirmation.value, includeCredentials,
+                    encryptBackups.value,
+                    backupPassphrase.value,
+                    backupPassphraseConfirmation.value,
+                    includeCredentials,
                 )
-            } else backupPassphrase.value.takeIf { it.isNotEmpty() }?.toCharArray()
+            } else {
+                backupPassphrase.value.takeIf { it.isNotEmpty() }?.toCharArray()
+            }
             try {
                 block(passphrase, includeCredentials)
             } finally {
@@ -86,8 +93,24 @@ class BackupVM(
     }
 
     init {
+        viewModelScope.launch { automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured() }
         loadBackupFileItems()
         loadS3BackupFileItems()
+    }
+
+    suspend fun savePassphraseForAutomaticBackup() = withPassphrase(export = true) { passphrase, _ ->
+        requireNotNull(passphrase) { "自动备份必须使用加密口令" }
+        backupPassphraseStore.save(passphrase)
+        automaticPassphraseConfigured.value = true
+    }
+
+    suspend fun forgetAutomaticBackupPassphrase() {
+        settingsStore.update { current ->
+            current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupOnAppLifecycle = false))
+        }
+        me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
+        backupPassphraseStore.clear()
+        automaticPassphraseConfigured.value = false
     }
 
     fun updateSettings(fn: (Settings) -> Settings) {
@@ -137,7 +160,8 @@ class BackupVM(
     suspend fun exportToFile(): File = withPassphrase(export = true) { passphrase, includeCredentials ->
         webDavSync.prepareBackupFile(
             settings.value.webDavConfig.copy(items = localBackupItems.value),
-            passphrase, includeCredentials,
+            passphrase,
+            includeCredentials,
         )
     }
 

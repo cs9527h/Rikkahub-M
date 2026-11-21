@@ -20,11 +20,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
-import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.MediaCreationFiles
+import me.rerere.rikkahub.data.model.Avatar
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -49,55 +50,82 @@ class BackupManager(
         passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ): File = withContext(Dispatchers.IO) {
-        require(!includeCredentials || (passphrase != null && passphrase.isNotEmpty())) {
-            "包含凭据的备份必须使用非空口令加密"
-        }
-        require(passphrase == null || passphrase.isNotEmpty()) { "备份口令不能为空" }
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-        val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
-        val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
-        try {
-            val settings = settingsStore.awaitLoaded()
-            ZipOutputStream(FileOutputStream(archive)).use { zip ->
-                zip.putNextEntry(ZipEntry("settings.json"))
-                val settingsJson = portableSettings(json.parseToJsonElement(
-                    json.encodeSettings(settings, settingsStore.launchCountFlow.first())
-                ).jsonObject, includeCredentials).toString()
-                zip.write(settingsJson.toByteArray(Charsets.UTF_8))
-                zip.closeEntry()
-                if (includeDatabase) {
-                    val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
-                    DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
-                    addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
-                }
-                if (includeFiles) {
-                    for (folder in ATTACHMENT_FOLDERS) {
-                        val directory = File(context.filesDir, folder)
-                        val files = if (folder in NESTED_ATTACHMENT_FOLDERS) directory.walkTopDown().asSequence()
-                        else directory.listFiles().orEmpty().asSequence()
-                        for (file in files.filter { it.isFile }) {
-                            currentCoroutineContext().ensureActive()
-                            // A media result still being downloaded is incomplete and gets renamed when it finishes.
-                            if (folder == FileFolders.MEDIA_CREATION &&
-                                file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
-                            ) continue
-                            val relative = file.relativeTo(directory).invariantSeparatorsPath
-                            PendingRestore.resolveInside(directory, relative)
-                            addFile(zip, file, "$folder/$relative")
+        restoreMutex.withLock {
+            require(!includeCredentials || (passphrase != null && passphrase.isNotEmpty())) {
+                "包含凭据的备份必须使用非空口令加密"
+            }
+            require(passphrase == null || passphrase.isNotEmpty()) { "备份口令不能为空" }
+            val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+            val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
+            val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
+            try {
+                val settings = settingsStore.awaitLoaded()
+                val coreAssets = localCoreAssetFiles(settings)
+                val entries = mutableListOf<BackupManifestEntry>()
+                ZipOutputStream(FileOutputStream(archive)).use { zip ->
+                    zip.putNextEntry(ZipEntry("settings.json"))
+                    val settingsJson = portableSettings(json.parseToJsonElement(
+                        json.encodeSettings(settings, settingsStore.launchCountFlow.first())
+                    ).jsonObject, includeCredentials).toString()
+                    val settingsBytes = settingsJson.toByteArray(Charsets.UTF_8)
+                    zip.write(settingsBytes)
+                    zip.closeEntry()
+                    entries += BackupManifest.entry("settings.json", settingsBytes)
+                    if (includeDatabase) {
+                        val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
+                        DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
+                        entries += addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
+                    }
+                    if (!includeFiles) {
+                        for ((name, file) in coreAssets) {
+                            if (name.substringBefore('/') !in CORE_ASSET_FOLDERS) entries += addFile(zip, file, name)
                         }
                     }
+                    run {
+                        val folders = if (includeFiles) ATTACHMENT_FOLDERS else CORE_ASSET_FOLDERS
+                        for (folder in folders) {
+                            val directory = File(context.filesDir, folder)
+                            val files = if (folder in NESTED_ATTACHMENT_FOLDERS) {
+                                directory.walkTopDown().asSequence()
+                            } else {
+                                directory.listFiles().orEmpty().asSequence()
+                            }
+                            for (file in files.filter { it.isFile }) {
+                                currentCoroutineContext().ensureActive()
+                                // A media result still being downloaded is incomplete and gets renamed when it finishes.
+                                if (folder == FileFolders.MEDIA_CREATION &&
+                                    file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
+                                ) {
+                                    continue
+                                }
+                                val relative = file.relativeTo(directory).invariantSeparatorsPath
+                                PendingRestore.resolveInside(directory, relative)
+                                entries += addFile(zip, file, "$folder/$relative")
+                            }
+                        }
+                    }
+                    zip.putNextEntry(ZipEntry(BackupManifest.FILE_NAME))
+                    zip.write(
+                        BackupManifest.encode(
+                            entries,
+                            System.currentTimeMillis(),
+                            me.rerere.rikkahub.BuildConfig.VERSION_NAME
+                        ).toByteArray(Charsets.UTF_8)
+                    )
+                    zip.closeEntry()
                 }
+                if (passphrase == null) return@withLock archive
+                val encrypted =
+                    File(context.cacheDir, "backup_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}")
+                BackupCrypto.encrypt(archive, encrypted, passphrase)
+                archive.delete()
+                return@withLock encrypted
+            } catch (e: Throwable) {
+                archive.delete()
+                throw e
+            } finally {
+                staging.deleteRecursively()
             }
-            if (passphrase == null) return@withContext archive
-            val encrypted = File(context.cacheDir, "backup_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}")
-            BackupCrypto.encrypt(archive, encrypted, passphrase)
-            archive.delete()
-            return@withContext encrypted
-        } catch (e: Throwable) {
-            archive.delete()
-            throw e
-        } finally {
-            staging.deleteRecursively()
         }
     }
 
@@ -111,79 +139,138 @@ class BackupManager(
             restoreMutex.withLock {
                 var decrypted: File? = null
                 try {
-                val readable = if (!BackupCrypto.isEncrypted(archive)) archive else {
-                    requireNotNull(passphrase) { "该备份已加密，需要恢复口令" }
-                    File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
-                        decrypted = temp
-                        BackupCrypto.decrypt(archive, temp, passphrase)
+                    val readable = if (!BackupCrypto.isEncrypted(archive)) {
+                        archive
+                    } else {
+                        requireNotNull(passphrase) { "该备份已加密，需要恢复口令" }
+                        File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
+                            decrypted = temp
+                            BackupCrypto.decrypt(archive, temp, passphrase)
+                        }
                     }
-                }
-                val restore = pendingRestore(context)
-                val staging = restore.createStagingDirectory()
-                try {
-                    val payload = File(staging, "payload")
-                    val stagedDatabase = File(payload, "database/${SQLiteConfiguration.DATABASE_NAME}")
-                    val stagedWal = File(stagedDatabase.path + "-wal")
-                    val seen = mutableSetOf<String>()
-                    var restoredEntries = 0
-                    ZipFile(readable).use { zip ->
-                        for (entry in zip.entries()) {
-                            currentCoroutineContext().ensureActive()
-                            if (entry.isDirectory) continue
-                            val target = when (entry.name) {
-                                "settings.json" -> File(staging, "settings.json")
-                                DatabaseBackup.ARCHIVE_DATABASE -> if (includeDatabase) stagedDatabase else null
-                                DatabaseBackup.WAL -> if (includeDatabase) stagedWal else null
-                                DatabaseBackup.SHM -> null // Rebuilt by SQLite; never restore shared-memory state.
-                                else -> if (includeFiles && isAttachment(entry.name)) {
-                                    PendingRestore.resolveInside(File(payload, "files"), entry.name)
-                                } else null
-                            } ?: continue
-                            require(seen.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
-                            check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
-                                "Cannot create backup staging directory"
+                    val restore = pendingRestore(context)
+                    val staging = restore.createStagingDirectory()
+                    try {
+                        val payload = File(staging, "payload")
+                        val stagedDatabase = File(payload, "database/${SQLiteConfiguration.DATABASE_NAME}")
+                        val stagedWal = File(stagedDatabase.path + "-wal")
+                        val seen = mutableSetOf<String>()
+                        var restoredEntries = 0
+                        var restoredSettings: Settings? = null
+                        var restoredLaunchCount = 0
+                        ZipFile(readable).use { zip ->
+                            val coroutineContext = currentCoroutineContext()
+                            BackupManifest.verify(zip) { coroutineContext.ensureActive() }
+                            val originalSettings = zip.getEntry("settings.json")?.let { entry ->
+                                require(entry.size in 1..MAX_SETTINGS_BYTES) { "设置备份大小无效或超过 64 MiB" }
+                                val text = zip.getInputStream(
+                                    entry
+                                ).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                                val migrated = SettingsJsonMigrator.migrate(text)
+                                restoredLaunchCount = json.launchCountOf(migrated)
+                                json.decodeFromString<Settings>(migrated).also { require(!it.init) }
                             }
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(target).use { output ->
-                                    input.copyTo(output)
-                                    output.fd.sync()
+                            restoredSettings = originalSettings?.let(::remapManagedAssets)
+                            val coreAssetPaths = originalSettings?.let(::coreAssetUris).orEmpty()
+                                .mapNotNull { BackupFileUris.relativePath(it, ATTACHMENT_FOLDERS.toSet()) }.toSet()
+                            for (entry in zip.entries()) {
+                                currentCoroutineContext().ensureActive()
+                                if (entry.isDirectory) continue
+                                val target = when (entry.name) {
+                                    "settings.json" -> File(staging, "settings.json")
+                                    DatabaseBackup.ARCHIVE_DATABASE -> if (includeDatabase) stagedDatabase else null
+                                    DatabaseBackup.WAL -> if (includeDatabase) stagedWal else null
+                                    DatabaseBackup.SHM -> null // Rebuilt by SQLite; never restore shared-memory state.
+                                    else -> if (isAttachment(entry.name) && (
+                                            includeFiles || entry.name in coreAssetPaths ||
+                                                entry.name.substringBefore('/') in CORE_ASSET_FOLDERS
+                                            )) {
+                                        PendingRestore.resolveInside(File(payload, "files"), entry.name)
+                                    } else {
+                                        null
+                                    }
+                                } ?: continue
+                                require(seen.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
+                                check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
+                                    "Cannot create backup staging directory"
                                 }
+                                zip.getInputStream(entry).use { input ->
+                                    FileOutputStream(target).use { output ->
+                                        input.copyTo(output)
+                                        output.fd.sync()
+                                    }
+                                }
+                                restoredEntries++
                             }
-                            restoredEntries++
                         }
-                    }
-                    require(restoredEntries > 0) { "No selected data found in the backup" }
-                    require(!stagedWal.exists() || stagedDatabase.exists()) { "Backup WAL has no matching database" }
-                    if (stagedDatabase.exists()) {
-                        DatabaseBackup.normalize(context, stagedDatabase)
-                        // Reject unsupported schemas before publishing; run supported old migrations on the copy.
-                        val room = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
-                        try {
-                            DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
-                        } finally {
-                            room.close()
+                        require(restoredEntries > 0) { "No selected data found in the backup" }
+                        require(
+                            !stagedWal.exists() || stagedDatabase.exists()
+                        ) { "Backup WAL has no matching database" }
+                        if (stagedDatabase.exists()) {
+                            DatabaseBackup.normalize(context, stagedDatabase)
+                            // Reject unsupported schemas before publishing; run supported old migrations on the copy.
+                            val room = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
+                            try {
+                                DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
+                            } finally {
+                                room.close()
+                            }
+                            DatabaseBackup.removeSidecars(stagedDatabase)
                         }
-                        DatabaseBackup.removeSidecars(stagedDatabase)
-                    }
 
-                    val settingsFile = File(staging, "settings.json")
-                    if (settingsFile.exists()) {
-                        val migrated = SettingsJsonMigrator.migrate(settingsFile.readText())
-                        val settings = json.decodeFromString<Settings>(migrated)
-                        require(!settings.init) { "Backup contains uninitialized settings" }
-                        // Persist the migrated value once, including generated IDs, for restart/retry consistency.
-                        PendingRestore.writeDurably(settingsFile, json.encodeSettings(settings, json.launchCountOf(migrated)))
+                        restoredSettings?.let { settings ->
+                            // Preserve generated IDs and user-authored text; only managed asset references are relocated.
+                            PendingRestore.writeDurably(
+                                File(staging, "settings.json"),
+                                json.encodeSettings(settings, restoredLaunchCount)
+                            )
+                        }
+                        currentCoroutineContext().ensureActive()
+                        restore.publish(staging)
+                    } finally {
+                        staging.deleteRecursively()
                     }
-                    currentCoroutineContext().ensureActive()
-                    restore.publish(staging)
-                } finally {
-                    staging.deleteRecursively()
-                }
                 } finally {
                     decrypted?.delete()
                 }
             }
         }
+
+    private fun coreAssetUris(settings: Settings): List<String> = buildList {
+        (settings.userAvatar as? Avatar.Image)?.let { add(it.url) }
+        for (assistant in settings.assistants) {
+            (assistant.avatar as? Avatar.Image)?.let { add(it.url) }
+            assistant.background?.let(::add)
+        }
+    }
+
+    private fun localCoreAssetFiles(settings: Settings): Map<String, File> = buildMap {
+        val root = context.filesDir.canonicalFile
+        for (value in coreAssetUris(settings)) {
+            if (!value.startsWith("file:", ignoreCase = true)) continue
+            val relative = requireNotNull(BackupFileUris.relativePath(value, ATTACHMENT_FOLDERS.toSet())) {
+                "头像或背景不在托管目录，请重新选择后备份"
+            }
+            require(isAttachment(relative)) { "头像或背景引用无效" }
+            val file = File(java.net.URI(value)).canonicalFile
+            require(file.path.startsWith(root.path + File.separator) && file.isFile) {
+                "头像或背景文件缺失，请重新选择后备份"
+            }
+            put(relative, file)
+        }
+    }
+
+    private fun remapManagedAssets(settings: Settings): Settings {
+        fun relocate(value: String) = BackupFileUris.restoreUri(value, context.filesDir, ATTACHMENT_FOLDERS.toSet())
+        fun avatar(value: Avatar): Avatar = if (value is Avatar.Image) value.copy(url = relocate(value.url)) else value
+        return settings.copy(
+            userAvatar = avatar(settings.userAvatar),
+            assistants = settings.assistants.map { assistant ->
+                assistant.copy(avatar = avatar(assistant.avatar), background = assistant.background?.let(::relocate))
+            },
+        )
+    }
 
     private fun isAttachment(name: String): Boolean {
         val folder = name.substringBefore('/')
@@ -194,13 +281,28 @@ class BackupManager(
         return true
     }
 
-    private fun addFile(zip: ZipOutputStream, file: File, name: String) {
+    private suspend fun addFile(zip: ZipOutputStream, file: File, name: String): BackupManifestEntry {
         zip.putNextEntry(ZipEntry(name))
-        file.inputStream().use { it.copyTo(zip) }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        var size = 0L
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                zip.write(buffer, 0, count)
+                digest.update(buffer, 0, count)
+                size += count
+            }
+        }
         zip.closeEntry()
+        return BackupManifestEntry(name, size, BackupManifest.hex(digest.digest()))
     }
 
     companion object {
+        private const val MAX_SETTINGS_BYTES = 64L * 1024 * 1024
+        private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
         private val ATTACHMENT_FOLDERS =
             listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
 
@@ -231,9 +333,13 @@ class BackupManager(
             if (includeCredentials) {
                 // 仅加密备份携带凭据；明文 ZIP 仍按原规则剥离密钥。
                 return JsonObject(settings.mapValues { (key, value) ->
-                    if (key == "webServerEnabled") JsonPrimitive(false)
-                    else if (key == "webServerAccessPassword") JsonPrimitive("")
-                    else value
+                    if (key == "webServerEnabled") {
+                        JsonPrimitive(false)
+                    } else if (key == "webServerAccessPassword") {
+                        JsonPrimitive("")
+                    } else {
+                        value
+                    }
                 })
             }
             return JsonObject(settings.mapValues { (key, value) ->

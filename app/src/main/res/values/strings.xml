@@ -159,7 +159,7 @@
   <string name="backup_page_backup_items">Backup Items</string>
   <string name="backup_page_backup_now">Backup Now</string>
   <string name="backup_page_backup_success">Backup successful</string>
-  <string name="backup_page_chat_records">Chat Records</string>
+  <string name="backup_page_chat_records">Chat history and local memory</string>
   <string name="backup_page_connection_failed">Connection failed: %s</string>
   <string name="backup_page_connection_success">Connection successful</string>
   <string name="backup_page_delete">Delete</string>
@@ -167,7 +167,7 @@
   <string name="backup_page_delete_success">Delete successful</string>
   <string name="backup_page_export_desc">Export app data to a file</string>
   <string name="backup_page_exporting">Exporting...</string>
-  <string name="backup_page_files">Files</string>
+  <string name="backup_page_files">Chat attachments and generated files</string>
   <string name="backup_page_import_chatbox_desc">Import ChatBox provider configurations and full chat history</string>
   <string name="backup_page_import_cherry_studio_desc">Import Cherry Studio provider configurations</string>
   <string name="backup_page_import_desc">Import local backup file</string>
@@ -1940,11 +1940,26 @@
   <string name="mate_connection_desc">Pair, check, re-authorize</string>
   <string name="backup_page_security">Backup encryption</string>
   <string name="backup_page_encrypt">Encrypt new backups</string>
-  <string name="backup_page_encryption_warning">Client-side encryption. Forgotten passphrases cannot be recovered. The passphrase is not saved or uploaded.</string>
+  <string name="backup_page_encryption_warning">Client-side encryption. Forgotten passphrases cannot be recovered. The passphrase is never uploaded. It stays on this page unless you explicitly save it locally for automatic backups.</string>
   <string name="backup_page_plaintext_warning">Unencrypted ZIP: credentials are removed, but chats and memories remain readable.</string>
   <string name="backup_page_passphrase">Backup / restore passphrase</string>
   <string name="backup_page_passphrase_hint">At least 8 characters for a new encrypted backup. Enter the original passphrase to restore.</string>
   <string name="backup_page_confirm_passphrase">Confirm backup passphrase</string>
   <string name="backup_page_include_credentials">Include API keys and connection credentials</string>
   <string name="backup_page_credentials_warning">Only available in encrypted backups. Keep the passphrase separately.</string>
+  <string name="backup_page_store_auto_passphrase">Save for automatic backups</string>
+  <string name="backup_page_local_key_desc">Encrypted locally using Android Keystore, never exported. Other devices still require your original passphrase. Supports 8–1024 characters.</string>
+  <string name="backup_page_auto_key_ready">Automatic backup passphrase saved locally</string>
+  <string name="backup_page_auto_key_missing">No local automatic backup passphrase</string>
+  <string name="backup_page_forget_key">Forget local passphrase</string>
+  <string name="backup_page_forget_key_confirm">This pauses automatic backups but does not delete remote backups. Keep your original passphrase elsewhere.</string>
+  <string name="backup_page_key_saved">Automatic backup passphrase saved securely on this device</string>
+  <string name="backup_page_key_forgotten">Local passphrase removed; automatic backups paused</string>
+  <string name="backup_page_key_failed">Could not update the local backup passphrase. Please retry.</string>
+  <string name="backup_page_auto_backup">Automatic encrypted backups</string>
+  <string name="backup_page_auto_desc">Schedules encrypted backups when entering or leaving the app. Attachments are excluded by default. Save a local passphrase first; HTTPS alone is not backup encryption.</string>
+  <string name="backup_page_auto_include_credentials">Include API keys and connection credentials in automatic backups</string>
+  <string name="backup_page_auto_last_success">Last automatic backup: %1$s</string>
+  <string name="backup_page_auto_never">No successful automatic backup yet</string>
+  <string name="backup_page_auto_failed">Last failure: %1$s</string>
 </resources>

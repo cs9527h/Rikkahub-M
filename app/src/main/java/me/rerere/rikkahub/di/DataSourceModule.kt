@@ -257,6 +257,7 @@ val dataSourceModule = module {
     }
 
     single { BackupManager(context = get(), database = get(), settingsStore = get(), json = get()) }
+    single { me.rerere.rikkahub.data.sync.BackupPassphraseStore(context = get()) }
 
     single {
         WebDavSync(

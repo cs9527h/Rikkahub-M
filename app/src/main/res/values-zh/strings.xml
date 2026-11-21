@@ -159,7 +159,7 @@
   <string name="backup_page_backup_items">备份项目</string>
   <string name="backup_page_backup_now">立即备份</string>
   <string name="backup_page_backup_success">备份成功</string>
-  <string name="backup_page_chat_records">聊天记录</string>
+  <string name="backup_page_chat_records">聊天记录与本地记忆</string>
   <string name="backup_page_connection_failed">连接失败: %s</string>
   <string name="backup_page_connection_success">连接成功</string>
   <string name="backup_page_delete">删除</string>
@@ -167,7 +167,7 @@
   <string name="backup_page_delete_success">删除成功</string>
   <string name="backup_page_export_desc">导出APP数据为文件</string>
   <string name="backup_page_exporting">正在导出...</string>
-  <string name="backup_page_files">文件</string>
+  <string name="backup_page_files">聊天附件与生成文件</string>
   <string name="backup_page_import_chatbox_desc">导入 ChatBox 提供商配置和完整聊天记录</string>
   <string name="backup_page_import_cherry_studio_desc">导入Cherry Studio提供商配置</string>
   <string name="backup_page_import_desc">导入本地备份文件</string>
@@ -1942,11 +1942,26 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="mate_intro_tab">云服务器</string>
   <string name="backup_page_security">备份加密</string>
   <string name="backup_page_encrypt">加密新备份</string>
-  <string name="backup_page_encryption_warning">在客户端加密。忘记口令将无法恢复，口令不会保存或上传。</string>
+  <string name="backup_page_encryption_warning">在客户端加密，忘记口令将无法恢复。口令不会上传；默认仅在本页保留，也可单独保存到本机安全存储供自动备份使用。</string>
   <string name="backup_page_plaintext_warning">明文 ZIP 会移除凭据，但聊天和记忆正文仍可读取。</string>
   <string name="backup_page_passphrase">备份 / 恢复口令</string>
   <string name="backup_page_passphrase_hint">新建加密备份至少 8 位；恢复时填写原口令。</string>
   <string name="backup_page_confirm_passphrase">确认备份口令</string>
   <string name="backup_page_include_credentials">包含 API Key 与连接凭据</string>
   <string name="backup_page_credentials_warning">仅可写入加密备份，请另行妥善保存口令。</string>
+  <string name="backup_page_store_auto_passphrase">保存口令供自动备份使用</string>
+  <string name="backup_page_local_key_desc">使用 Android 密钥库在本机加密保存，不随备份上传。其他设备恢复仍需原口令，支持 8–1024 位。</string>
+  <string name="backup_page_auto_key_ready">本机自动备份口令已保存</string>
+  <string name="backup_page_auto_key_missing">尚未设置本机自动备份口令</string>
+  <string name="backup_page_forget_key">清除本机保存的口令</string>
+  <string name="backup_page_forget_key_confirm">清除后自动备份暂停，但不会删除云端备份。请确认已另行保存原口令。</string>
+  <string name="backup_page_key_saved">自动备份口令已安全保存到本机</string>
+  <string name="backup_page_key_forgotten">本机口令已清除，自动备份已暂停</string>
+  <string name="backup_page_key_failed">无法更新本机备份口令，请重试。</string>
+  <string name="backup_page_auto_backup">自动加密备份</string>
+  <string name="backup_page_auto_desc">进入应用或切到后台时安排加密备份，默认不上传附件。请先保存本机口令；HTTPS 不能替代备份加密。</string>
+  <string name="backup_page_auto_include_credentials">自动备份包含 API Key 与连接凭据</string>
+  <string name="backup_page_auto_last_success">最近自动备份成功：%1$s</string>
+  <string name="backup_page_auto_never">自动备份尚无成功记录</string>
+  <string name="backup_page_auto_failed">最近失败：%1$s</string>
 </resources>

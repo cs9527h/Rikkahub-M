@@ -33,9 +33,10 @@ private val ReminderIntervals = listOf(1, 3, 7, 14, 30)
 fun ReminderTab(vm: BackupVM) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val config = settings.backupReminderConfig
+    val keyConfigured by vm.automaticPassphraseConfigured.collectAsStateWithLifecycle()
 
-    fun updateConfig(update: BackupReminderConfig) {
-        vm.updateSettings { it.copy(backupReminderConfig = update) }
+    fun updateConfig(update: (BackupReminderConfig) -> BackupReminderConfig) {
+        vm.updateSettings { it.copy(backupReminderConfig = update(it.backupReminderConfig)) }
     }
 
     Column(
@@ -45,20 +46,47 @@ fun ReminderTab(vm: BackupVM) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        me.rerere.rikkahub.ui.pages.backup.components.BackupEncryptionOptions(vm)
         CardGroup {
             switchItem(
                 checked = config.autoBackupOnAppLifecycle,
-                onCheckedChange = {
-                    updateConfig(config.copy(autoBackupOnAppLifecycle = it))
+                enabled = keyConfigured || config.autoBackupOnAppLifecycle,
+                onCheckedChange = { enabled ->
+                    updateConfig { it.copy(autoBackupOnAppLifecycle = enabled) }
                 },
-                headlineContent = { Text("打开及退出时自动备份") },
-                supportingContent = {
-                    Text("开启后通过已配置的 HTTPS WebDAV 或 S3 备份应用设置、昵称、头像、聊天记录和附件。备份 ZIP 包含聊天内容和个人设置，当前未实现端到端加密。请只上传到可信且启用 HTTPS 的私人存储。")
+                headlineContent = { Text(stringResource(R.string.backup_page_auto_backup)) },
+                supportingContent = { Text(stringResource(R.string.backup_page_auto_desc)) },
+            )
+            switchItem(
+                checked = config.autoBackupIncludeCredentials,
+                onCheckedChange = { include -> updateConfig { it.copy(autoBackupIncludeCredentials = include) } },
+                headlineContent = { Text(stringResource(R.string.backup_page_auto_include_credentials)) },
+                supportingContent = { Text(stringResource(R.string.backup_page_credentials_warning)) },
+            )
+            item(
+                headlineContent = {
+                    Text(
+                        if (config.lastAutoBackupTime == 0L) {
+                            stringResource(R.string.backup_page_auto_never)
+                        } else {
+                            stringResource(
+                                R.string.backup_page_auto_last_success,
+                                Instant.ofEpochMilli(config.lastAutoBackupTime).toLocalDateTime(),
+                            )
+                        }
+                    )
                 },
+                supportingContent = if (config.lastAutoBackupError.isNotBlank()) {
+                    { Text(stringResource(R.string.backup_page_auto_failed, config.lastAutoBackupError)) }
+                } else {
+                    null
+                },
+                leadingContent = { CardGroupIcon(HugeIcons.Clock01) },
+
             )
             switchItem(
                 checked = config.enabled,
-                onCheckedChange = { updateConfig(config.copy(enabled = it)) },
+                onCheckedChange = { enabled -> updateConfig { it.copy(enabled = enabled) } },
                 headlineContent = { Text(stringResource(R.string.backup_page_reminder_enable)) },
             )
 
@@ -75,7 +103,7 @@ fun ReminderTab(vm: BackupVM) {
                     ConnectedChoiceButtons(
                         options = ReminderIntervals,
                         selected = config.intervalDays,
-                        onSelect = { updateConfig(config.copy(intervalDays = it)) },
+                        onSelect = { days -> updateConfig { it.copy(intervalDays = days) } },
                     ) { days, selected ->
                         ConnectedChoiceLabel(text = days.toString(), selected = selected)
                     }

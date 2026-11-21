@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
@@ -20,7 +21,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.koin.core.context.GlobalContext
 import java.io.File
 import java.nio.file.Files
 import java.util.zip.ZipEntry
@@ -33,6 +33,8 @@ class BackupManagerTest {
     private lateinit var context: Context
     private lateinit var liveDatabase: AppDatabase
     private lateinit var manager: BackupManager
+    private lateinit var settingsStore: SettingsStore
+    private lateinit var settingsScope: kotlinx.coroutines.CoroutineScope
 
     @Before fun setUp() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
@@ -42,16 +44,28 @@ class BackupManagerTest {
             override fun getFilesDir() = File(directory, "files").apply { mkdirs() }
             override fun getCacheDir() = File(directory, "cache").apply { mkdirs() }
             override fun getNoBackupFilesDir() = File(directory, "no-backup").apply { mkdirs() }
-            override fun getDatabasePath(name: String): File = if (File(name).isAbsolute) File(name)
-                else File(directory, "databases/$name").also { it.parentFile!!.mkdirs() }
+            override fun getDatabasePath(name: String): File = if (File(name).isAbsolute) {
+                File(name)
+            } else {
+                File(directory, "databases/$name").also { it.parentFile!!.mkdirs() }
+            }
         }
         liveDatabase = AppDatabaseFactory.create(context)
         liveDatabase.openHelper.writableDatabase.execSQL("CREATE TABLE backup_probe (text TEXT)")
         liveDatabase.openHelper.writableDatabase.execSQL("INSERT INTO backup_probe VALUES ('live')")
-        manager = BackupManager(context, liveDatabase, GlobalContext.get().get<SettingsStore>(), JsonInstant)
+        settingsScope =
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+        val preferences = androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(
+            scope = settingsScope,
+            produceFile = { File(directory, "fixture.preferences_pb") },
+        )
+        settingsStore = SettingsStore(preferences, settingsScope)
+        runBlocking { kotlinx.coroutines.withTimeout(10_000) { settingsStore.awaitLoaded() } }
+        manager = BackupManager(context, liveDatabase, settingsStore, JsonInstant)
     }
 
     @After fun tearDown() {
+        runBlocking { settingsScope.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin() }
         liveDatabase.close()
         directory.deleteRecursively()
     }
@@ -117,7 +131,11 @@ class BackupManagerTest {
         val archive = File(directory, "no-launch-count.zip")
         ZipOutputStream(archive.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("settings.json"))
-            zip.write(JsonObject(JsonInstant.parseToJsonElement(settingsJson).jsonObject - "launchCount").toString().toByteArray())
+            zip.write(
+                JsonObject(
+                    JsonInstant.parseToJsonElement(settingsJson).jsonObject - "launchCount"
+                ).toString().toByteArray()
+            )
             zip.closeEntry()
         }
         manager.stageRestore(archive, includeDatabase = false, includeFiles = false)
@@ -203,8 +221,185 @@ class BackupManagerTest {
         }
     }
 
+    @Test fun manifestDescribesSettingsAndDatabaseAndRejectsCorruptionBeforeStaging() = runBlocking {
+        val archive = manager.createBackup(true, false)
+        ZipFile(archive).use { zip ->
+            val manifest = requireNotNull(BackupManifest.verify(zip))
+            assertEquals(setOf("settings.json", DatabaseBackup.ARCHIVE_DATABASE), manifest.map { it.path }.toSet())
+        }
+        val damaged = File(directory, "damaged.zip")
+        ZipFile(archive).use { source ->
+            ZipOutputStream(damaged.outputStream()).use { output ->
+                for (entry in source.entries()) {
+                    output.putNextEntry(ZipEntry(entry.name))
+                    source.getInputStream(entry).use { input -> input.copyTo(output) }
+                    // Still valid JSON and ZIP CRC, but no longer the manifest's declared settings bytes.
+                    if (entry.name == "settings.json") output.write(' '.code)
+                    output.closeEntry()
+                }
+            }
+        }
+        assertTrue(runCatching { manager.stageRestore(damaged, true, false) }.isFailure)
+        assertEquals("live", probe(liveDatabase))
+        assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
+    }
+
+    @Test fun automaticPassphraseVaultSurvivesRecreationWithoutStoringPlaintextOrExportingIt() = runBlocking {
+        withPassphraseVault { store, alias ->
+            val password = " synthetic recovery 口令 🔐 ".toCharArray()
+            store.save(password)
+            password.fill('\u0000')
+            assertTrue(store.isConfigured())
+            val reloaded = requireNotNull(BackupPassphraseStore(context, alias).read())
+            assertEquals(" synthetic recovery 口令 🔐 ", String(reloaded))
+            reloaded.fill('\u0000')
+            val ciphertext = File(context.noBackupFilesDir, "backup-secret/passphrase.bin").readBytes()
+            assertFalse(ciphertext.toString(Charsets.UTF_8).contains("synthetic recovery"))
+            val backup = manager.createBackup(false, false)
+            ZipFile(backup).use { zip -> assertFalse(zip.entries().asSequence().any { "backup-secret" in it.name }) }
+            store.clear()
+            assertFalse(store.isConfigured())
+            assertEquals(null, store.read())
+        }
+    }
+
+    @Test fun corruptOrLostLocalBackupKeyCannotYieldAPlaintextFallback() = runBlocking {
+        withPassphraseVault { store, alias ->
+            store.save("synthetic password".toCharArray())
+            val vault = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
+            val encrypted = vault.readBytes()
+            encrypted[encrypted.lastIndex] = (encrypted.last().toInt() xor 1).toByte()
+            vault.writeBytes(encrypted)
+            assertTrue(runCatching { store.read() }.isFailure)
+            store.save("synthetic replacement password".toCharArray())
+            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
+            assertTrue(runCatching { store.read() }.isFailure)
+            assertEquals("live", probe(liveDatabase))
+        }
+    }
+
+    @Test fun excludingChatAttachmentsStillBacksUpAvatarsBackgroundsSkillsAndFonts() = runBlocking {
+        val avatar = File(context.filesDir, "upload/synthetic-avatar.png").apply {
+            parentFile!!.mkdirs()
+            writeText("synthetic avatar pixels")
+        }
+        val unrelated = File(context.filesDir, "upload/unrelated-chat.bin").apply { writeBytes(ByteArray(1024 * 1024)) }
+        val font = File(context.filesDir, "fonts/synthetic.ttf").apply {
+            parentFile!!.mkdirs()
+            writeText("synthetic font bytes")
+        }
+        val skill = File(context.filesDir, "skills/demo/SKILL.md").apply {
+            parentFile!!.mkdirs()
+            writeText("synthetic skill text")
+        }
+        val assistant = me.rerere.rikkahub.data.model.Assistant(
+            name = "Synthetic backup assistant",
+            systemPrompt = "Keep this synthetic persona text unchanged.",
+            avatar = me.rerere.rikkahub.data.model.Avatar.Image(avatar.toURI().toString()),
+            background = avatar.toURI().toString(),
+        )
+        settingsStore.update { current ->
+            current.copy(
+                assistants = listOf(assistant),
+                assistantId = assistant.id,
+                userAvatar = assistant.avatar,
+            )
+        }
+        val archive = manager.createBackup(false, false)
+        ZipFile(archive).use { zip ->
+            for (name in listOf("upload/synthetic-avatar.png", "fonts/synthetic.ttf", "skills/demo/SKILL.md")) {
+                assertTrue(zip.getEntry(name) != null)
+            }
+            assertEquals(null, zip.getEntry("upload/unrelated-chat.bin"))
+            assertEquals(null, zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE))
+            BackupManifest.verify(zip)
+        }
+        assertTrue(avatar.delete())
+        assertTrue(font.delete())
+        assertTrue(skill.delete())
+        manager.stageRestore(archive, false, false)
+        val stagedSettings = File(context.noBackupFilesDir, "backup-restore/pending/settings.json")
+        val restored = JsonInstant.decodeFromString<me.rerere.rikkahub.data.datastore.Settings>(
+            stagedSettings.readText()
+        )
+        assertEquals(assistant.systemPrompt, restored.assistants.single().systemPrompt)
+        assertEquals(assistant.id, restored.assistants.single().id)
+        // Keep the real app's DataStore untouched; apply only the staged synthetic asset files here.
+        assertTrue(stagedSettings.delete())
+        assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
+        assertEquals("synthetic avatar pixels", avatar.readText())
+        assertEquals("synthetic font bytes", font.readText())
+        assertEquals("synthetic skill text", skill.readText())
+        assertTrue(unrelated.isFile)
+    }
+
+    @Test fun crossDeviceAvatarReferencesAreRelocatedWithoutRewritingPromptTextOrIdentity() = runBlocking {
+        val oldUri = "file:///data/user/10/com.synthetic.old/files/upload/avatar.png"
+        val prompt = "Preserve this exact synthetic text: $oldUri"
+        val assistant = me.rerere.rikkahub.data.model.Assistant(
+            name = "Synthetic identity",
+            systemPrompt = prompt,
+            avatar = me.rerere.rikkahub.data.model.Avatar.Image(oldUri),
+            background = oldUri,
+        )
+        val settings = settingsStore.awaitLoaded().copy(
+            assistants = listOf(assistant),
+            assistantId = assistant.id,
+            userAvatar = assistant.avatar,
+        )
+        val settingsBytes = JsonInstant.encodeToString(settings).toByteArray()
+        val avatarBytes = "synthetic cross-device pixels".toByteArray()
+        val payloads = mapOf("settings.json" to settingsBytes, "upload/avatar.png" to avatarBytes)
+        val archive = File(directory, "cross-device.zip")
+        ZipOutputStream(archive.outputStream()).use { zip ->
+            for ((name, bytes) in payloads) {
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+            zip.putNextEntry(ZipEntry(BackupManifest.FILE_NAME))
+            zip.write(
+                BackupManifest.encode(
+                    payloads.map { BackupManifest.entry(it.key, it.value) },
+                    1234,
+                    "synthetic"
+                ).toByteArray()
+            )
+            zip.closeEntry()
+        }
+        manager.stageRestore(archive, false, false)
+        val staged = File(context.noBackupFilesDir, "backup-restore/pending/settings.json")
+        val restored = JsonInstant.decodeFromString<me.rerere.rikkahub.data.datastore.Settings>(staged.readText())
+        assertEquals(prompt, restored.assistants.single().systemPrompt)
+        assertEquals(assistant.id, restored.assistants.single().id)
+        assertEquals(assistant.name, restored.assistants.single().name)
+        val newUri = (restored.assistants.single().avatar as me.rerere.rikkahub.data.model.Avatar.Image).url
+        assertEquals(File(context.filesDir, "upload/avatar.png").absolutePath, java.net.URI(newUri).path)
+        assertEquals(newUri, restored.assistants.single().background)
+        assertEquals(newUri, (restored.userAvatar as me.rerere.rikkahub.data.model.Avatar.Image).url)
+        assertEquals("synthetic cross-device pixels", File(
+            context.noBackupFilesDir,
+            "backup-restore/pending/payload/files/upload/avatar.png"
+        ).readText())
+        assertEquals("live", probe(liveDatabase))
+    }
+
+    private suspend fun withPassphraseVault(block: suspend (BackupPassphraseStore, String) -> Unit) {
+        val alias = "rikkahub-contract-test-${java.util.UUID.randomUUID()}"
+        val store = BackupPassphraseStore(context, alias)
+        try {
+            block(store, alias)
+        } finally {
+            store.clear()
+            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
+        }
+    }
+
     private fun probe(database: AppDatabase): String = database.openHelper.readableDatabase
-        .query("SELECT text FROM backup_probe").use { check(it.moveToFirst()); it.getString(0) }
+        .query("SELECT text FROM backup_probe").use {
+            check(it.moveToFirst())
+            it.getString(0)
+        }
 
     private fun addFile(zip: ZipOutputStream, name: String, file: File) {
         zip.putNextEntry(ZipEntry(name))
