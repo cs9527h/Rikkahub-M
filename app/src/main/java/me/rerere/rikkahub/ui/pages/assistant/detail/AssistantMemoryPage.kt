@@ -2,11 +2,6 @@ package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import android.text.format.DateUtils
 import androidx.annotation.StringRes
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Add01
-import me.rerere.hugeicons.stroke.Brain02
-import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.Settings03
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +42,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.ArrowTurnBackward
+import me.rerere.hugeicons.stroke.Brain02
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.MemoryConsolidationStatus
@@ -54,7 +56,6 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.groupByDirectory
 import me.rerere.rikkahub.data.model.memoryTitleOf
-import kotlinx.coroutines.launch
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -93,6 +94,7 @@ fun AssistantMemoryPage(id: String) {
     )
     val assistant by vm.assistant.collectAsStateWithLifecycle()
     val memories by vm.memories.collectAsStateWithLifecycle()
+    val deletedMemories by vm.deletedMemories.collectAsStateWithLifecycle()
     val consolidation by vm.memoryConsolidation.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -143,10 +145,13 @@ fun AssistantMemoryPage(id: String) {
                 when (MemoryTab.entries[page]) {
                     MemoryTab.FILES -> MemoryFilesTab(
                         memories = memories,
+                        deletedMemories = deletedMemories,
                         consolidation = consolidation.takeIf { assistant.enableMemory },
                         onOrganizeMemory = { vm.organizeMemory() },
                         onOpenMemory = { path -> navController.navigate(Screen.MemoryFile(vm.memoryId, path)) },
                         onDeleteMemory = { vm.deleteMemory(it) },
+                        onRestoreMemory = { vm.restoreMemory(it) },
+                        onPurgeMemory = { vm.purgeMemory(it) },
                         onOpenSettings = {
                             scope.launch { pagerState.animateScrollToPage(MemoryTab.SETTINGS.ordinal) }
                         },
@@ -307,18 +312,22 @@ private fun MemorySettingsTab(
 @Composable
 private fun MemoryFilesTab(
     memories: List<MemoryFile>,
+    deletedMemories: List<MemoryFile>,
     // 为 null 时不显示整理入口
     consolidation: MemoryConsolidationStatus?,
     onOrganizeMemory: () -> Unit,
     onOpenMemory: (path: String) -> Unit,
     onDeleteMemory: (MemoryFile) -> Unit,
+    onRestoreMemory: (MemoryFile) -> Unit,
+    onPurgeMemory: (MemoryFile) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     var pendingDeleteMemory by remember { mutableStateOf<MemoryFile?>(null) }
+    var pendingPurgeMemory by remember { mutableStateOf<MemoryFile?>(null) }
     val memoryGroups = remember(memories) { memories.groupByDirectory() }
 
     // 空列表不滚动，占位才能在剩余空间里居中
-    if (memoryGroups.isEmpty()) {
+    if (memoryGroups.isEmpty() && deletedMemories.isEmpty()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -362,6 +371,42 @@ private fun MemoryFilesTab(
                 status = consolidation,
                 onOrganize = onOrganizeMemory,
             )
+        }
+
+        if (deletedMemories.isNotEmpty()) {
+            CardGroup(title = { Text(stringResource(R.string.memory_recently_deleted)) }) {
+                deletedMemories.fastForEach { memory ->
+                    item(
+                        trailingContent = {
+                            ItemActionMenu(
+                                actions = listOf(
+                                    ItemAction(
+                                        text = stringResource(R.string.memory_restore),
+                                        icon = HugeIcons.ArrowTurnBackward,
+                                        onClick = { onRestoreMemory(memory) },
+                                    ),
+                                    ItemAction(
+                                        text = stringResource(R.string.memory_delete_forever),
+                                        icon = HugeIcons.Delete01,
+                                        destructive = true,
+                                        onClick = { pendingPurgeMemory = memory },
+                                    ),
+                                )
+                            )
+                        },
+                        headlineContent = {
+                            Text(text = memory.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
+                        supportingContent = {
+                            Text(
+                                text = stringResource(R.string.memory_deleted_at, relativeTimeOf(memory.deletedAt)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        },
+                    )
+                }
+            }
         }
 
         memoryGroups.fastForEach { (directory, files) ->
@@ -416,8 +461,30 @@ private fun MemoryFilesTab(
     }
 
     RikkaConfirmDialog(
+        show = pendingPurgeMemory != null,
+        title = stringResource(R.string.memory_delete_forever),
+        confirmText = stringResource(R.string.confirm),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            pendingPurgeMemory?.let(onPurgeMemory)
+            pendingPurgeMemory = null
+        },
+        onDismiss = { pendingPurgeMemory = null },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = pendingPurgeMemory?.path.orEmpty(),
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(stringResource(R.string.memory_delete_forever_hint))
+            }
+        }
+    )
+
+    RikkaConfirmDialog(
         show = pendingDeleteMemory != null,
-        title = stringResource(R.string.confirm_delete),
+        title = stringResource(R.string.delete),
         confirmText = stringResource(R.string.confirm),
         dismissText = stringResource(R.string.cancel),
         onConfirm = {
@@ -426,11 +493,14 @@ private fun MemoryFilesTab(
         },
         onDismiss = { pendingDeleteMemory = null },
         text = {
-            Text(
-                text = pendingDeleteMemory?.path.orEmpty(),
-                maxLines = 8,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = pendingDeleteMemory?.path.orEmpty(),
+                    maxLines = 8,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(stringResource(R.string.memory_move_to_deleted))
+            }
         }
     )
 }

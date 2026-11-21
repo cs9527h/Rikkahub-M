@@ -162,7 +162,8 @@ fun buildMemoryTools(
     ),
     Tool(
         name = MemoryToolNames.DELETE,
-        description = "Delete an entire memory file. Only use when the user explicitly asks to forget a whole topic.",
+        description = "Remove an entire memory file from recall. It moves to Recently deleted, so the user " +
+            "can restore it. Only use when the user explicitly asks to forget a whole topic.",
         parameters = {
             InputSchema.Obj(
                 properties = buildJsonObject {

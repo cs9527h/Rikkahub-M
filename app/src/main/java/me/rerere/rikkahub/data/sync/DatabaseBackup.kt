@@ -18,16 +18,29 @@ internal object DatabaseBackup {
         database.execSQL("VACUUM main INTO ?", arrayOf(destination.absolutePath))
     }
 
-    /** Read the latest committed WAL without migrating or writing to the live database. */
+    /**
+     * Snapshot the latest committed data before Room opens the live database. Read-only is the
+     * normal path. A crash can leave a WAL that a read-only connection cannot recover; falling
+     * back to a read-write handle may checkpoint it, which never changes logical user data and
+     * avoids dead-ending the restore. No schema migration happens here.
+     */
     fun createSnapshot(context: Context, source: File, destination: File) {
         require(source.isFile) { "原数据库不存在" }
         check(!destination.exists()) { "快照目标已存在" }
-        val configuration = SQLiteConfiguration.configure(
-            context,
-            SQLiteDatabaseConfiguration(source.absolutePath, SQLiteDatabase.OPEN_READONLY),
-        )
-        SQLiteDatabase.openDatabase(configuration, null) { error("无法读取原数据库快照") }.use { database ->
-            database.execSQL("VACUUM main INTO ?", arrayOf(destination.absolutePath))
+        fun open(flags: Int): SQLiteDatabase {
+            val configuration = SQLiteConfiguration.configure(
+                context,
+                SQLiteDatabaseConfiguration(source.absolutePath, flags),
+            )
+            return SQLiteDatabase.openDatabase(configuration, null) { error("无法读取原数据库快照") }
+        }
+        val database = try {
+            open(SQLiteDatabase.OPEN_READONLY)
+        } catch (_: Exception) {
+            open(SQLiteDatabase.OPEN_READWRITE)
+        }
+        database.use {
+            it.execSQL("VACUUM main INTO ?", arrayOf(destination.absolutePath))
         }
     }
 

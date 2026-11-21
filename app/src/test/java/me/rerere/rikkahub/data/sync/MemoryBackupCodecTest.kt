@@ -64,6 +64,27 @@ class MemoryBackupCodecTest {
         }
     }
 
+    @Test fun trashStateRoundTripsSoARestoreDoesNotSilentlyResurrectIt() {
+        val trashed = first.copy(deletedAt = 999)
+        assertEquals(listOf(trashed), MemoryBackupCodec.decode(MemoryBackupCodec.encode(listOf(trashed))))
+    }
+
+    @Test fun versionOneArchivesRemainReadableWithoutTrashState() {
+        val input = """{
+            "formatVersion":1,"memories":[
+                {"assistantId":"a","path":"/profile.md","content":"synthetic","updatedAt":5}
+            ]
+        }"""
+        val decoded = MemoryBackupCodec.decode(input)
+        assertEquals(0L, decoded.single().deletedAt)
+        assertEquals("synthetic", decoded.single().content)
+    }
+
+    @Test fun unknownFutureVersionsAndNegativeTrashTimesFailClosed() {
+        assertTrue(runCatching { MemoryBackupCodec.decode("""{"formatVersion":3,"memories":[]}""") }.isFailure)
+        assertTrue(runCatching { MemoryBackupCodec.encode(listOf(first.copy(deletedAt = -5))) }.isFailure)
+    }
+
     @Test fun invalidTimestampsAreRejected() {
         assertTrue(runCatching { MemoryBackupCodec.encode(listOf(first.copy(updatedAt = -1))) }.isFailure)
     }

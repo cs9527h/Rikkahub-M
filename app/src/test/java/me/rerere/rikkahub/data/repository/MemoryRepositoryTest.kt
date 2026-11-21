@@ -1,10 +1,12 @@
 package me.rerere.rikkahub.data.repository
 
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.groupByDirectory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -104,6 +106,40 @@ class MemoryRepositoryTest {
         assertEquals(MemoryWriteResult.Conflict(file), repository.deleteFile(assistant, "/people/mom.md", "stale"))
         assertEquals(MemoryWriteResult.Success(null), repository.deleteFile(assistant, "/people/mom.md", file.version))
         assertNull(repository.getFile(assistant, "/people/mom.md"))
+    }
+
+    @Test
+    fun `deleted files leave recall immediately and can be restored or purged`() = runBlocking {
+        val file = create("/topics/hiking.md", "- [stated] Likes long trails\n")
+        repository.deleteFile(assistant, "/topics/hiking.md", file.version)
+
+        assertTrue(repository.getFiles(assistant).isEmpty())
+        assertTrue(repository.getFile(assistant, "/topics/hiking.md") == null)
+        val trashed = repository.getDeletedFilesFlow(assistant).first()
+        assertEquals(listOf("/topics/hiking.md"), trashed.map { it.path })
+        assertTrue(trashed.single().isDeleted)
+
+        // Same path written again becomes an active file, so the trash entry must not linger twice.
+        val recreated = repository.writeFile(assistant, "/topics/hiking.md", "- [stated] New note\n")
+        assertTrue(recreated is MemoryWriteResult.Success)
+        assertTrue(repository.getDeletedFilesFlow(assistant).first().isEmpty())
+    }
+
+    @Test
+    fun `restore returns the same content and purge only works on trashed files`() = runBlocking {
+        val file = create("/people/dad.md", "- [stated] Plays chess\n")
+        repository.deleteFile(assistant, "/people/dad.md", file.version)
+
+        assertFalse(repository.purgeFile(assistant, "/people/dad.md"))
+        val restored = repository.restoreFile(assistant, "/people/dad.md")
+        assertTrue(restored is MemoryWriteResult.Success)
+        assertEquals(file.content, repository.getFile(assistant, "/people/dad.md")?.content)
+        assertTrue(repository.getDeletedFilesFlow(assistant).first().isEmpty())
+
+        repository.deleteFile(assistant, "/people/dad.md")
+        assertTrue(repository.purgeFile(assistant, "/people/dad.md"))
+        assertTrue(repository.getDeletedFilesFlow(assistant).first().isEmpty())
+        assertNull(repository.getFile(assistant, "/people/dad.md"))
     }
 
     @Test

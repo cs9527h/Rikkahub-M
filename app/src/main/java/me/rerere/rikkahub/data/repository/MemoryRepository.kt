@@ -37,6 +37,10 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     fun getFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
         memoryDAO.getFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
 
+    /** 最近删除的文件；只在界面里展示，不参与检索、提示词或整理。 */
+    fun getDeletedFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
+        memoryDAO.getDeletedFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
+
     suspend fun getFiles(assistantId: String): List<MemoryFile> =
         memoryDAO.getFilesOfAssistant(assistantId).map { it.toMemoryFile() }
 
@@ -85,6 +89,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         Edit.Content(current + separator + line.trimEnd('\n', '\r') + "\n")
     }
 
+    /** 移入“最近删除”，检索立刻看不到；用户可在记忆页恢复或永久删除。 */
     suspend fun deleteFile(
         assistantId: String,
         path: String,
@@ -95,8 +100,31 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         if (current == null || (ifVersion != null && ifVersion != current.version)) {
             return MemoryWriteResult.Conflict(current)
         }
-        memoryDAO.deleteFile(assistantId, normalized)
+        memoryDAO.markDeleted(assistantId, normalized, System.currentTimeMillis())
         MemoryWriteResult.Success(null)
+    }
+
+    /** 永久删除；只允许删除已经在“最近删除”里的文件，避免误删正在使用的记忆。 */
+    suspend fun purgeFile(assistantId: String, path: String): Boolean = writeLock.withLock {
+        val normalized = MemoryFile.normalizePath(path) ?: return@withLock false
+        val current = memoryDAO.getFileIncludingDeleted(assistantId, normalized)
+        if (current == null || current.deletedAt == 0L) return@withLock false
+        memoryDAO.deleteFile(assistantId, normalized)
+        true
+    }
+
+    suspend fun restoreFile(assistantId: String, path: String): MemoryWriteResult = writeLock.withLock {
+        val normalized = MemoryFile.normalizePath(path) ?: return invalidPath(path)
+        val current = memoryDAO.getFileIncludingDeleted(assistantId, normalized)?.toMemoryFile()
+            ?: return MemoryWriteResult.Conflict(null)
+        if (current.deletedAt == 0L) return MemoryWriteResult.Success(current)
+        // 恢复也要保持大小上限：删除期间内容不会变，但旧记忆本来可能超限
+        memoryDAO.markRestored(assistantId, normalized)
+        MemoryWriteResult.Success(current.copy(deletedAt = 0))
+    }
+
+    suspend fun purgeDeletedFiles(assistantId: String) {
+        memoryDAO.purgeDeletedFilesOfAssistant(assistantId)
     }
 
     suspend fun deleteFilesOfAssistant(assistantId: String) {
@@ -161,7 +189,8 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
 val Assistant.memoryId: String
     get() = if (useGlobalMemory) MemoryRepository.GLOBAL_MEMORY_ID else id.toString()
 
-private fun MemoryFileEntity.toMemoryFile() = MemoryFile(path = path, content = content, updatedAt = updatedAt)
+private fun MemoryFileEntity.toMemoryFile() =
+    MemoryFile(path = path, content = content, updatedAt = updatedAt, deletedAt = deletedAt)
 
 // 删掉的是完整一行时连换行一起去掉，不留空行
 private fun String.replaceAt(index: Int, length: Int, replacement: String): String {

@@ -44,7 +44,7 @@ internal object PartialMemoryRestore {
             val sourceMemories = if (memoryFile.isFile) {
                 require(memoryFile.length() <= MemoryBackupCodec.MAX_BYTES) { "记忆备份超过安全上限" }
                 MemoryBackupCodec.decode(memoryFile.readText()).map {
-                    MemoryFileEntity(it.assistantId, it.path, it.content, it.updatedAt)
+                    MemoryFileEntity(it.assistantId, it.path, it.content, it.updatedAt, it.deletedAt)
                 }
             } else if (latest.isFile) {
                 val room = AppDatabaseFactory.create(context, latest.absolutePath)

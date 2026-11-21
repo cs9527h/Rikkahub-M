@@ -12,7 +12,11 @@ data class MemoryFile(
     val path: String,
     val content: String,
     val updatedAt: Long,
+    /** 0 表示正常；非 0 为移入“最近删除”的时间 */
+    val deletedAt: Long = 0,
 ) {
+    val isDeleted: Boolean get() = deletedAt != 0
+
     val version: String by lazy { memoryVersionOf(content) }
 
     private val frontmatter by lazy { SkillFrontmatterParser.parse(content) }
