@@ -43,6 +43,12 @@
 - 使用项目 ktlint 1.8.0 风格设置定向格式检查；Compose 的 PascalCase 按其官方命名约定处理，没有降低测试或 CI 门槛。
 - 简中与英文资源 XML 可解析且无重复 string key；`git diff --check` 通过。
 
+## 本轮首次 Android CI 失败与修复
+
+- Run：https://github.com/cs9527h/Rikkahub-M/actions/runs/44857003975 ，提交 `eb3e8073`。
+- 分类：代码编译错误。用户头像字段属于 `displaySetting.userAvatar`，新增导出/恢复代码错误地访问了根级 `Settings.userAvatar`。
+- 已按真实配置模型修正生产代码及两个资产恢复测试。未删除测试、未降低门槛；修复提交必须重新运行完整 Android CI，首次失败不能算通过。
+
 ## 新增但尚未实际运行的 Android 验证
 
 在现有 BackupManagerTest 中补充：清单损坏不发布、真实 Android Keystore 保存/重建/篡改/丢失密钥、私密口令文件不导出、排除聊天附件时助手资产仍能备份恢复，以及跨设备头像 URI 重定位且人格正文和助手身份不变。

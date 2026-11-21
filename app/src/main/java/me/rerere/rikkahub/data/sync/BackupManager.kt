@@ -238,7 +238,7 @@ class BackupManager(
         }
 
     private fun coreAssetUris(settings: Settings): List<String> = buildList {
-        (settings.userAvatar as? Avatar.Image)?.let { add(it.url) }
+        (settings.displaySetting.userAvatar as? Avatar.Image)?.let { add(it.url) }
         for (assistant in settings.assistants) {
             (assistant.avatar as? Avatar.Image)?.let { add(it.url) }
             assistant.background?.let(::add)
@@ -265,7 +265,7 @@ class BackupManager(
         fun relocate(value: String) = BackupFileUris.restoreUri(value, context.filesDir, ATTACHMENT_FOLDERS.toSet())
         fun avatar(value: Avatar): Avatar = if (value is Avatar.Image) value.copy(url = relocate(value.url)) else value
         return settings.copy(
-            userAvatar = avatar(settings.userAvatar),
+            displaySetting = settings.displaySetting.copy(userAvatar = avatar(settings.displaySetting.userAvatar)),
             assistants = settings.assistants.map { assistant ->
                 assistant.copy(avatar = avatar(assistant.avatar), background = assistant.background?.let(::relocate))
             },

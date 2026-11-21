@@ -302,7 +302,7 @@ class BackupManagerTest {
             current.copy(
                 assistants = listOf(assistant),
                 assistantId = assistant.id,
-                userAvatar = assistant.avatar,
+                displaySetting = current.displaySetting.copy(userAvatar = assistant.avatar),
             )
         }
         val archive = manager.createBackup(false, false)
@@ -342,10 +342,11 @@ class BackupManagerTest {
             avatar = me.rerere.rikkahub.data.model.Avatar.Image(oldUri),
             background = oldUri,
         )
-        val settings = settingsStore.awaitLoaded().copy(
+        val original = settingsStore.awaitLoaded()
+        val settings = original.copy(
             assistants = listOf(assistant),
             assistantId = assistant.id,
-            userAvatar = assistant.avatar,
+            displaySetting = original.displaySetting.copy(userAvatar = assistant.avatar),
         )
         val settingsBytes = JsonInstant.encodeToString(settings).toByteArray()
         val avatarBytes = "synthetic cross-device pixels".toByteArray()
@@ -376,7 +377,7 @@ class BackupManagerTest {
         val newUri = (restored.assistants.single().avatar as me.rerere.rikkahub.data.model.Avatar.Image).url
         assertEquals(File(context.filesDir, "upload/avatar.png").absolutePath, java.net.URI(newUri).path)
         assertEquals(newUri, restored.assistants.single().background)
-        assertEquals(newUri, (restored.userAvatar as me.rerere.rikkahub.data.model.Avatar.Image).url)
+        assertEquals(newUri, (restored.displaySetting.userAvatar as me.rerere.rikkahub.data.model.Avatar.Image).url)
         assertEquals("synthetic cross-device pixels", File(
             context.noBackupFilesDir,
             "backup-restore/pending/payload/files/upload/avatar.png"
