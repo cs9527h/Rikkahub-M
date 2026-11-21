@@ -72,6 +72,11 @@
 - Run：https://github.com/cs9527h/Rikkahub-M/actions/runs/44863412941 ，提交 `c79e5983`：`app:compileGithubDebugKotlin` 失败，`ReminderTab.kt:105/113` 报 “@Composable invocations can only happen from the context of a @Composable function”。
 - 原因：`CardGroup` 的 content 是收集条目的 builder，不是 `@Composable` lambda；这次在 builder 里直接调用了 `stringResource`。已把四个标签移到 `ReminderTab` 组合函数顶部，builder 内只用普通字符串。没有删除功能或测试。
 
+### 后续两次编译失败（均已修复，等待新 run 验证）
+
+- `3e592ef6`：`MemoryFile.kt:18` `Operator '!=' cannot be applied to 'Long' and 'Int'`，改为 `!= 0L`（`92d2f66e`）。
+- 同一轮 `ReminderTab` 的 builder 内 `stringResource` 已按上文修复；不要把“修了但还没跑过”当成通过。
+
 ## 本地记忆：最近删除（尚未 Android 验证）
 
 - `memory_file` 新增 `deleted_at`（Room 34→35 迁移，默认 0）。检索、提示词、整理与列表只读 `deleted_at = 0`，删除立刻从召回中消失，但内容保留。

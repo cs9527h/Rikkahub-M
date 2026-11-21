@@ -25,7 +25,7 @@ internal object PartialMemoryRestore {
         val pending = File(root, "pending")
         if (!pending.isDirectory || File(pending, "journal.json").exists()) return
         val memoryFile = File(pending, MemoryBackupCodec.FILE_NAME)
-        val kind = File(pending, KIND_FILE).takeIf { it.isFile }?.readText()?.let(BackupKind::fromWireName)
+        val kind = File(pending, KIND_FILE).takeIf { it.isFile }?.readText()?.let { BackupKind.fromWireName(it) }
             ?: BackupKind.FULL
         val stagedDatabase = File(pending, "payload/database/${SQLiteConfiguration.DATABASE_NAME}")
         val preserveCurrentMemory = kind == BackupKind.CHATS && stagedDatabase.isFile
