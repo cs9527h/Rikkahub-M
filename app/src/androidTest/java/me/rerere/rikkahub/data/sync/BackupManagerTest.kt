@@ -409,9 +409,12 @@ class BackupManagerTest {
         PartialMemoryRestore.prepare(context)
         assertEquals("synthetic newer live memory", dao.getFile(archived.assistantId, archived.path)?.content)
         val staged = File(context.noBackupFilesDir, "backup-restore/pending/payload/database/rikka_hub")
-        me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath).use { room ->
-            assertEquals(archived, room.memoryDao().getFile(archived.assistantId, archived.path))
-            assertEquals("live", probe(room))
+        val stagedRoom = me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath)
+        try {
+            assertEquals(archived, stagedRoom.memoryDao().getFile(archived.assistantId, archived.path))
+            assertEquals("live", probe(stagedRoom))
+        } finally {
+            stagedRoom.close()
         }
         // Preparing again must not replace the already-validated staged state.
         PartialMemoryRestore.prepare(context)
@@ -439,9 +442,12 @@ class BackupManagerTest {
         manager.stageRestore(archive, true, false)
         PartialMemoryRestore.prepare(context)
         val staged = File(context.noBackupFilesDir, "backup-restore/pending/payload/database/rikka_hub")
-        me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath).use { room ->
-            assertEquals(newest, room.memoryDao().getFile(newest.assistantId, newest.path))
-            assertEquals("live", probe(room))
+        val stagedRoom = me.rerere.rikkahub.data.db.AppDatabaseFactory.create(context, staged.absolutePath)
+        try {
+            assertEquals(newest, stagedRoom.memoryDao().getFile(newest.assistantId, newest.path))
+            assertEquals("live", probe(stagedRoom))
+        } finally {
+            stagedRoom.close()
         }
         assertEquals(newest, dao.getFile(newest.assistantId, newest.path))
     }

@@ -203,11 +203,16 @@ class BackupManager(
                                         zip.getEntry(MemoryBackupCodec.FILE_NAME) != null &&
                                         zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) == null
                                 ) { "设置备份的数据类型不完整或混入聊天数据库" }
-                                BackupKind.CHATS -> require(
-                                    zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) != null &&
-                                        zip.getEntry("settings.json") == null &&
-                                        zip.getEntry(MemoryBackupCodec.FILE_NAME) == null
-                                ) { "聊天备份的数据类型不完整或混入设置数据" }
+                                BackupKind.CHATS -> {
+                                    require(includeDatabase) {
+                                        "该聊天备份包含完整聊天记录，请勾选“聊天记录”后再恢复"
+                                    }
+                                    require(
+                                        zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) != null &&
+                                            zip.getEntry("settings.json") == null &&
+                                            zip.getEntry(MemoryBackupCodec.FILE_NAME) == null
+                                    ) { "聊天备份的数据类型不完整或混入设置数据" }
+                                }
                                 BackupKind.FULL -> require(
                                     zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE) == null ||
                                         zip.getEntry(MemoryBackupCodec.FILE_NAME) == null
