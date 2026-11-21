@@ -66,8 +66,16 @@ class BackupPassphraseStore(
 
     suspend fun read(): CharArray? = withContext(Dispatchers.IO) {
         mutex.withLock {
-            if (!file.isFile) return@withLock null
-            require(file.length() in (MAGIC.size + IV_BYTES + 16).toLong()..MAX_FILE_BYTES) { "本机备份口令文件无效，请重新设置" }
+            val backup = File(file.parentFile, file.name + ".bak")
+            val readable = when {
+                file.isFile -> file
+                backup.isFile -> backup
+                else -> return@withLock null
+            }
+            require(readable.length() in (MAGIC.size + IV_BYTES + 16).toLong()..MAX_FILE_BYTES) {
+                "本机备份口令文件无效，请重新设置"
+            }
+            // AtomicFile restores the legacy .bak to the base file while reading it.
             val encrypted = AtomicFile(file).readFully()
             require(encrypted.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) { "本机备份口令版本无效，请重新设置" }
             val iv = encrypted.copyOfRange(MAGIC.size, MAGIC.size + IV_BYTES)
