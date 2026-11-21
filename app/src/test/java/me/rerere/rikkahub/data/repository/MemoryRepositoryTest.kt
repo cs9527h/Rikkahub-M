@@ -128,9 +128,10 @@ class MemoryRepositoryTest {
     @Test
     fun `restore returns the same content and purge only works on trashed files`() = runBlocking {
         val file = create("/people/dad.md", "- [stated] Plays chess\n")
-        repository.deleteFile(assistant, "/people/dad.md", file.version)
 
+        // Active memories must never be wiped by the permanent-delete action.
         assertFalse(repository.purgeFile(assistant, "/people/dad.md"))
+        repository.deleteFile(assistant, "/people/dad.md", file.version)
         val restored = repository.restoreFile(assistant, "/people/dad.md")
         assertTrue(restored is MemoryWriteResult.Success)
         assertEquals(file.content, repository.getFile(assistant, "/people/dad.md")?.content)
