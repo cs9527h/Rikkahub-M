@@ -103,6 +103,8 @@ flowchart TB
 
 架构演进说明：[独立客户端与备份架构](docs/STANDALONE_BACKUP_ONLY.md) · [历史问题与修复记录](docs/LEGACY_BUG_FIX_CHECKLIST.md)
 
+**RM vs RB 全面差异**：[功能与架构对比](docs/RM_VS_RB.md) · [235 个不同文件路径及 Git 哈希](docs/RM_VS_RB_FILE_DIFF.md) · [v0.5.0 激进开发计划与开发 AI 提示词](docs/ROADMAP_0_5_0.md)。以上为 2026-11-22 的固定快照，使用对应 SHA，后续上游变化需重新核对。
+
 ## ✦ 版本进化 / 0.4.x
 
 | 版本 | 核心变化 | 状态 |
