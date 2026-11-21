@@ -7,7 +7,8 @@
 - 基线 `da70ac55`（run 44797874839）：编译、universal debug 包包含 arm64-v8a/x86_64、模拟器备份/恢复主任务、安装截图比较成功；AI 312 + 应用 570 个 JVM 单测通过。同一 run 的性能 advisory 作业回退失败，因此整体 conclusion=success **不等于**性能或真机达标。
 - `16943b0b`（run 44861926826）：preview 任务（含 14 个仪器测试）成功，smoke 成功；性能作业被后续提交的新 run 按 concurrency 取消，**该提交没有性能结论**。
 - `5fd54bc3`（run 44866453625）：编译、JVM 单测通过；仪器测试 APK 编译失败（测试里对 Room 用 `.use`），已修复。
-- `d2e6079a` / `80afaedb`：推送后新 run 尚未给出完整结果；`80afaedb` 的 run 被 `9e8b6131` 取代。
+- `9e8b6131`（run 44868146519）：编译 + JVM 单测成功，仪器测试 `cases=16 failed=0`，安装截图 smoke 成功；性能 advisory 作业被 0.4.1 版本提交取代，该提交没有性能结论。
+- `d2e6079a` / `80afaedb` 的 run 被后续提交取代，不作为证据。
 
 ## 未完成（缺证据）
 
