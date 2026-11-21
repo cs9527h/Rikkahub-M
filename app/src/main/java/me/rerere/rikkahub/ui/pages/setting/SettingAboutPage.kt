@@ -12,10 +12,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -51,7 +56,9 @@ import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.drawAppLogo
 import me.rerere.rikkahub.ui.components.ui.logoMorphShape
@@ -80,6 +87,8 @@ fun SettingAboutPage() {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var checking by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var pendingUpdate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<me.rerere.rikkahub.utils.UpdateInfo?>(null) }
+    var installing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var installStage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val context = LocalContext.current
@@ -187,11 +196,6 @@ fun SettingAboutPage() {
                                 fontWeight = FontWeight.Black,
                             ),
                         )
-                        Text(
-                            text = stringResource(R.string.about_standalone_summary),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
 
@@ -202,41 +206,28 @@ fun SettingAboutPage() {
                     CardGroup {
                         item(
                             modifier = Modifier.combinedClickable(
-                                onClick = { checking = true; scope.launch {
-                                    val result = updateChecker.checkNow()
-                                    checking = false
-                                    when (result) {
-                                        is UpdateCheckResult.UpToDate -> toaster.show(resources.getString(R.string.about_page_check_latest), type = ToastType.Success)
-                                        is UpdateCheckResult.Available -> pendingUpdate = result.info
-                                        is UpdateCheckResult.Failed -> toaster.show(resources.getString(R.string.about_page_check_failed, result.reason), type = ToastType.Error)
+                                onClick = {
+                                    if (checking) {
+                                        // 已在检查中，忽略重复点击。
+                                    } else {
+                                    checking = true
+                                    scope.launch {
+                                        when (val result = updateChecker.checkNow()) {
+                                            is UpdateCheckResult.UpToDate ->
+                                                toaster.show(resources.getString(R.string.about_page_check_latest), type = ToastType.Success)
+                                            is UpdateCheckResult.Available -> pendingUpdate = result.info
+                                            is UpdateCheckResult.Failed ->
+                                                toaster.show(resources.getString(R.string.about_page_check_failed, result.reason), type = ToastType.Error)
+                                        }
+                                        checking = false
                                     }
-                                } },
+                                    }
+                                },
                                 onLongClick = { navController.navigate(Screen.Debug) },
                             ),
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = {
-                                Text("${BuildConfig.VERSION_NAME} / ${BuildConfig.VERSION_CODE}")
-                            },
-                            headlineContent = { Text(stringResource(if (checking) R.string.about_page_checking_update else R.string.about_page_version)) },
-                        )
-                        pendingUpdate?.let { info ->
-                            item {
-                                CardGroup {
-                                    item(
-                                        onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases/tag/v${info.version}"); pendingUpdate = null },
-                                        leadingContent = { CardGroupIcon(HugeIcons.Download01, containerColor = containerColor, contentColor = contentColor) },
-                                        supportingContent = { Text(stringResource(R.string.about_page_new_version_detail, info.version)) },
-                                        headlineContent = { Text(stringResource(R.string.about_page_new_version)) },
-                                    )
-                                }
-                            }
-                        }
-                        item(
-                            leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = {
-                                Text("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE} / SDK ${android.os.Build.VERSION.SDK_INT}")
-                            },
-                            headlineContent = { Text(stringResource(R.string.about_page_system)) },
+                            supportingContent = { Text("versionCode ${BuildConfig.VERSION_CODE} · 点击检查更新") },
+                            headlineContent = { Text(if (checking) stringResource(R.string.about_page_checking_update) else BuildConfig.VERSION_NAME) },
                         )
                     }
                 }
@@ -248,7 +239,7 @@ fun SettingAboutPage() {
                         item(
                             onClick = { navController.navigate(Screen.MateChangelog) },
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("查看每一版实际更改与尚未完成的功能") },
+                            supportingContent = { Text("内置说明与已发布版本") },
                             headlineContent = { Text("更新日志") },
                         )
                         item(
@@ -264,19 +255,58 @@ fun SettingAboutPage() {
                             headlineContent = { Text("Rikkahub-M") },
                         )
                         item(
-                            onClick = { context.openUrl("https://github.com/rikkahub/rikkahub") },
-                            leadingContent = { CardGroupIcon(HugeIcons.Github, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("https://github.com/rikkahub/rikkahub") },
-                            headlineContent = { Text("RikkaHub") },
-                        )
-                        item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/master/LICENSE") },
                             leadingContent = { CardGroupIcon(HugeIcons.File02, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("AGPL-3.0 · 原版权声明保留") },
+                            supportingContent = { Text("AGPL-3.0 · 上游 RikkaHub 版权保留") },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )
                     }
                 }
+            }
+
+            pendingUpdate?.let { info ->
+                AlertDialog(
+                    onDismissRequest = { if (!installing) pendingUpdate = null },
+                    title = { Text(if (info.prerelease) "发现预览版本 ${info.version}" else "发现新版本 ${info.version}") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = if (installStage.isNullOrBlank()) "更新包会先校验 SHA-256、包名、版本号和签名，再交给系统安装。" else installStage!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            MarkdownBlock(
+                                content = info.changelog.ifBlank { "该版本没有填写更新说明。" },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier
+                                    .heightIn(max = 260.dp)
+                                    .verticalScroll(rememberScrollState()),
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            enabled = !installing,
+                            onClick = {
+                                installing = true
+                                installStage = "正在下载更新包…"
+                                scope.launch {
+                                    val result = updateChecker.installUpdate(info)
+                                    installing = false
+                                    if (result.isSuccess) {
+                                        installStage = "校验通过，请在系统弹窗中确认安装"
+                                        pendingUpdate = null
+                                    } else {
+                                        installStage = "下载或校验失败：" + (result.exceptionOrNull()?.message ?: "未知错误")
+                                    }
+                                }
+                            },
+                        ) { Text("立即更新") }
+                    },
+                    dismissButton = {
+                        TextButton(enabled = !installing, onClick = { pendingUpdate = null }) { Text("稍后") }
+                    },
+                )
             }
         }
     }

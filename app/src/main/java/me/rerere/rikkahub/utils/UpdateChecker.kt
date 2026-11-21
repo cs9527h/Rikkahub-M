@@ -1,30 +1,31 @@
 package me.rerere.rikkahub.utils
 
-import android.app.DownloadManager
 import android.content.Context
-import android.os.Environment
 import android.widget.Toast
-import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import me.rerere.common.http.await
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.File
 
-/** 只认本仓库的正式 Release，绝不把上游 RikkaHub 的版本当成更新。 */
-private const val RELEASES_API = "https://api.github.com/repos/cs9527h/Rikkahub-M/releases"
+private const val REPO = "cs9527h/Rikkahub-M"
+private const val API_RELEASES = "https://api.github.com/repos/$REPO/releases"
+private const val ATOM_FEED = "https://github.com/$REPO/releases.atom"
 private const val CHECK_INTERVAL_MILLIS = 12L * 60 * 60 * 1000
+
+/** 国内备用更新源，静态文件由 scripts/publish_update_mirror.sh 上传；可在设置里改。 */
+const val DEFAULT_MIRROR_BASE = "https://8.133.167.195/updates"
 
 sealed interface UpdateCheckResult {
     data object UpToDate : UpdateCheckResult
@@ -32,16 +33,66 @@ sealed interface UpdateCheckResult {
     data class Failed(val reason: String) : UpdateCheckResult
 }
 
+/** GitHub REST 字段名和 Kotlin 属性名不同，必须显式映射，否则解析必然失败。 */
 @Serializable
-data class ReleaseAsset(val name: String, val size: Long, val url: String)
+data class ReleaseAsset(
+    val name: String = "",
+    val size: Long = 0,
+    @SerialName("browser_download_url") val url: String = "",
+)
 
 @Serializable
+data class GitHubRelease(
+    @SerialName("tag_name") val tag: String = "",
+    val name: String = "",
+    @SerialName("published_at") val publishedAt: String = "",
+    val body: String = "",
+    val prerelease: Boolean = false,
+    val draft: Boolean = false,
+    @SerialName("html_url") val htmlUrl: String = "",
+    val assets: List<ReleaseAsset> = emptyList(),
+)
+
+/** 更新日志条目：GitHub、备用源、内置说明三处共用同一结构。 */
+@Serializable
 data class ReleaseNote(
-    val tag: String,
+    val version: String,
+    val tag: String = "v$version",
+    val title: String = "",
+    val body: String = "",
+    val publishedAt: String = "",
+    val prerelease: Boolean = false,
+    val apkUrl: String? = null,
+    val sha256: String? = null,
+    val apkSize: Long? = null,
+    val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
+    val source: String = "github",
+)
+
+@Serializable
+data class MirrorManifest(
+    val format: Int = 1,
+    val updatedAt: String = "",
+    val releases: List<ReleaseNote> = emptyList(),
+)
+
+@Serializable
+data class UpdateDownload(
     val name: String,
-    val body: String,
+    val url: String,
+    val size: String,
+    val sha256: String? = null,
+)
+
+@Serializable
+data class UpdateInfo(
+    val version: String,
     val publishedAt: String,
-    val prerelease: Boolean,
+    val changelog: String,
+    val downloads: List<UpdateDownload>,
+    val tag: String = "v$version",
+    val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
+    val prerelease: Boolean = false,
 )
 
 class UpdateChecker(
@@ -49,20 +100,26 @@ class UpdateChecker(
     private val appScope: AppScope,
     private val context: Context,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+        isLenient = true
+    }
     private val prefs = context.getSharedPreferences("update-check", Context.MODE_PRIVATE)
     private val state = MutableStateFlow<UiState<UpdateInfo>>(UiState.Idle)
+    private val lastError = MutableStateFlow<String?>(null)
 
     val updateState: StateFlow<UiState<UpdateInfo>> = state.asStateFlow()
 
+    /** 最近一次检查失败原因，供“检查更新”展示，不覆盖已有的成功数据。 */
+    val lastFailure: StateFlow<String?> = lastError.asStateFlow()
+
+    private val cacheFile = File(context.filesDir, "update-cache.json")
+
     init {
-        // 启动后异步检查，不阻塞首屏；间隔与“本版不再提醒”都记录在本地。
-        appScope.launch {
-            runCatching { refresh(force = false) }
-        }
+        appScope.launch { runCatching { refresh(force = false) } }
     }
 
-    /** 手动点击版本号时调用，忽略间隔限制。 */
     suspend fun checkNow(): UpdateCheckResult = refresh(force = true)
 
     suspend fun refresh(force: Boolean): UpdateCheckResult = withContext(Dispatchers.IO) {
@@ -71,195 +128,199 @@ class UpdateChecker(
         if (!force && now - last < CHECK_INTERVAL_MILLIS) {
             return@withContext state.value.toResult()
         }
-        val request = Request.Builder()
-            .url("$RELEASES_API?per_page=10")
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
-            .build()
-        val result = runCatching {
-            val body = client.newCall(request).await().use { response ->
-                if (!response.isSuccessful) error("检查更新失败：HTTP ${response.code}")
-                response.body.string()
-            }
-            val releases = json.decodeFromString(ListSerializer(ReleaseNote.serializer()), body)
-            val latest = releases.firstOrNull { !it.prerelease && Version(it.tag.removePrefix("v")) > Version(BuildConfig.VERSION_NAME) }
-            if (latest == null) {
-                state.value = UiState.Idle
-                UpdateCheckResult.UpToDate
-            } else {
-                val info = UpdateInfo(
-                    version = latest.tag.removePrefix("v"),
-                    publishedAt = latest.publishedAt,
-                    changelog = latest.body,
-                    downloads = releaseDownloads(latest.tag),
-                )
-                state.value = UiState.Success(info)
-                UpdateCheckResult.Available(info)
-            }
-        }.getOrElse { error ->
-            state.value = UiState.Error(error)
-            UpdateCheckResult.Failed(error.message ?: "网络不可用")
-        }
+        val fetch = fetchReleases()
+        val result = fetch.fold(
+            onSuccess = { notes ->
+                lastError.value = null
+                saveCache(notes)
+                val latestStable = UpdateParsing.latestStable(notes, BuildConfig.VERSION_NAME)
+                if (latestStable == null) {
+                    // 自动检查只认正式版；手动点“检查更新”时把预览版也如实报出来。
+                    val latestPreview = notes.filter { it.prerelease }
+                        .maxByOrNull { Version(it.version) }
+                        ?.takeIf { Version(it.version) > Version(BuildConfig.VERSION_NAME) }
+                    if (!force || latestPreview == null) {
+                        state.value = UiState.Idle
+                        UpdateCheckResult.UpToDate
+                    } else {
+                        val info = UpdateInfo(
+                            version = latestPreview.version,
+                            publishedAt = latestPreview.publishedAt,
+                            changelog = latestPreview.body,
+                            downloads = downloadsOf(latestPreview),
+                            tag = latestPreview.tag,
+                            pageUrl = latestPreview.pageUrl,
+                            prerelease = true,
+                        )
+                        state.value = UiState.Idle
+                        UpdateCheckResult.Available(info)
+                    }
+                } else {
+                    val info = UpdateInfo(
+                        version = latestStable.version,
+                        publishedAt = latestStable.publishedAt,
+                        changelog = latestStable.body,
+                        downloads = downloadsOf(latestStable),
+                        tag = latestStable.tag,
+                        pageUrl = latestStable.pageUrl,
+                    )
+                    state.value = UiState.Success(info)
+                    UpdateCheckResult.Available(info)
+                }
+            },
+            onFailure = { error ->
+                val reason = error.message ?: "网络不可用"
+                lastError.value = reason
+                state.value = UiState.Error(UpdateCheckException(reason))
+                UpdateCheckResult.Failed(reason)
+            },
+        )
         prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
         result
     }
 
-    private suspend fun releaseDownloads(tag: String): List<UpdateDownload> = runCatching {
+    /** 依次尝试 GitHub API、GitHub Atom（不吃 API 限流）、国内备用源、上次成功缓存。 */
+    private suspend fun fetchReleases(): Result<List<ReleaseNote>> {
+        val failures = mutableListOf<String>()
+        runCatching { apiReleases() }.onSuccess { return Result.success(it) }
+            .onFailure { failures += "GitHub 接口：" + it.describeNetworkFailure() }
+        runCatching { atomReleases() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
+            .onFailure { failures += "GitHub 发布页：" + it.describeNetworkFailure() }
+        runCatching { mirrorReleases() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
+            .onFailure { failures += "备用源：" + it.describeNetworkFailure() }
+        runCatching { loadCache() }.onSuccess { if (it.isNotEmpty()) return Result.success(it) }
+        return Result.failure(UpdateCheckException(failures.joinToString("；")))
+    }
+
+    private suspend fun apiReleases(): List<ReleaseNote> {
+        val body = httpGet("$API_RELEASES?per_page=20")
+        return UpdateParsing.githubReleases(json, body)
+    }
+
+    /** releases.atom 不需要 token，也不受 API 限流影响，是 403 时最实用的回退。 */
+    private suspend fun atomReleases(): List<ReleaseNote> =
+        UpdateParsing.atomReleases(httpGet(ATOM_FEED, accept = "application/atom+xml"))
+
+    private suspend fun mirrorReleases(): List<ReleaseNote> =
+        UpdateParsing.manifest(json, httpGet("${mirrorBase()}/manifest.json"), mirrorBase())
+
+    private suspend fun loadCache(): List<ReleaseNote> = withContext(Dispatchers.IO) {
+        if (!cacheFile.exists()) return@withContext emptyList()
+        json.decodeFromString(ListSerializer(ReleaseNote.serializer()), cacheFile.readText())
+    }
+
+    private suspend fun saveCache(notes: List<ReleaseNote>) = withContext(Dispatchers.IO) {
+        runCatching { cacheFile.writeText(json.encodeToString(ListSerializer(ReleaseNote.serializer()), notes)) }
+        Unit
+    }
+
+    private fun downloadsOf(note: ReleaseNote): List<UpdateDownload> {
+        val name = apkName(note.version)
+        val url = note.apkUrl ?: "https://github.com/$REPO/releases/download/${note.tag}/$name"
+        return listOf(
+            UpdateDownload(
+                name = name,
+                url = url,
+                size = note.apkSize?.let { "${it / 1024} KB" } ?: "universal APK",
+                sha256 = note.sha256,
+            )
+        )
+    }
+
+    /** 更新日志：内置当前版本说明始终可读，联网后合并已发布的正式/预览版本。 */
+    suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
+        val bundled = bundledNotes()
+        val remote = runCatching { fetchReleases() }.getOrDefault(emptyList())
+        (bundled + remote)
+            .distinctBy { it.version }
+            .sortedByDescending { Version(it.version) }
+    }
+
+    fun bundledNotes(): List<ReleaseNote> = runCatching {
+        val text = context.assets.open("updates.json").bufferedReader().use { it.readText() }
+        json.decodeFromString(MirrorManifest.serializer(), text).releases
+    }.getOrDefault(emptyList())
+
+    /** 下载 → 校验 SHA-256/包名/版本号/签名 → 交给系统安装器确认，绝不静默安装。 */
+    suspend fun installUpdate(info: UpdateInfo): Result<File> = withContext(Dispatchers.IO) {
+        val download = info.downloads.firstOrNull()
+            ?: return@withContext Result.failure(UpdateCheckException("该版本没有可下载的安装包"))
+        val result = UpdateInstaller.downloadAndVerify(
+            context = context,
+            client = client,
+            url = download.url,
+            expectedSha256 = download.sha256,
+        )
+        result.onSuccess { file ->
+            UpdateInstaller.startSystemInstall(context, file)
+        }.onFailure { error ->
+            // 备用源不可达时，退回到 GitHub 发布页，让用户手动下载。
+            runCatching { context.openUrl(info.pageUrl) }
+            Toast.makeText(context, "更新包校验或下载失败：" + (error.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+        }
+        result
+    }
+
+    /** 兼容旧调用点：聊天页更新卡片点下载时也走校验流程。 */
+    fun downloadUpdate(context: Context, download: UpdateDownload) {
+        appScope.launch {
+            val info = UpdateInfo(
+                version = download.name.removePrefix("Rikkahub-M-").removeSuffix(".apk"),
+                publishedAt = "",
+                changelog = "",
+                downloads = listOf(download),
+            )
+            installUpdate(info)
+        }
+    }
+
+    private fun mirrorBase(): String =
+        prefs.getString(KEY_MIRROR_BASE, DEFAULT_MIRROR_BASE)?.trimEnd('/') ?: DEFAULT_MIRROR_BASE
+
+    private suspend fun httpGet(url: String, accept: String = "application/vnd.github+json"): String {
         val request = Request.Builder()
-            .url("$RELEASES_API/tags/$tag")
-            .header("Accept", "application/vnd.github+json")
+            .url(url)
+            .header("Accept", accept)
             .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
             .build()
-        val body = client.newCall(request).await().use { it.body.string() }
-        val assets = json.decodeFromString(ListSerializer(ReleaseAsset.serializer()),
-            json.parseToJsonElement(body).jsonObject["assets"].toString())
-        assets.filter { it.name.endsWith(".apk", ignoreCase = true) }.map {
-            UpdateDownload(name = it.name, url = it.url, size = "${it.size / 1024} KB")
+        return client.newCall(request).await().use { response ->
+            val body = response.body.string()
+            if (!response.isSuccessful) throw UpdateHttpException(response.code, body)
+            body
         }
-    }.getOrDefault(emptyList())
+    }
+
+    private fun Throwable.describeNetworkFailure(): String = when (this) {
+        is UpdateHttpException -> describeHttp(code, body)
+        is java.net.UnknownHostException -> "无法解析域名，请检查网络"
+        is java.net.SocketTimeoutException -> "连接超时"
+        else -> message ?: this::class.simpleName ?: "网络错误"
+    }
+
+    private fun describeHttp(code: Int, body: String): String = when {
+        code == 403 && body.contains("rate limit", ignoreCase = true) -> "GitHub 接口限流（403）"
+        code == 403 -> "GitHub 拒绝访问（403），可能是网络限制"
+        code == 429 -> "请求过于频繁（429）"
+        code == 404 -> "发布记录不存在（404）"
+        code in 500..599 -> "GitHub 服务异常（$code）"
+        else -> "HTTP $code"
+    }
 
     private fun UiState<UpdateInfo>.toResult(): UpdateCheckResult = when (this) {
         is UiState.Success -> UpdateCheckResult.Available(data)
-        is UiState.Error -> UpdateCheckResult.Failed(error.message ?: "网络不可用")
+        is UiState.Error -> UpdateCheckResult.Failed(error.message ?: "上次检查失败")
         else -> UpdateCheckResult.Failed("上次检查未完成")
     }
 
-    /** 更新日志页直接用同一份 GitHub 数据，避免应用里再维护一份会过期的版本列表。 */
-    suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("$RELEASES_API?per_page=20")
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
-            .build()
-        val body = client.newCall(request).await().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            response.body.string()
-        }
-        json.decodeFromString(ListSerializer(ReleaseNote.serializer()), body)
-    }
-
-    fun downloadUpdate(context: Context, download: UpdateDownload) {
-        runCatching {
-            val request = DownloadManager.Request(download.url.toUri()).apply {
-                setTitle(download.name)
-                setDescription("正在下载更新包...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, download.name)
-                setMimeType("application/vnd.android.package-archive")
-            }
-            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            dm.enqueue(request)
-        }.onFailure {
-            Toast.makeText(context, "下载失败，正在打开下载页", Toast.LENGTH_SHORT).show()
-            context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases")
-        }
-    }
+    private fun apkName(version: String) = UpdateParsing.apkName(version)
 
     private companion object {
         const val KEY_LAST_CHECK = "last_check"
+        const val KEY_MIRROR_BASE = "mirror_base"
+
     }
 }
 
-@Serializable
-data class UpdateDownload(
-    val name: String,
-    val url: String,
-    val size: String
-)
+class UpdateCheckException(message: String) : Exception(message)
 
-@Serializable
-data class UpdateInfo(
-    val version: String,
-    val publishedAt: String,
-    val changelog: String,
-    val downloads: List<UpdateDownload>
-)
-
-/**
- * 版本号值类，封装版本号字符串并提供比较功能
- *
- * 支持完整的 SemVer 规范：MAJOR.MINOR.PATCH[-prerelease][+build]
- * - 预发布版本优先级低于正式版：1.0.0-alpha < 1.0.0
- * - 预发布标识符按段逐个比较：数字按数值比较，字符串按字典序比较
- * - 预发布标识符优先级：alpha < beta < rc（通过字典序自然满足）
- * - build metadata（+号后面的部分）不影响优先级比较
- */
-@JvmInline
-value class Version(val value: String) : Comparable<Version> {
-
-    private fun parse(): ParsedVersion {
-        // 去掉 build metadata（+号后面的部分）
-        val withoutBuild = value.split("+").first()
-        // 分离主版本号和预发布标识符
-        val hyphenIndex = withoutBuild.indexOf('-')
-        val (coreStr, prereleaseStr) = if (hyphenIndex >= 0) {
-            withoutBuild.substring(0, hyphenIndex) to withoutBuild.substring(hyphenIndex + 1)
-        } else {
-            withoutBuild to null
-        }
-        val core = coreStr.split(".").map { it.toIntOrNull() ?: 0 }
-        val prerelease = prereleaseStr?.split(".")
-        return ParsedVersion(core, prerelease)
-    }
-
-    override fun compareTo(other: Version): Int {
-        val a = this.parse()
-        val b = other.parse()
-
-        // 先比较主版本号
-        val maxLen = maxOf(a.core.size, b.core.size)
-        for (i in 0 until maxLen) {
-            val ap = if (i < a.core.size) a.core[i] else 0
-            val bp = if (i < b.core.size) b.core[i] else 0
-            if (ap != bp) return ap.compareTo(bp)
-        }
-
-        // 主版本号相同时比较预发布标识符
-        // 有预发布标识符的版本优先级低于没有的：1.0.0-alpha < 1.0.0
-        return when {
-            a.prerelease == null && b.prerelease == null -> 0
-            a.prerelease != null && b.prerelease == null -> -1
-            a.prerelease == null && b.prerelease != null -> 1
-            else -> comparePrerelease(a.prerelease!!, b.prerelease!!)
-        }
-    }
-
-    companion object {
-        fun compare(version1: String, version2: String): Int {
-            return Version(version1).compareTo(Version(version2))
-        }
-
-        private fun comparePrerelease(a: List<String>, b: List<String>): Int {
-            val maxLen = maxOf(a.size, b.size)
-            for (i in 0 until maxLen) {
-                // 字段少的优先级更低：1.0.0-alpha < 1.0.0-alpha.1
-                if (i >= a.size) return -1
-                if (i >= b.size) return 1
-
-                val aNum = a[i].toIntOrNull()
-                val bNum = b[i].toIntOrNull()
-
-                val cmp = when {
-                    // 都是字：按数值比较
-                    aNum != null && bNum != null -> aNum.compareTo(bNum)
-                    // 数字优先级低于字符串
-                    aNum != null -> -1
-                    bNum != null -> 1
-                    // 都是字符串：按字典序比较
-                    else -> a[i].compareTo(b[i])
-                }
-                if (cmp != 0) return cmp
-            }
-            return 0
-        }
-    }
-}
-
-private data class ParsedVersion(
-    val core: List<Int>,
-    val prerelease: List<String>?,
-)
-
-// 扩展操作符函数，使比较更直观
-operator fun String.compareTo(other: Version): Int = Version(this).compareTo(other)
-operator fun Version.compareTo(other: String): Int = this.compareTo(Version(other))
+class UpdateHttpException(val code: Int, val body: String) : Exception("HTTP $code")

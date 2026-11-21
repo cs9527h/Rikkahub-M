@@ -145,11 +145,16 @@ fun UpdateCard(vm: ChatVM) {
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = Instant.parse(info.publishedAt).toJavaInstant().toLocalDateTime(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    val publishedAt = runCatching {
+                        Instant.parse(info.publishedAt).toJavaInstant().toLocalDateTime().toString()
+                    }.getOrNull()
+                    if (publishedAt != null) {
+                        Text(
+                            text = publishedAt,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     MarkdownBlock(
                         content = info.changelog,
                         modifier = Modifier

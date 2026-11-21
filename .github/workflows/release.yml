@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.4.2'
+  VERSION: '0.4.3'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
