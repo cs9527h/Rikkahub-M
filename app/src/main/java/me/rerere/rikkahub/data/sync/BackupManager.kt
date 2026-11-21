@@ -197,6 +197,14 @@ class BackupManager(
                             val coroutineContext = currentCoroutineContext()
                             val verified = BackupManifest.verifyDetailed(zip) { coroutineContext.ensureActive() }
                             restoredKind = verified.kind
+                            // Reject an impossible restore before writing anything into the staging area.
+                            verified.entries?.let { entries ->
+                                val needed = entries.sumOf { it.size }
+                                val available = staging.usableSpace
+                                if (needed > 0 && available > 0 && available < needed + 32L * 1024 * 1024) {
+                                    error("设备存储空间不足，至少还需要 ${(needed + 32L * 1024 * 1024) / (1024 * 1024)} MB")
+                                }
+                            }
                             when (verified.kind) {
                                 BackupKind.SETTINGS -> require(
                                     zip.getEntry("settings.json") != null &&
