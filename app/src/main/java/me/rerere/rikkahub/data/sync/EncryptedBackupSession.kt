@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
-internal class MissingBackupPassphraseException : IllegalStateException("请先设置自动备份的本机加密口令")
+internal class MissingBackupPassphraseException :
+    IllegalStateException("本机没有这份备份的解密密钥：请先导入恢复密钥，或在恢复旧文件时输入原口令")
 
 /** Never invokes an automatic upload without a key, and clears the owned key on every exit. */
 internal object EncryptedBackupSession {

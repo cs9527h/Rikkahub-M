@@ -20,9 +20,7 @@ import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.data.repository.ConversationRepository
-import me.rerere.rikkahub.data.sync.BackupArchiveFormat
 import me.rerere.rikkahub.data.sync.S3BackupItem
-import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
@@ -55,8 +53,6 @@ class BackupVM(
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
     val localBackupItems = MutableStateFlow(WebDavConfig.BackupItem.entries.toList())
 
-    // 新备份一律加密：不再提供关闭加密或让用户输入口令的入口。
-    val encryptBackups = MutableStateFlow(true)
     val automaticPassphraseConfigured = MutableStateFlow(false)
     val lastRestoreMessage = MutableStateFlow<String?>(null)
     private val archiveMutex = Mutex()
