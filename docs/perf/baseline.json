@@ -1,7 +1,7 @@
 {
-  "version": "0.4.3",
+  "version": "0.4.4",
   "measured": false,
-  "source": "未采集（本版仅 CI 模拟器 advisory，无真机数据）",
+  "source": "未采集（本版只有 CI 模拟器与自动化门禁，无真机数据）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
