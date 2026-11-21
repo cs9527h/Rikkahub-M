@@ -15,6 +15,18 @@ class StandaloneDefaultsTest {
         assertNull(DEFAULT_ASSISTANTS.single().chatModelId)
         assertFalse(DEFAULT_PROVIDERS.any { it.id == LEGACY_MATE_PROVIDER_ID })
     }
+
+    @Test fun invalidAutomaticBackupIntervalsAreClampedInsteadOfBreakingEveryRun() {
+        val normalized = Settings(
+            backupReminderConfig = BackupReminderConfig(
+                autoSettingsIntervalHours = 0,
+                autoChatsIntervalHours = -24,
+            ),
+        ).normalized()
+        assertEquals(1, normalized.backupReminderConfig.autoSettingsIntervalHours)
+        assertEquals(1, normalized.backupReminderConfig.autoChatsIntervalHours)
+    }
+
     @Test fun upgradingRemovesGatewayNotPersonality() {
         val gateway = ProviderSetting.OpenAI(
             id = LEGACY_MATE_PROVIDER_ID,

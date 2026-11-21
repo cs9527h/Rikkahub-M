@@ -97,7 +97,7 @@ class MateAutoBackupWorker(
                                 autoBackupStates = config.autoBackupStates + (stateKey to updated),
                                 lastBackupTime = if (fingerprint == null) config.lastBackupTime else checkedAt,
                                 lastAutoBackupTime = if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
-                                lastAutoBackupError = "",
+                                lastAutoBackupError = if (fingerprint == null) config.lastAutoBackupError else "",
                             ))
                         }
                     }

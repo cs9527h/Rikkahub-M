@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import io.requery.android.database.sqlite.SQLiteDatabase
 import io.requery.android.database.sqlite.SQLiteDatabaseConfiguration
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
+import me.rerere.rikkahub.data.db.migrations.Migration_34_35
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -105,6 +106,43 @@ class DatabaseBackupTest {
             DatabaseBackup.createSnapshot(context, source, second)
         }
         org.junit.Assert.assertArrayEquals(first.readBytes(), second.readBytes())
+    }
+
+    /**
+     * 34→35 的 SQL 行为（本类由 CI 的 BackupManagerTest/DatabaseBackupTest 过滤器执行）：
+     * 旧行保留内容并获得 deleted_at = 0，软删除可回滚。不做 Room 完整 schema 校验。
+     */
+    @Test fun memoryTrashMigrationKeepsOldRowsActiveAndRestorable() {
+        val file = File(directory, "v34-memory")
+        val v34 = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.CREATE_IF_NECESSARY)
+        v34.execSQL(
+            "CREATE TABLE memory_file (" +
+                "assistant_id TEXT NOT NULL, path TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', " +
+                "updated_at INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(assistant_id, path))"
+        )
+        v34.execSQL(
+            "INSERT INTO memory_file(assistant_id, path, content, updated_at) VALUES (?, ?, ?, ?)",
+            arrayOf<Any?>("assistant", "/profile.md", "synthetic memory", 1234),
+        )
+        Migration_34_35.migrate(v34)
+        v34.query(
+            "SELECT content, updated_at, deleted_at FROM memory_file WHERE assistant_id = 'assistant'"
+        ).use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals("synthetic memory", cursor.getString(0))
+            assertEquals(1234L, cursor.getLong(1))
+            assertEquals(0L, cursor.getLong(2))
+        }
+        v34.execSQL("UPDATE memory_file SET deleted_at = 999 WHERE path = '/profile.md'")
+        v34.query("SELECT count(*) FROM memory_file WHERE deleted_at != 0").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(1, cursor.getInt(0))
+        }
+        v34.execSQL("UPDATE memory_file SET deleted_at = 0 WHERE path = '/profile.md'")
+        v34.close()
+        open(file).use { migrated ->
+            assertEquals(1L, migrated.longForQuery("SELECT count(*) FROM memory_file WHERE deleted_at = 0", null))
+        }
     }
 
     @Test fun corruptDatabaseIsRejected() {

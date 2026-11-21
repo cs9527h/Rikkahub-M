@@ -67,6 +67,11 @@
 - 以下仅为本地 JVM 契约测试 77/77 通过（直接编译生产源码）：分拆格式与旧格式兼容、清单 kind 与清单自身 CRC、记忆编解码与路径校验、内容指纹误判防护、周期/目标变化判定、只读数据库快照在独立 Gradle fixture 中的真实 SQLite 验证。**尚未通过 Android 编译、仪器测试或真机恢复验证**，推送后若 CI 失败必须按失败处理。
 - 新增仪器测试覆盖：设置备份不替换对话且合并最新记忆、聊天备份保留最新记忆、只读快照不修改原库字节、两次快照稳定。它们同样尚未运行。
 
+## 分拆备份首次 CI 失败与修复
+
+- Run：https://github.com/cs9527h/Rikkahub-M/actions/runs/44863412941 ，提交 `c79e5983`：`app:compileGithubDebugKotlin` 失败，`ReminderTab.kt:105/113` 报 “@Composable invocations can only happen from the context of a @Composable function”。
+- 原因：`CardGroup` 的 content 是收集条目的 builder，不是 `@Composable` lambda；这次在 builder 里直接调用了 `stringResource`。已把四个标签移到 `ReminderTab` 组合函数顶部，builder 内只用普通字符串。没有删除功能或测试。
+
 ## 本地记忆：最近删除（尚未 Android 验证）
 
 - `memory_file` 新增 `deleted_at`（Room 34→35 迁移，默认 0）。检索、提示词、整理与列表只读 `deleted_at = 0`，删除立刻从召回中消失，但内容保留。

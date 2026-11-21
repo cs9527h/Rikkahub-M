@@ -43,7 +43,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import me.rerere.ui.toast.ToastType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Cancel01
@@ -63,6 +62,7 @@ import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.rikkahub.utils.toLocalDateTime
 import me.rerere.ui.components.RikkaConfirmDialog
+import me.rerere.ui.toast.ToastType
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import java.time.Instant
@@ -256,7 +256,7 @@ fun MemoryFilePage(memoryId: String, path: String?) {
 
     RikkaConfirmDialog(
         show = showDeleteDialog,
-        title = stringResource(R.string.confirm_delete),
+        title = stringResource(R.string.delete),
         confirmText = stringResource(R.string.confirm),
         dismissText = stringResource(R.string.cancel),
         onConfirm = {
@@ -265,7 +265,10 @@ fun MemoryFilePage(memoryId: String, path: String?) {
         },
         onDismiss = { showDeleteDialog = false },
         text = {
-            Text(text = file?.path.orEmpty())
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = file?.path.orEmpty())
+                Text(stringResource(R.string.memory_move_to_deleted))
+            }
         }
     )
 }

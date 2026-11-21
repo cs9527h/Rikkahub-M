@@ -38,6 +38,11 @@ fun ReminderTab(vm: BackupVM) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val config = settings.backupReminderConfig
     val keyConfigured by vm.automaticPassphraseConfigured.collectAsStateWithLifecycle()
+    // CardGroup's content is a builder, not a composable lambda: resolve labels before it.
+    val webDavLabel = stringResource(R.string.backup_page_auto_transport_webdav)
+    val s3Label = stringResource(R.string.backup_page_auto_transport_s3)
+    val settingsLabel = stringResource(R.string.backup_page_auto_snapshot_settings)
+    val chatsLabel = stringResource(R.string.backup_page_auto_snapshot_chats)
 
     fun updateConfig(update: (BackupReminderConfig) -> BackupReminderConfig) {
         vm.updateSettings { it.copy(backupReminderConfig = update(it.backupReminderConfig)) }
@@ -102,21 +107,8 @@ fun ReminderTab(vm: BackupVM) {
                     for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
                         val key = AutoBackupPolicy.key(transport, kind)
                         val successAt = config.autoBackupStates[key]?.lastSuccessAt ?: 0L
-                        val destination = stringResource(
-                            if (transport ==
-                                "webdav") {
-                                R.string.backup_page_auto_transport_webdav
-                            } else {
-                                R.string.backup_page_auto_transport_s3
-                            }
-                        )
-                        val category = stringResource(
-                            if (kind == BackupKind.SETTINGS) {
-                                R.string.backup_page_auto_snapshot_settings
-                            } else {
-                                R.string.backup_page_auto_snapshot_chats
-                            }
-                        )
+                        val destination = if (transport == "webdav") webDavLabel else s3Label
+                        val category = if (kind == BackupKind.SETTINGS) settingsLabel else chatsLabel
                         item(
                             headlineContent = {
                                 Text(stringResource(R.string.backup_page_auto_snapshot_status, destination, category))

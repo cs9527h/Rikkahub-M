@@ -26,7 +26,9 @@ internal fun ProviderSetting.isUnusedLegacyPromotion(): Boolean {
 internal fun Assistant.isUnusedLegacySecondaryAssistant(): Boolean {
     val legacyId = Uuid.parse("3d47790c-c415-4b90-9388-751128adb0a0")
     return id == legacyId &&
-        systemPrompt.trim().startsWith("You are a helpful assistant, called {{char}}, based on model {{model_name}}.") &&
+        systemPrompt.trim().startsWith(
+            "You are a helpful assistant, called {{char}}, based on model {{model_name}}."
+        ) &&
         systemPrompt.contains("## Info") &&
         systemPrompt.contains("## Hint") &&
         copy(systemPrompt = "") == Assistant(id = legacyId, systemPrompt = "")
@@ -38,7 +40,10 @@ internal fun Settings.normalized(): Settings =
 
 // 补齐缺失的内置提供商/助手/TTS，内置提供商的描述信息以代码里的为准
 internal fun Settings.withBuiltInDefaults(): Settings {
-    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.filterNot { it.isUnusedLegacyPromotion() || it.id == LEGACY_MATE_PROVIDER_ID }.toMutableList()
+    var providers = this.providers.ifEmpty { DEFAULT_PROVIDERS }.filterNot {
+        it.isUnusedLegacyPromotion() ||
+            it.id == LEGACY_MATE_PROVIDER_ID
+    }.toMutableList()
     DEFAULT_PROVIDERS.forEach { defaultProvider ->
         if (providers.none { it.id == defaultProvider.id }) {
             providers.add(defaultProvider.copyProvider())
@@ -71,9 +76,11 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         }
         .ifEmpty { DEFAULT_ASSISTANTS }
     val ttsProviders = this.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }
-        .filterNot { it is me.rerere.tts.provider.TTSProviderSetting.OpenAI &&
-            it.name == "AiHubMix" && it.baseUrl == "https://aihubmix.com/v1" &&
-            it.apiKey.isBlank() }
+        .filterNot {
+            it is me.rerere.tts.provider.TTSProviderSetting.OpenAI &&
+                it.name == "AiHubMix" && it.baseUrl == "https://aihubmix.com/v1" &&
+                it.apiKey.isBlank()
+        }
         .toMutableList()
     DEFAULT_TTS_PROVIDERS.forEach { defaultTTSProvider ->
         if (ttsProviders.none { provider -> provider.id == defaultTTSProvider.id }) {
@@ -147,6 +154,11 @@ private fun Settings.withValuesInRange(): Settings = copy(
     searchServiceSelected = searchServiceSelected.coerceIn(0, (searchServices.size - 1).coerceAtLeast(0)),
     defaultTTSPlaybackSpeed = defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f),
     autoCompressThreshold = autoCompressThreshold.coerceIn(AUTO_COMPRESS_THRESHOLD_RANGE),
+    // A bad imported value must not make every automatic backup attempt throw.
+    backupReminderConfig = backupReminderConfig.copy(
+        autoSettingsIntervalHours = backupReminderConfig.autoSettingsIntervalHours.coerceIn(1, 720),
+        autoChatsIntervalHours = backupReminderConfig.autoChatsIntervalHours.coerceIn(1, 720),
+    ),
 )
 
 /** 自动压缩触发比例的可选范围，设置页的滑块也用它 */

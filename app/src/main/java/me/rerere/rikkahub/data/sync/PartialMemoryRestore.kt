@@ -36,6 +36,9 @@ internal object PartialMemoryRestore {
         }
         // An absent journal must mean no live file was moved. Never delete an unexpected original.
         check(!File(pending, "originals").exists()) { "恢复状态异常，需要先核查原始文件" }
+        // A previous process may have died while staging; those directories never held live data.
+        pending.listFiles()?.filter { it.isDirectory && it.name.startsWith("memory-prepare-") }
+            ?.forEach { it.deleteRecursively() }
         val working = Files.createTempDirectory(pending.toPath(), "memory-prepare-").toFile()
         try {
             val live = context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME)
