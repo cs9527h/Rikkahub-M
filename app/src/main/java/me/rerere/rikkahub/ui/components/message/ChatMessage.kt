@@ -414,6 +414,22 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Text -> {
                         // 只有正在生成的最后一段文字可能停在没写完的语法上
                         val streamingText = loading && block.index == parts.lastIndex
+                        // 正则替换会不断产生新的 String，每次都重算会让 Markdown 重新解析；
+                        // 只在文本或助手规则变化时算一次，其余重组直接复用。
+                        val userVisibleText = remember(part.text, assistant) {
+                            part.text.replaceRegexes(
+                                assistant = assistant,
+                                scope = AssistantAffectScope.USER,
+                                visual = true,
+                            )
+                        }
+                        val assistantVisibleText = remember(part.text, assistant) {
+                            part.text.replaceRegexes(
+                                assistant = assistant,
+                                scope = AssistantAffectScope.ASSISTANT,
+                                visual = true,
+                            )
+                        }
                         val textContent = @Composable {
                             if (role == MessageRole.USER) {
                                 ChatMessageBubble(
@@ -426,21 +442,13 @@ private fun MessagePartsBlock(
                                         .animateContentSize(),
                                 ) {
                                     MarkdownBlock(
-                                        content = part.text.replaceRegexes(
-                                            assistant = assistant,
-                                            scope = AssistantAffectScope.USER,
-                                            visual = true,
-                                        ),
+                                        content = userVisibleText,
                                         onClickCitation = handleClickCitation
                                     )
                                 }
                             } else {
                                 if (settings.displaySetting.showAssistantBubble) {
-                                    val content = part.text.replaceRegexes(
-                                        assistant = assistant,
-                                        scope = AssistantAffectScope.ASSISTANT,
-                                        visual = true,
-                                    )
+                                    val content = assistantVisibleText
                                     val splitByParagraph = settings.displaySetting.splitAssistantBubbleByParagraph
                                     // 拆成多个气泡只影响显示，消息本身还是一条
                                     val paragraphs = remember(content, splitByParagraph) {
@@ -469,11 +477,7 @@ private fun MessagePartsBlock(
                                     }
                                 } else {
                                     MarkdownBlock(
-                                        content = part.text.replaceRegexes(
-                                            assistant = assistant,
-                                            scope = AssistantAffectScope.ASSISTANT,
-                                            visual = true,
-                                        ),
+                                        content = assistantVisibleText,
                                         streaming = streamingText,
                                         onClickCitation = handleClickCitation,
                                         modifier = Modifier

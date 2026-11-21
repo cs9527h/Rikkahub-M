@@ -1984,4 +1984,6 @@
   <string name="backup_page_setup_key">تعيين عبارة الاستعادة</string>
   <string name="about_page_checking_update">جارٍ فحص التحديثات…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · اضغط لفتح صفحة التنزيل</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">أوقفت خدمة إمكانية الوصول من جانب النظام رغم أنها ما زالت تظهر مفعّلة في الإعدادات (بعض الهواتف تفعل ذلك بعد إزالة التطبيق من قائمة التطبيقات الحديثة). أوقف هذا المفتاح ثم شغّله مرة أخرى لفتح الإعدادات، ثم أوقف \"RikkaHub Phone Use\" وأعد تشغيلها هناك. تثبيت RikkaHub في قائمة التطبيقات الحديثة والسماح بالتشغيل التلقائي يمنع تكرار ذلك.</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">أوقف \"RikkaHub Phone Use\" في إعدادات إمكانية الوصول ثم شغّلها مرة أخرى</string>
 </resources>

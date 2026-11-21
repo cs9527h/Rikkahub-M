@@ -5,7 +5,7 @@
 语言：[简体中文（默认）](README.md) · [English](README_EN.md) · [繁體中文](README_ZH_TW.md)
 
 - [版本下载](https://github.com/cs9527h/Rikkahub-M/releases)
-- [0.4.5 更新说明](docs/releases/0.4.5.md)
+- [0.5.0 更新说明](docs/releases/0.5.0.md)
 - [更新日志](CHANGELOG_MATE.md)
 
 历史 0.4.0 构建存在旧数据误删风险，详见 [0.4.0 风险说明](docs/releases/0.4.0.md)。请优先选择更新后的版本，覆盖安装前备份重要数据。

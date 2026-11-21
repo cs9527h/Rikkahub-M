@@ -1986,4 +1986,6 @@
   <string name="backup_page_setup_key">Задать фразу</string>
   <string name="about_page_checking_update">Проверка обновлений…</string>
   <string name="about_page_new_version_detail">Rikkahub-M %1$s · нажмите, чтобы открыть страницу загрузки</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">Система остановила службу доступности, хотя в настройках она по-прежнему отображается как включённая (на некоторых телефонах это происходит после смахивания приложения из недавних). Выключите и снова включите этот переключатель, чтобы открыть настройки, затем выключите и включите \"RikkaHub Phone Use\" там. Закрепление RikkaHub в недавних приложениях и разрешение автозапуска предотвратят повторение.</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">Выключите и снова включите \"RikkaHub Phone Use\" в настройках доступности</string>
 </resources>
