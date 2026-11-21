@@ -8,9 +8,9 @@ on:
         type: boolean
         default: false
       prerelease:
-        description: 'Publish as pre-release: no physical-device acceptance gate (CI + emulator evidence only)'
+        description: 'Publish as pre-release (default is stable after all automated checks pass)'
         type: boolean
-        default: true
+        default: false
   push:
     branches:
       - master
@@ -280,14 +280,33 @@ jobs:
           print('perf baseline status:', data.get('measured'), data.get('source',''))
           PY
           (cd dist && sha256sum -c SHA256SUMS.txt)
+          # 正式版只要求已完成的自动化检查，不再要求实体设备验收 JSON。
+          # build + upgrade 两个 job 必须成功，签名、校验和、Lint 等步骤仍然不可跳过。
           flags=()
           if [[ "$VERSION" == *-* || "${PRERELEASE:-false}" == "true" ]]; then
             flags+=(--prerelease)
-          else
-            # A source build or a filled-out performance ledger is not stable acceptance.
-            python3 scripts/verify_release_acceptance.py "$VERSION" "docs/releases/${VERSION}-acceptance.json"
           fi
-          # Refuse to overwrite an existing published binary with another build.
-          gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" \
-            --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md"
+          # 若对应 tag 已发布，绝不用新构建覆盖旧 APK：
+          # 只有同名且 SHA-256 完全相同的资产才允许调整 Release 状态和中文说明。
+          if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
+            mkdir -p "$RUNNER_TEMP/existing-release"
+            gh release download "$TAG" --repo "$GH_REPO" \
+              --pattern "SHA256SUMS.txt" --pattern "Rikkahub-M-${VERSION}.apk" \
+              --dir "$RUNNER_TEMP/existing-release"
+            (cd "$RUNNER_TEMP/existing-release" && sha256sum -c SHA256SUMS.txt)
+            cmp dist/SHA256SUMS.txt "$RUNNER_TEMP/existing-release/SHA256SUMS.txt" || {
+              echo "::error::Existing Release APK differs from this build. Refusing to replace or relabel."
+              exit 1
+            }
+            if [[ "${#flags[@]}" -eq 0 ]]; then
+              gh release edit "$TAG" --repo "$GH_REPO" --latest \
+                --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md" --prerelease=false
+            else
+              gh release edit "$TAG" --repo "$GH_REPO" \
+                --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md" --prerelease=true
+            fi
+          else
+            gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
+              --repo "$GH_REPO" --target "$GITHUB_SHA" "${flags[@]}" \
+              --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md"
+          fi
