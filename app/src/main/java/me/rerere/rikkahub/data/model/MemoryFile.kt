@@ -15,7 +15,7 @@ data class MemoryFile(
     /** 0 表示正常；非 0 为移入“最近删除”的时间 */
     val deletedAt: Long = 0,
 ) {
-    val isDeleted: Boolean get() = deletedAt != 0
+    val isDeleted: Boolean get() = deletedAt != 0L
 
     val version: String by lazy { memoryVersionOf(content) }
 
