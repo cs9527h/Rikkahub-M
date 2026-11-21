@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: 核对现有发行版、已成功的 CI 和 APK 校验和
         env:
           GH_TOKEN: ${{ github.token }}
