@@ -48,6 +48,8 @@
 - Run：https://github.com/cs9527h/Rikkahub-M/actions/runs/44857003975 ，提交 `eb3e8073`。
 - 分类：代码编译错误。用户头像字段属于 `displaySetting.userAvatar`，新增导出/恢复代码错误地访问了根级 `Settings.userAvatar`。
 - 已按真实配置模型修正生产代码及两个资产恢复测试。未删除测试、未降低门槛；修复提交必须重新运行完整 Android CI，首次失败不能算通过。
+- 修复后 Run：https://github.com/cs9527h/Rikkahub-M/actions/runs/44858095915 ，提交 `42ac3f4b`：实际日志中 AI 312/312、应用 602/602 JVM 单测通过，主应用和 Android 测试 APK 编译成功，但 `connectedGithubDebugAndroidTest` 失败。不能称 Android 验收通过，也不能在没有证据时归咎 runner。
+- 现有 workflow 不上传失败的 Android JUnit 报告，AGP 日志只输出摘要。新增 Gradle finalizer，将实际 JUnit 失败用例、堆栈摘要和执行数量输出到 CI；不改变测试选择、执行或失败退出码。已在独立合成 Gradle fixture 实测：失败任务仍返回失败、JUnit 根因可见、合成密码不出现在输出中。下一次运行才能定位具体 Android 失败。
 
 ## 新增但尚未实际运行的 Android 验证
 

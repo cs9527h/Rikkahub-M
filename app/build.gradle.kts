@@ -45,7 +45,8 @@ android {
                 localProperties.load(FileInputStream(localPropertiesFile))
             }
             val storePath = localProperties.getProperty("storeFile") ?: System.getenv("MATE_KEYSTORE_PATH")
-            val storePasswordValue = localProperties.getProperty("storePassword") ?: System.getenv("MATE_KEYSTORE_PASSWORD")
+            val storePasswordValue =
+                localProperties.getProperty("storePassword") ?: System.getenv("MATE_KEYSTORE_PASSWORD")
             val keyAliasValue = localProperties.getProperty("keyAlias") ?: System.getenv("MATE_KEY_ALIAS")
             val keyPasswordValue = localProperties.getProperty("keyPassword") ?: System.getenv("MATE_KEY_PASSWORD")
             if (storePath != null && storePasswordValue != null &&
@@ -167,6 +168,9 @@ kotlin {
 configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
     exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
 }
+
+// Keep connected-test failures and executed case counts visible even when CI cannot upload reports.
+apply(from = rootProject.file("scripts/connected-test-evidence.gradle.kts"))
 
 // App verification must also exercise the real provider/stream/quota contracts.
 // Keep this dependency in the build graph so local and CI invocations behave identically.
