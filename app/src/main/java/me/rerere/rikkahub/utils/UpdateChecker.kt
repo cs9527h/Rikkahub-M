@@ -71,6 +71,8 @@ data class ReleaseNote(
     val source: String = "github",
     /** 弹窗用的一两行摘要；留空时从 body 提取。 */
     val summary: String = "",
+    /** 置顶的「精选更新」：只用于真实正式版本。 */
+    val featured: Boolean = false,
 )
 
 @Serializable
@@ -369,7 +371,7 @@ class UpdateChecker(
         }
         // 前台服务/通知失败不能让下载静默降级成「看不见」的下载：记录下来交给界面提示。
         if (!UpdateDownloadService.start(context)) {
-            notificationProblem.value = "系统未允许下载通知（前台服务启动失败），进度仅在应用内显示"
+            reportNotificationProblem("系统未允许下载通知（前台服务启动失败），进度仅在应用内显示")
         }
     }
 

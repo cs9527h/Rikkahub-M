@@ -36,6 +36,7 @@ import me.rerere.rikkahub.utils.NoteSection
 import me.rerere.rikkahub.utils.ReleaseNote
 import me.rerere.rikkahub.utils.UpdateChecker
 import me.rerere.rikkahub.utils.UpdateNotes
+import me.rerere.rikkahub.utils.plus
 import org.koin.compose.koinInject
 
 /**

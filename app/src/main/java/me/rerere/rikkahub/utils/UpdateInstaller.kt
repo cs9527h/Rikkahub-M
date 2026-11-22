@@ -86,28 +86,6 @@ object UpdateInstaller {
         }
     }
 
-    private fun readMeta(file: File): DownloadMeta? = runCatching {
-        if (!file.isFile) return null
-        val lines = file.readLines()
-        if (lines.firstOrNull().isNullOrBlank()) return null
-        DownloadMeta(
-            url = lines[0],
-            etag = lines.getOrNull(1)?.takeIf { it.isNotBlank() },
-            lastModified = lines.getOrNull(2)?.takeIf { it.isNotBlank() },
-        )
-    }.getOrNull()
-
-    private fun writeMeta(file: File, meta: DownloadMeta) {
-        runCatching {
-            file.writeText(listOf(meta.url, meta.etag.orEmpty(), meta.lastModified.orEmpty()).joinToString("\n"))
-        }
-        Unit
-    }
-
-    private fun deleteQuietly(vararg files: File) {
-        files.forEach { runCatching { if (it.exists()) it.delete() } }
-    }
-
     /** Android 8 起，覆盖安装必须由用户为本应用单独打开「安装未知应用」。 */
     fun canRequestPackageInstalls(context: Context): Boolean =
         context.packageManager.canRequestPackageInstalls()

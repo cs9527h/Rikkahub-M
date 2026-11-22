@@ -16,6 +16,8 @@ sealed interface UpdateDownloadState {
         val version: String,
         val read: Long,
         val total: Long,
+        /** 当前实际使用的下载源（GitHub / 备用源），用于界面提示与排障。 */
+        val source: String = "",
     ) : UpdateDownloadState {
         /** 服务端没给 Content-Length 时返回 null，界面改用不确定进度。 */
         val fraction: Float?
