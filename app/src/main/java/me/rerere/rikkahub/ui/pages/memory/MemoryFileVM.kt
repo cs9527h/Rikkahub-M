@@ -38,8 +38,8 @@ class MemoryFileVM(
         if (normalizedPath == null) {
             flowOf(MemoryFileState.Missing)
         } else {
-            memoryRepository.getFilesFlow(memoryId).map { files ->
-                files.find { it.path == normalizedPath }?.let(MemoryFileState::Loaded) ?: MemoryFileState.Missing
+            memoryRepository.observeFile(memoryId, normalizedPath).map { file ->
+                file?.let(MemoryFileState::Loaded) ?: MemoryFileState.Missing
             }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, MemoryFileState.Loading)
 
@@ -54,6 +54,12 @@ class MemoryFileVM(
         val path = normalizedPath ?: return
         viewModelScope.launch {
             onResult(memoryRepository.writeFile(memoryId, path, content))
+        }
+    }
+
+    fun setOutdated(file: MemoryFile, onResult: (MemoryWriteResult) -> Unit) {
+        viewModelScope.launch {
+            onResult(memoryRepository.writeFile(memoryId, file.path, file.contentWithOutdated(!file.isOutdated), file.version))
         }
     }
 

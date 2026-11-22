@@ -166,7 +166,7 @@ class MemoryConsolidator(
                 if (pending.turns.isEmpty()) null else Batch(conversation, pending)
             }
             .withinTranscriptBudget()
-        val files = memoryRepository.getFiles(memoryId)
+        val files = memoryRepository.getFiles(memoryId).filterNot { it.isOutdated }
         // 没有新的轮次时，只有手动清理且记忆库里有东西才值得调用模型
         if (batches.isEmpty() && (!fullReview || files.isEmpty())) return null
 

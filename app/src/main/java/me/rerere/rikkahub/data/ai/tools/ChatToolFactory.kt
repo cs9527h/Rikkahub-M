@@ -58,7 +58,13 @@ class ChatToolFactory(
             createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, conversationId)
         val tools = buildList {
             if (assistant.enableMemory) {
-                addAll(buildMemoryTools(memoryRepository, assistant.memoryId, maxReadChars = 4_000, maxListedFiles = 40))
+                addAll(
+                    buildMemoryTools(
+                        memoryRepository, assistant.memoryId,
+                        maxReadChars = 2 * assistant.memoryRecallTokenBudget.coerceIn(500, 4_000),
+                        maxListedFiles = 40,
+                    )
+                )
             }
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))

@@ -6,6 +6,7 @@ import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import java.io.IOException
 import com.google.firebase.Firebase
 import com.google.firebase.analytics.analytics
 import com.google.firebase.crashlytics.crashlytics
@@ -140,6 +141,11 @@ val appModule = module {
         val privateClient = get<OkHttpClient>().newBuilder().apply {
             interceptors().removeAll { it is HttpLoggingInterceptor }
             networkInterceptors().removeAll { it is me.rerere.rikkahub.data.ai.RequestLoggingInterceptor }
+            addInterceptor { chain ->
+                val request = chain.request()
+                if (!request.url.isHttps) throw IOException("History extraction requires HTTPS")
+                chain.proceed(request)
+            }
             followRedirects(false)
             followSslRedirects(false)
             retryOnConnectionFailure(false)

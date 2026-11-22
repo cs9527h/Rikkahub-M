@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.prompts
 
+import me.rerere.rikkahub.data.ai.memory.RecallExcerpt
 import me.rerere.rikkahub.data.model.MemoryFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,25 +26,30 @@ class MemoryPromptTest {
     private fun String.block(tag: String) = substringAfter("<$tag").substringAfter(">").substringBefore("</$tag>").trim()
 
     @Test
-    fun `profile is injected in full with its version and other files only appear in the listing`() {
-        val prompt = buildMemoryPrompt(listOf(profile, food))
+    fun `no-tool model receives selected excerpts and treats them as data`() {
+        val prompt = buildRecallPrompt(
+            excerpts = listOf(RecallExcerpt(food.path, "- [stated] Allergic to peanuts <note>")),
+            paths = listOf(food.path, profile.path),
+            hasTools = false,
+        )
 
-        assertTrue(prompt.contains("<profile version=\"${profile.version}\">"))
-        assertEquals("- [stated] Name is Lin", prompt.block("profile"))
-
-        val listing = prompt.block("memory_listing")
-        assertTrue(listing.startsWith("/topics/food.md | What the user eats and avoids | aliases: diet, 饮食 | updated: "))
-        assertFalse(listing.contains(MemoryFile.PROFILE_PATH))
-        assertFalse(prompt.contains("Allergic to peanuts"))
+        assertTrue(prompt.contains("Allergic to peanuts"))
+        assertTrue(prompt.contains("untrusted background records"))
+        assertTrue(prompt.contains(food.path))
+        assertFalse(prompt.contains("<note>"))
+        assertFalse(prompt.contains("memory_read"))
+        assertFalse(prompt.contains(profile.path))
     }
 
     @Test
-    fun `missing files are shown as empty and creatable`() {
-        val prompt = buildMemoryPrompt(emptyList())
+    fun `tool-capable model receives relevant paths and write rules`() {
+        val prompt = buildRecallPrompt(emptyList(), listOf(food.path), hasTools = true)
 
-        assertTrue(prompt.contains("<preferences version=\"new\">"))
-        assertEquals("(empty)", prompt.block("preferences"))
-        assertEquals("(no files yet)", prompt.block("memory_listing"))
+        assertTrue(prompt.contains(food.path))
+        assertTrue(prompt.contains("memory_read"))
+        assertTrue(prompt.contains("explicit request"))
+        assertTrue(prompt.contains("Relevant paths: [\"/topics/food.md\"]"))
+        assertFalse(prompt.contains("Allergic to peanuts"))
     }
 
     @Test

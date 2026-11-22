@@ -98,7 +98,10 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          script: ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.rikkahub.data.db.migrations.HistoryMemoryMigrationTest,me.rerere.rikkahub.data.ai.HistoryMemoryIntegrationTest --stacktrace --no-daemon
+          script: |
+            ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.package=me.rerere.rikkahub.data.ai.memory --stacktrace --no-daemon
+            grep -R -q --include='TEST-*.xml' 'HistoryMemoryMigrationTest' app/build/outputs/androidTest-results
+            grep -R -q --include='TEST-*.xml' 'HistoryMemoryIntegrationTest' app/build/outputs/androidTest-results
       - uses: actions/upload-artifact@v4
         if: always()
         with:

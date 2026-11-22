@@ -57,7 +57,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-internal fun HistoryMemoryTab(assistant: Assistant, openSource: (String) -> Unit) {
+internal fun HistoryMemoryTab(
+    assistant: Assistant,
+    openSource: (String) -> Unit,
+    openMemory: (scope: String, path: String) -> Unit,
+) {
     val history: HistoryMemoryManager = koinInject()
     var global by rememberSaveable(assistant.id.toString()) { mutableStateOf(assistant.useGlobalMemory) }
     val target = if (global) MemoryRepository.GLOBAL_MEMORY_ID else assistant.id.toString()
@@ -175,9 +179,9 @@ internal fun HistoryMemoryTab(assistant: Assistant, openSource: (String) -> Unit
         }
     }
     review?.let { candidate ->
-        HistoryCandidateDialog(history, target, candidate, { review = null }, openSource) { corrected ->
+        HistoryCandidateDialog(history, target, candidate, { review = null }, openSource, openMemory) { corrected, mergeInto ->
             review = null
-            execute { history.resolve(target, candidate.jobId, candidate.key, corrected) }
+            execute { history.resolve(target, candidate.jobId, candidate.key, corrected, mergeInto) }
         }
     }
     if (cancel) {
@@ -315,8 +319,10 @@ private fun HistoryCandidateDialog(
     candidate: HistoryMemoryCandidate,
     onDismiss: () -> Unit,
     openSource: (String) -> Unit,
-    onResolve: (String?) -> Unit,
+    openMemory: (scope: String, path: String) -> Unit,
+    onResolve: (String?, MemoryFile?) -> Unit,
 ) {
+    var mergeInto by remember(candidate.key) { mutableStateOf<MemoryFile?>(null) }
     var fact by rememberSaveable(candidate.key) { mutableStateOf(candidate.fact) }
     var related by remember(candidate.key) { mutableStateOf<List<MemoryFile>>(emptyList()) }
     LaunchedEffect(target, candidate.key) {
@@ -340,19 +346,29 @@ private fun HistoryCandidateDialog(
                 TextButton(onClick = { onDismiss(); openSource(candidate.conversationId) }) { Text("打开来源会话") }
                 if (related.isNotEmpty()) {
                     Text("相关旧记忆 · 请检查重复、冲突或已过时的信息", style = MaterialTheme.typography.titleSmall)
-                    related.forEach { Text("${localDate(it.updatedAt)} · ${it.title}\n${it.displayBody.substringBefore("<!-- history-source ").take(500)}") }
+                    related.forEach { file ->
+                        Text("${localDate(file.updatedAt)} · ${file.title}\n${file.displayBody.take(500)}")
+                        TextButton(onClick = { onDismiss(); openMemory(target, file.path) }) { Text("打开旧记忆") }
+                        FilterChip(
+                            selected = mergeInto?.path == file.path,
+                            onClick = { mergeInto = if (mergeInto?.path == file.path) null else file },
+                            label = { Text("合并到这条记忆") },
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(enabled = fact.trim().length in 4..600, onClick = { onResolve(fact) }) { Text("保存记忆") }
+            TextButton(enabled = fact.trim().length in 4..600, onClick = { onResolve(fact, mergeInto) }) {
+                Text(if (mergeInto == null) "保存记忆" else "确认合并")
+            }
         },
-        dismissButton = { TextButton(onClick = { onResolve(null) }) { Text("跳过候选") } },
+        dismissButton = { TextButton(onClick = { onResolve(null, null) }) { Text("跳过候选") } },
     )
 }
 
 @Composable
-internal fun MemoryRecallTab(assistant: Assistant) {
+internal fun MemoryRecallTab(assistant: Assistant, openChat: (String) -> Unit) {
     val history: HistoryMemoryManager = koinInject()
     val records by remember(assistant.memoryId) { history.recalls(assistant.memoryId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -394,6 +410,7 @@ internal fun MemoryRecallTab(assistant: Assistant) {
                     Text("注入的记忆片段")
                     if (injected.isEmpty()) Text("无")
                     injected.forEach { Text("${it.path}\n${it.content}") }
+                    TextButton(onClick = { detail = null; openChat(record.conversationId) }) { Text("打开对应聊天") }
                 }
             },
             confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } },

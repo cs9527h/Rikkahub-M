@@ -286,14 +286,18 @@ class ChatRequestFactory(
                 val clock = TimeSource.Monotonic.markNow()
                 val matches = memoryRepository.searchForRecall(assistant.memoryId, latestUser.toText())
                 val preferences = memoryRepository.getFile(assistant.memoryId, MemoryFile.PREFERENCES_PATH)
-                val excerpts = recallExcerpts(listOfNotNull(preferences) + matches.filter { it.path != preferences?.path })
+                    ?.takeUnless { it.isOutdated }
+                val excerpts = recallExcerpts(
+                    listOfNotNull(preferences) + matches.filter { it.path != preferences?.path },
+                    maxChars = 2 * assistant.memoryRecallTokenBudget.coerceIn(500, 4_000),
+                )
                 TurnRecall(latestUser.id, matches.map { it.path }, excerpts, clock.elapsedNow().inWholeMilliseconds)
                     .also { turn.recall = it }
             }
             val hasTools = ModelAbility.TOOL in turn.model.abilities
             val prompt = buildRecallPrompt(recall.excerpts, recall.matches, hasTools)
             val first = baseMessages.firstOrNull()
-            if (recordRecall) {
+            if (recordRecall && assistant.recordMemoryUsage) {
                 val reads = baseMessages.dropWhile { it.id != latestUser.id }.flatMap { message ->
                     message.getTools().flatMap { it.recalledFiles() }
                 }.distinctBy { it.path }

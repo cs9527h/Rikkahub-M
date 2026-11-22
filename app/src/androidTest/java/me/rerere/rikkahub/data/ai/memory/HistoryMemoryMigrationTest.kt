@@ -1,10 +1,11 @@
-package me.rerere.rikkahub.data.db.migrations
+package me.rerere.rikkahub.data.ai.memory
 
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.db.migrations.Migration_35_36
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule

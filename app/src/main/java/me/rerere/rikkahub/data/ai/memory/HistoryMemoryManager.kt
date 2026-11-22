@@ -82,20 +82,34 @@ internal class HistoryMemoryManager(
             .firstOrNull { it.type == ModelType.CHAT && it.findProvider(settings.providers)?.enabled == true }
             ?: error("请先配置可用的记忆整理模型")
         val provider = model.findProvider(settings.providers) ?: error("请先配置提供商")
-        val transport = (provider as? ProviderSetting.ApiKey)?.let {
-            val url = it.baseUrl.toHttpUrlOrNull()
-            require(url != null && url.isHttps && url.username.isEmpty() && url.password.isEmpty()) {
-                "历史提取需要使用 HTTPS 模型服务"
-            }
-            "https://${url.host}:${url.port}"
-        }
+        val transport = provider.historyDestination()
         val sizes = sources.map { it.id }.chunked(300).map { nodes.estimateHistory(it) }
         return Plan(
             scope, sources.map { HistorySource(it.id, it.updatedAt) }, model.id.toString(),
             fingerprint(settings, provider, model),
-            listOfNotNull(provider.name, model.modelId, transport).joinToString(" · "),
+            listOf(provider.name, model.modelId, transport).joinToString(" · "),
             sizes.sumOf { it.nodes }, sizes.sumOf { it.characters },
         )
+    }
+
+    private fun ProviderSetting.historyDestination(): String {
+        val endpoint = when (this) {
+            is ProviderSetting.OpenAI -> baseUrl + if (useResponseApi) responsesPath else chatCompletionsPath
+            is ProviderSetting.Claude -> baseUrl
+            is ProviderSetting.ChatGPT -> "https://chatgpt.com"
+            is ProviderSetting.Grok -> "https://api.x.ai"
+            is ProviderSetting.Google -> when {
+                !vertexAI -> baseUrl
+                useInteractionsApi && useServiceAccount && location in setOf("us", "eu") ->
+                    "https://aiplatform.$location.rep.googleapis.com"
+                else -> "https://aiplatform.googleapis.com"
+            }
+        }
+        val url = endpoint.toHttpUrlOrNull()
+        require(url != null && url.isHttps && url.username.isEmpty() && url.password.isEmpty()) {
+            "历史提取需要使用 HTTPS 模型服务"
+        }
+        return url.newBuilder().encodedPath("/").query(null).fragment(null).build().toString().removeSuffix("/")
     }
 
     suspend fun resumePending() = withContext(Dispatchers.IO) {
@@ -299,7 +313,9 @@ internal class HistoryMemoryManager(
         return cursor to excerpts
     }
 
-    suspend fun resolve(scope: String, id: String, key: String, corrected: String?) = controls.withLock {
+    suspend fun resolve(
+        scope: String, id: String, key: String, corrected: String?, mergeInto: MemoryFile? = null,
+    ) = controls.withLock {
         val candidate = dao.candidate(id, key) ?: return@withLock
         check(dao.job(scope)?.id == id)
         if (corrected == null) {
@@ -307,13 +323,31 @@ internal class HistoryMemoryManager(
             return@withLock
         }
         val fact = corrected.cleanFact()
-        require(fact.length in 4..600)
+        require(fact.length in 4..600 && fact.any { it.isLetterOrDigit() }) { "请输入要保存的事实" }
         require(findForbiddenMemoryContent(fact) == null) { "记忆正文包含证件号或卡号" }
         val normalizedKey = factKey(fact)
+        val source = "<!-- history-source ${candidate.conversationId} ${candidate.messageId} ${candidate.sourceTime} ${candidate.jobId} -->"
+        if (mergeInto != null) {
+            check(!mergeInto.isOutdated) { "请先在记忆管理中恢复该记忆的召回" }
+            val current = memories.getFile(scope, mergeInto.path)
+            if (current?.containsFact(normalizedKey) == true) {
+                dao.resolve(id, key, if (source in current.body) "saved" else "duplicate")
+                return@withLock
+            }
+            check(current?.version == mergeInto.version) { "旧记忆已变更，请重新打开候选检查" }
+            when (val result = memories.writeFile(scope, mergeInto.path, mergeInto.appendedHistoryFact(fact, source), mergeInto.version)) {
+                is MemoryWriteResult.Success -> dao.resolve(id, key, "saved")
+                is MemoryWriteResult.Conflict -> error("旧记忆已变更，请重新打开候选检查")
+                is MemoryWriteResult.Rejected -> error(result.reason)
+            }
+            return@withLock
+        }
         val path = historyPath(candidate.copy(fact = fact))
         val existing = memories.findImportedFact(scope, normalizedKey.take(32))
+            ?: memories.exactTextCandidates(scope, fact.trimEnd { it in "。.!！?？" })
+                .firstOrNull { it.containsFact(normalizedKey) }
         if (existing != null && existing.path != path) {
-            check(existing.body.lineSequence().any { it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == normalizedKey }) {
+            check(existing.containsFact(normalizedKey)) {
                 "已有记忆内容不同，请在记忆管理中检查"
             }
             dao.resolve(id, key, "duplicate")
@@ -325,16 +359,14 @@ internal class HistoryMemoryManager(
                 title = candidate.subject,
                 description = candidate.subject,
                 aliases = emptyList(),
-                body = "- [stated] $fact\n\n<!-- history-source ${candidate.conversationId} ${candidate.messageId} ${candidate.sourceTime} ${candidate.jobId} -->",
+                body = "- [stated] $fact\n\n$source",
             )
             memories.writeFile(scope, path, content, MemoryRepository.NEW_FILE_VERSION)
         }
         when (result) {
             is MemoryWriteResult.Success -> dao.resolve(id, key, "saved")
             is MemoryWriteResult.Conflict -> {
-                check(result.current?.body?.lineSequence()?.any {
-                    it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == normalizedKey
-                } == true) { "已有记忆内容不同，请在记忆管理中检查" }
+                check(result.current?.containsFact(normalizedKey) == true) { "已有记忆内容不同，请在记忆管理中检查" }
                 val recoveredWrite = result.current?.body?.lineSequence()?.any {
                     it.startsWith("<!-- history-source ") && it.endsWith(" ${candidate.jobId} -->")
                 } == true
@@ -346,6 +378,10 @@ internal class HistoryMemoryManager(
 
     suspend fun related(scope: String, candidate: HistoryMemoryCandidate): List<MemoryFile> =
         memories.searchForRecall(scope, "${candidate.subject} ${candidate.fact}").take(4)
+
+    private fun MemoryFile.containsFact(key: String): Boolean = body.lineSequence().any {
+        it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == key
+    }
 
     private fun historyPath(candidate: HistoryMemoryCandidate): String {
         val folder = when (candidate.category) {

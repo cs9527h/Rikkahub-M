@@ -22,6 +22,12 @@ class MemoryRecallTest {
         assertTrue(repo.searchForRecall("assistant-a", "电机控制").isEmpty())
         repo.restoreFile("assistant-a", path)
         assertEquals(listOf(path), repo.searchForRecall("assistant-a", "电机控制").map { it.path })
+        val restored = checkNotNull(repo.getFile("assistant-a", path))
+        repo.writeFile("assistant-a", path, restored.contentWithOutdated(true), restored.version)
+        assertTrue(repo.searchForRecall("assistant-a", "电机控制").isEmpty())
+        val outdated = checkNotNull(repo.getFile("assistant-a", path))
+        repo.writeFile("assistant-a", path, outdated.contentWithOutdated(false), outdated.version)
+        assertEquals(path, repo.searchForRecall("assistant-a", "电机控制").single().path)
     }
 
     @Test fun excerptsAreBoundedAndExcludeSourceMetadata() {

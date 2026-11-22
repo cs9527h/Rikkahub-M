@@ -49,6 +49,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.memoryTitleOf
 import me.rerere.rikkahub.data.repository.MemoryWriteResult
@@ -236,7 +237,12 @@ fun MemoryFilePage(memoryId: String, path: String?) {
                 contentValid = draftContentValid,
             )
 
-            file != null -> MemoryFileDetail(innerPadding = innerPadding, file = file)
+            file != null -> MemoryFileDetail(
+                innerPadding = innerPadding,
+                file = file,
+                onToggleOutdated = { vm.setOutdated(file, ::onSaved) },
+                openSource = { conversationId -> navController.navigate(Screen.Chat(conversationId)) },
+            )
 
             state is MemoryFileState.Missing -> Box(
                 modifier = Modifier
@@ -277,6 +283,8 @@ fun MemoryFilePage(memoryId: String, path: String?) {
 private fun MemoryFileDetail(
     innerPadding: PaddingValues,
     file: MemoryFile,
+    onToggleOutdated: () -> Unit,
+    openSource: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -288,9 +296,22 @@ private fun MemoryFileDetail(
     ) {
         CardGroup {
             item(
+                headlineContent = { Text(if (file.isOutdated) "已过时 · 恢复召回" else "标记为已过时") },
+                supportingContent = { Text("保留正文和来源，停止自动召回。") },
+                onClick = onToggleOutdated,
+            )
+            item(
                 overlineContent = { Text(stringResource(R.string.memory_file_page_last_updated)) },
                 headlineContent = { Text(Instant.ofEpochMilli(file.updatedAt).toLocalDateTime()) },
             )
+            file.historySource?.let { source ->
+                item(
+                    overlineContent = { Text("历史来源") },
+                    headlineContent = { Text(source.time.replace('T', ' ')) },
+                    supportingContent = { Text("打开来源会话") },
+                    onClick = { openSource(source.conversationId.toString()) },
+                )
+            }
             if (file.description.isNotEmpty()) {
                 item(
                     overlineContent = { Text(stringResource(R.string.memory_file_page_summary)) },

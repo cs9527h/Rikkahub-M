@@ -1,4 +1,4 @@
-package me.rerere.rikkahub.data.ai
+package me.rerere.rikkahub.data.ai.memory
 
 import android.content.Context
 import android.content.ContextWrapper
@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.Provider
@@ -21,17 +22,18 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.TextGenerationResult
 import me.rerere.ai.ui.UIMessage
-import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.data.sync.DatabaseBackup
 import me.rerere.rikkahub.utils.JsonInstant
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,7 +63,7 @@ class HistoryMemoryIntegrationTest {
             val model = Model(modelId = "synthetic-test-model")
             val provider = ProviderSetting.OpenAI(name = "fixture", models = listOf(model))
             val assistant = Assistant()
-            settings.awaitLoaded()
+            withTimeout(10_000) { settings.awaitLoaded() }
             settings.update { it.copy(assistants = listOf(assistant), providers = listOf(provider), memoryModelId = model.id) }
             val fixture = SyntheticModel()
             val providers = ProviderManager(OkHttpClient(), context) { _, _ -> error("fixture uses no credentials") }
@@ -124,6 +126,40 @@ class HistoryMemoryIntegrationTest {
             restarted.resolve(scope, repeated.id, duplicate.key, duplicate.fact)
             assertEquals(1, restarted.count(repeated.id, "duplicate").first())
             assertEquals(1, memory.getFiles(scope).size)
+
+            val forMerge = duplicate.copy(
+                key = "synthetic-merge-key",
+                fact = "测试项目也用 Compose",
+                evidence = "测试项目也用 Compose",
+                status = "pending",
+            )
+            db.historyMemoryDao().addCandidates(listOf(forMerge))
+            val stale = checkNotNull(memory.getFile(scope, saved.path))
+            val update = stale.content.replace("Kotlin", "Kotlin 2")
+            memory.writeFile(scope, saved.path, update, stale.version)
+            val conflict = runCatching { restarted.resolve(scope, repeated.id, forMerge.key, forMerge.fact, stale) }
+            assertTrue(conflict.isFailure)
+            assertEquals(1, restarted.count(repeated.id, "pending").first())
+            val fresh = checkNotNull(memory.getFile(scope, saved.path))
+            restarted.resolve(scope, repeated.id, forMerge.key, forMerge.fact, fresh)
+            val merged = checkNotNull(memory.getFile(scope, saved.path))
+            assertNotEquals(fresh.version, merged.version)
+            assertTrue(merged.content.contains("Kotlin 2") && merged.content.contains("Compose"))
+            assertEquals(1, memory.getFiles(scope).size)
+
+            val snapshot = File(folder, "snapshot.db")
+            DatabaseBackup.createSnapshot(db.openHelper.writableDatabase, snapshot)
+            DatabaseBackup.stripLocalMemoryWork(context, snapshot)
+            val staged = AppDatabaseFactory.create(context, snapshot.absolutePath)
+            try {
+                checkNotNull(staged.memoryDao().getFile(scope, saved.path))
+                assertEquals(1000, staged.conversationDao().countAll())
+                assertEquals(null, staged.historyMemoryDao().job(scope))
+                assertTrue(staged.historyMemoryDao().pending(repeated.id).first().isEmpty())
+            } finally {
+                staged.close()
+            }
+            assertEquals(repeated.id, db.historyMemoryDao().job(scope)?.id)
         } finally {
             diskScope.coroutineContext[Job]?.cancelAndJoin()
             db.close()

@@ -28,7 +28,7 @@ internal fun recallTerms(query: String): Set<String> =
 internal fun memoryRelevance(file: MemoryFile, terms: Set<String>): Int {
     val heading = listOf(file.title, file.description, file.path, file.aliases.joinToString(" "))
         .joinToString(" ").lowercase(Locale.ROOT)
-    val body = file.body.substringBefore("<!-- history-source ").lowercase(Locale.ROOT)
+    val body = file.recallBody.lowercase(Locale.ROOT)
     val hits = terms.sumOf { term ->
         when {
             term in heading -> 5
@@ -46,7 +46,7 @@ internal fun recallExcerpts(files: List<MemoryFile>, maxChars: Int = 4_000): Lis
     var remaining = maxChars
     return files.mapNotNull { file ->
         if (remaining < 60) return@mapNotNull null
-        val source = file.body.substringBefore("<!-- history-source ").trim()
+        val source = file.recallBody.trim()
         if (source.isBlank()) return@mapNotNull null
         val allowance = minOf(1_250, remaining - file.path.length - 20)
         if (allowance <= 0) return@mapNotNull null

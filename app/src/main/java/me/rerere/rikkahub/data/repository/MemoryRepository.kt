@@ -41,6 +41,9 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     fun getFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
         memoryDAO.getFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
 
+    fun observeFile(scope: String, path: String): Flow<MemoryFile?> =
+        memoryDAO.observeFile(scope, path).map { it?.toMemoryFile() }
+
     /** 最近删除的文件；只在界面里展示，不参与检索、提示词或整理。 */
     fun getDeletedFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
         memoryDAO.getDeletedFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
@@ -53,6 +56,9 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
 
     internal suspend fun findImportedFact(scope: String, key: String): MemoryFile? =
         memoryDAO.findImportedFact(scope, key)?.toMemoryFile()
+
+    internal suspend fun exactTextCandidates(scope: String, fact: String): List<MemoryFile> =
+        memoryDAO.exactTextCandidates(scope, fact).map { it.toMemoryFile() }
 
     /** Uses the existing (assistant_id, path) index, and keeps only the highest-ranked matches in memory. */
     suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> = withContext(Dispatchers.Default) {
@@ -68,6 +74,7 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             if (page.isEmpty()) break
             for (entity in page) {
                 val file = entity.toMemoryFile()
+                if (file.isOutdated) continue
                 val score = memoryRelevance(file, terms)
                 if (score > 0) matches += file to score
             }

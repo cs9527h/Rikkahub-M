@@ -22,6 +22,7 @@
   <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>下载安装包</strong></a>　·　
   <a href="CHANGELOG_MATE.md">更新日志</a>　·　
   <a href="docs/MATE_USER_GUIDE.md">使用指南</a>　·　
+  <a href="docs/HISTORY_MEMORY.md">历史记忆</a>　·　
   <a href="docs/RM_VS_RB.md">与上游的差异</a>　·　
   <a href="https://github.com/cs9527h/Rikkahub-M/issues">反馈问题</a>
 </p>
@@ -29,15 +30,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.6.0**（2026-11-22，commit `9522a52e`）
+> **最新正式版：v0.6.1**（2026-11-22，commit `3dbb3d18`）
 >
-> 安装包：[Rikkahub-M-0.6.0.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.6.0/Rikkahub-M-0.6.0.apk) · 18.4 MB · universal（arm64-v8a + x86_64）
+> 安装包：[Rikkahub-M-0.6.1.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.6.1/Rikkahub-M-0.6.1.apk) · 18.5 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`f0983bbf0b4b2c738bff31b80bd5aec34e1ad5f96982064db59011e9863e2676`
+> SHA-256：`1a6f525c42e8f1ad3b46b6b87d28bb7da4cba3e381519470b9936da2531b1ff9`
 >
-> 本版摘要：可以跳过不想要的版本；README 与正式版自动同步；更新下载残留自动清理。
+> 本版摘要：更新下载更可靠，通知栏能看到进度；更新日志恢复简洁分类。
 >
-> 完整说明见 [v0.6.0 更新日志](docs/releases/0.6.0.md)。
+> 完整说明见 [v0.6.1 更新日志](docs/releases/0.6.1.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 这是什么

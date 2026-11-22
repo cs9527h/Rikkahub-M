@@ -78,14 +78,14 @@ fun buildMemoryTools(
             }.take(MAX_READ_PATHS)
             if (paths.isEmpty()) error("path is required")
 
-            val files = paths.associateWith { repository.getFile(assistantId, it) }
+            val files = paths.associateWith { repository.getFile(assistantId, it)?.takeUnless { file -> file.isOutdated } }
             val requestedOffset = (args.jsonObject["offset"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
                 ?.takeIf { paths.size == 1 }?.coerceAtLeast(0) ?: 0
             var remaining = maxReadChars
             toolOutput {
                 put("files", buildJsonArray {
                     files.values.filterNotNull().forEach { file ->
-                        val content = file.content.substringBefore("<!-- history-source ")
+                        val content = file.recallContent
                         val offset = requestedOffset.coerceAtMost(content.length)
                         val text = content.drop(offset).take(remaining).trimEnd { it.isHighSurrogate() }
                         remaining -= text.length
@@ -212,7 +212,7 @@ fun buildMemoryTools(
             }
             toolOutput {
                 put("files", buildJsonArray {
-                    files.forEach { file ->
+                    files.filterNot { it.isOutdated }.forEach { file ->
                         add(buildJsonObject {
                             put("path", file.path)
                             put("size", file.content.toByteArray().size)

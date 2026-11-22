@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 import me.rerere.rikkahub.data.ai.tools.findForbiddenMemoryContent
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import java.security.MessageDigest
+import java.text.Normalizer
 import java.util.Locale
 
 internal const val HISTORY_INPUT_CHARS = 8_000
@@ -51,8 +52,10 @@ internal fun splitHistoryText(text: String): Sequence<String> = sequence {
 internal fun historyDigest(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 
-internal fun factKey(text: String): String =
-    historyDigest(text.lowercase(Locale.ROOT).replace(Regex("[\\p{P}\\p{Z}\\s]+"), ""))
+internal fun factKey(text: String): String = historyDigest(
+    Normalizer.normalize(text, Normalizer.Form.NFKC).lowercase(Locale.ROOT)
+        .cleanFact().trimEnd { it in "。.!！?？" },
+)
 
 internal fun parseHistoryCandidates(
     response: String,
