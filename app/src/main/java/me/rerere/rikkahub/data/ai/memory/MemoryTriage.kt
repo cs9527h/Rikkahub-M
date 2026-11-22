@@ -42,6 +42,9 @@ object MemoryTriageEngine {
     private const val MERGE_THRESHOLD = 0.80
     private const val UPDATE_THRESHOLD = 0.50
 
+    // 冲突判定比“相关”更敏感：说法相反的两条宁可让用户确认，也不要静默合并
+    private const val CONFLICT_THRESHOLD = 0.32
+
     // 这类候选默认不自动保存：涉及身份、关系、长期承诺，猜错的代价比省几次点击大
     private val carefulCategories = setOf("people", "profile", "decisions")
 
@@ -71,7 +74,7 @@ object MemoryTriageEngine {
         val target = best
         val overlap = (bestScore * 100).toInt()
         // 冲突优先于合并：说法相反的两条不能被“相似度高”吞掉
-        if (target != null && bestScore >= UPDATE_THRESHOLD && conflicts(fact, target)) {
+        if (target != null && bestScore >= CONFLICT_THRESHOLD && conflicts(fact, target)) {
             return MemoryTriage(
                 MemorySuggestion.CONFIRM,
                 target.path,

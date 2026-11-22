@@ -104,6 +104,8 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         reasoningLevel(MEMORY_MODEL_REASONING_LEVEL, Settings::memoryModelReasoningLevel) {
             copy(memoryModelReasoningLevel = it)
         },
+        plain(MEMORY_RUN_TOKEN_BUDGET, Settings::memoryRunTokenBudget) { copy(memoryRunTokenBudget = it) },
+        plain(MEMORY_DAILY_TOKEN_BUDGET, Settings::memoryDailyTokenBudget) { copy(memoryDailyTokenBudget = it) },
         uuid(TRANSLATE_MODEL, Settings::translateModeId) { copy(translateModeId = it) },
         plain(ENABLE_SUGGESTION, Settings::enableSuggestion) { copy(enableSuggestion = it) },
         uuid(IMAGE_GENERATION_MODEL, Settings::imageGenerationModelId) { copy(imageGenerationModelId = it) },

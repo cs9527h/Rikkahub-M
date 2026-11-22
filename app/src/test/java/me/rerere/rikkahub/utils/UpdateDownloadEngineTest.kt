@@ -122,7 +122,7 @@ class UpdateDownloadEngineTest {
     }
 
     @Test
-    fun resetsOnUnsatisfiableRange() {
+    fun usesCompleteLocalFileOnUnsatisfiableRange() {
         val target = File(dir, "update.apk")
         target.writeBytes(payload)
         File(target.path + ".meta").writeText("$base\n\"v1\"\n")
@@ -132,9 +132,27 @@ class UpdateDownloadEngineTest {
             exchange.close()
         }
 
+        // 416 且本地内容已通过哈希/大小校验：直接使用，不再重下 19MB
+        val file = runDownload(target = target)
+
+        assertEquals(payload.size.toLong(), file.length())
+        assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
+    }
+
+    @Test
+    fun resetsOnUnsatisfiableRangeWithIncompleteFile() {
+        val target = File(dir, "update.apk")
+        target.writeBytes(payload.copyOfRange(0, 500))
+        File(target.path + ".meta").writeText("$base\n\"v1\"\n")
+
+        handler = { exchange ->
+            exchange.sendResponseHeaders(416, -1)
+            exchange.close()
+        }
+
         val error = runCatching { runDownload(target = target) }.exceptionOrNull()
 
-        // 416 属于可恢复的续传拒绝：重试后仍不可用时以 HTTP 错误收尾，且不保留坏片段
+        // 本地片段不完整时 416 不可恢复：以 HTTP 错误收尾，且不保留坏片段
         assertTrue(error is UpdateHttpException)
         assertEquals(416, (error as UpdateHttpException).code)
         assertFalse(target.exists())
@@ -211,14 +229,27 @@ class UpdateDownloadEngineTest {
     }
 
     @Test
-    fun sizeMismatchDeletesFile() {
+    fun sizeMismatchDeletesFileWhenNoHash() {
         val target = File(dir, "update.apk")
         handler = { exchange -> ok(exchange, payload) }
 
-        val error = runCatching { runDownload(size = 9999, target = target) }.exceptionOrNull()
+        // 没有哈希时才靠大小判断完整性
+        val error = runCatching { runDownload(sha = null, size = 9999, target = target) }.exceptionOrNull()
 
         assertTrue(error is UpdateCheckException)
         assertFalse(target.exists())
+    }
+
+    @Test
+    fun hashWinsOverWrongSizeMetadata() {
+        val target = File(dir, "update.apk")
+        handler = { exchange -> ok(exchange, payload) }
+
+        // 备用源 manifest 曾经把大小写错；内容是正确的时候就该放行
+        val file = runDownload(size = 9999, target = target)
+
+        assertEquals(payload.size.toLong(), file.length())
+        assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
     }
 
     @Test

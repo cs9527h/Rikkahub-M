@@ -22,7 +22,7 @@ class UpdateParsingTest {
             "draft": false,
             "html_url": "https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.4.3",
             "assets": [
-              {"name": "Rikkahub-M-0.4.3.apk", "size": 19341771, "browser_download_url": "https://github.com/cs9527h/Rikkahub-M/releases/download/v0.4.3/Rikkahub-M-0.4.3.apk"},
+              {"name": "Rikkahub-M-0.4.3.apk", "size": 19341771, "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "browser_download_url": "https://github.com/cs9527h/Rikkahub-M/releases/download/v0.4.3/Rikkahub-M-0.4.3.apk"},
               {"name": "SHA256SUMS.txt", "size": 87, "browser_download_url": "https://example.invalid/SHA256SUMS.txt"}
             ]
           },
@@ -96,6 +96,44 @@ class UpdateParsingTest {
         assertEquals("https://8.133.167.195/updates/Rikkahub-M-0.4.3.apk", notes[0].apkUrl)
         assertEquals("mirror", notes[0].source)
         assertEquals("ABC", notes[0].sha256)
+    }
+
+    @Test
+    fun githubDigestBecomesSha256() {
+        val notes = UpdateParsing.githubReleases(json, githubFixture)
+        assertEquals("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", notes.first().sha256)
+    }
+
+    @Test
+    fun mirrorManifestRewritesMismatchedVersionAndDropsBadSize() {
+        // 线上事故复现：0.7.0 条目指向 0.6.1 的安装包，大小也是 0.6.1 的，但哈希是 0.7.0 的
+        val manifest = """
+            {"format":1,"releases":[{
+              "version":"0.7.0","tag":"v0.7.0","body":"说明",
+              "apkUrl":"https://8.133.167.195/updates/Rikkahub-M-0.6.1.apk",
+              "apkSize":19348074,
+              "sha256":"19f6f5a1b1303436661f65ca4c3f8db8545d6c84defb2678a2baa03a8f8da050"
+            }]}
+        """.trimIndent()
+        val note = UpdateParsing.manifest(json, manifest, "https://8.133.167.195/updates").single()
+        assertEquals("https://8.133.167.195/updates/Rikkahub-M-0.7.0.apk", note.apkUrl)
+        assertNull("地址被改写后原大小不可信", note.apkSize)
+        assertEquals("19f6f5a1b1303436661f65ca4c3f8db8545d6c84defb2678a2baa03a8f8da050", note.sha256)
+    }
+
+    @Test
+    fun mirrorManifestAcceptsAliasUrlAndSize() {
+        val manifest = """
+            {"format":1,"releases":[{
+              "version":"0.7.0",
+              "url":"https://8.133.167.195/updates/Rikkahub-M-0.7.0.apk",
+              "size":19405390,
+              "sha256":"19f6f5a1b1303436661f65ca4c3f8db8545d6c84defb2678a2baa03a8f8da050"
+            }]}
+        """.trimIndent()
+        val note = UpdateParsing.manifest(json, manifest, "https://8.133.167.195/updates").single()
+        assertEquals("https://8.133.167.195/updates/Rikkahub-M-0.7.0.apk", note.apkUrl)
+        assertEquals(19405390L, note.apkSize)
     }
 
     @Test

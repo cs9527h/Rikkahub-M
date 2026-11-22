@@ -115,6 +115,8 @@ class SettingsStore internal constructor(
         val FAST_MODEL_REASONING_LEVEL = stringPreferencesKey("fast_model_reasoning_level")
         val MEMORY_MODEL = stringPreferencesKey("memory_model")
         val MEMORY_MODEL_REASONING_LEVEL = stringPreferencesKey("memory_model_reasoning_level")
+        val MEMORY_RUN_TOKEN_BUDGET = intPreferencesKey("memory_run_token_budget")
+        val MEMORY_DAILY_TOKEN_BUDGET = intPreferencesKey("memory_daily_token_budget")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val ENABLE_SUGGESTION = booleanPreferencesKey("enable_suggestion")
         val IMAGE_GENERATION_MODEL = stringPreferencesKey("image_generation_model")
