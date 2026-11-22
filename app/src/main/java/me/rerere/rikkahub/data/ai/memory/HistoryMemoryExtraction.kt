@@ -74,8 +74,16 @@ internal fun parseHistoryCandidates(
             findForbiddenMemoryContent(fact) != null || findForbiddenMemoryContent(evidence) != null
         ) return@mapNotNull null
         HistoryMemoryCandidate(
-            jobId, factKey(fact), item.category, subject, fact, evidence,
-            conversationId, excerpt.messageId, excerpt.time,
+            jobId = jobId,
+            key = factKey(fact),
+            // scope 由任务在写库时补上（checkpoint 里 copy(scope = ...)）
+            category = item.category,
+            subject = subject,
+            fact = fact,
+            evidence = evidence,
+            conversationId = conversationId,
+            messageId = excerpt.messageId,
+            sourceTime = excerpt.time,
         )
     }.distinctBy { it.key }
 }
