@@ -90,15 +90,59 @@ NGINX
 
 if [[ "${3:-}" == "--deploy" || "${2:-}" == "--deploy" ]]; then
   HOST=${MIRROR_HOST:-root@8.133.167.195}
-  ssh "$HOST" 'mkdir -p /var/www/updates'
-  scp "$OUT_DIR"/Rikkahub-M-*.apk "$OUT_DIR/manifest.json" "$HOST:/var/www/updates/"
-  ssh "$HOST" "python3 - <<'PY'
-import json, urllib.request
-data = json.load(open('/var/www/updates/manifest.json'))
-latest = max(data['releases'], key=lambda r: r['version'])
+  ssh "$HOST" 'mkdir -p /var/www/updates/notes'
+  # 用户版说明（新增/优化/修复/其他）放进 notes/，服务端重建清单时按版本取用
+  python3 - "$VERSION" > "$OUT_DIR/notes-$VERSION.md" <<'PYNOTES'
+import json, sys, pathlib
+version = sys.argv[1]
+data = json.loads(pathlib.Path("app/src/main/assets/updates.json").read_text(encoding="utf-8"))
+body = next((r.get("body", "") for r in data["releases"] if r.get("version") == version), "")
+sys.stdout.write(body)
+PYNOTES
+  scp "$OUT_DIR/Rikkahub-M-${VERSION}.apk" "$OUT_DIR/notes-$VERSION.md" "$HOST:/var/www/updates/"
+  ssh "$HOST" "mv /var/www/updates/notes-$VERSION.md /var/www/updates/notes/$VERSION.md && python3 - <<'PYREMOTE'
+import datetime, hashlib, json, pathlib
+base = pathlib.Path('/var/www/updates')
+manifest_path = base / 'manifest.json'
+old = {}
+if manifest_path.exists():
+    try:
+        old = {r.get('version'): r for r in json.loads(manifest_path.read_text(encoding='utf-8')).get('releases', [])}
+    except Exception:
+        old = {}
+releases = []
+for apk in sorted(base.glob('Rikkahub-M-*.apk')):
+    v = apk.stem.removeprefix('Rikkahub-M-')
+    notes = base / 'notes' / f'{v}.md'
+    prev = old.get(v, {})
+    body = notes.read_text(encoding='utf-8') if notes.exists() else prev.get('body', '')
+    releases.append({
+        'version': v,
+        'tag': f'v{v}',
+        'title': prev.get('title') or f'Rikkahub-M {v}',
+        'summary': prev.get('summary', ''),
+        'body': body,
+        'publishedAt': prev.get('publishedAt') or datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'prerelease': '-' in v,
+        'source': 'mirror',
+        'apkUrl': f'https://8.133.167.195/updates/{apk.name}',
+        'apkSize': apk.stat().st_size,
+        'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
+        'pageUrl': f'https://github.com/cs9527h/Rikkahub-M/releases/tag/v{v}',
+    })
+for release in releases:
+    expected = f"Rikkahub-M-{release['version']}.apk"
+    if release['apkUrl'].rsplit('/', 1)[-1] != expected:
+        raise SystemExit(f"manifest 自检失败：{release['version']} 指向 {release['apkUrl']}")
+manifest_path.write_text(json.dumps({
+    'format': 1,
+    'updatedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'releases': releases,
+}, ensure_ascii=False, indent=2), encoding='utf-8')
+latest = max(releases, key=lambda r: r['version'])
 print('deployed latest:', latest['version'], latest['apkSize'], latest['sha256'][:16])
-PY"
-  echo "已上传到 $HOST:/var/www/updates；确认 nginx 已包含 nginx-updates.conf 里的 location 后 reload。"
+PYREMOTE"
+  echo "已上传到 $HOST:/var/www/updates 并重建 manifest。"
 else
   echo "生成完毕，未部署。部署：bash scripts/publish_update_mirror.sh $VERSION dist/Rikkahub-M-$VERSION.apk --deploy"
 fi
