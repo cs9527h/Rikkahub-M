@@ -81,7 +81,10 @@ fun UpdateCard(vm: ChatVM) {
     }
     state.onSuccess { info ->
         var showDetail by remember { mutableStateOf(false) }
-        var dismissed by remember { mutableStateOf(false) }
+        // 同一版本提示过一次就不再弹，避免每次进聊天都打扰
+        var dismissed by remember(info.version) {
+            mutableStateOf(!vm.updateChecker.shouldPrompt(info.version))
+        }
         val current = remember { Version(BuildConfig.VERSION_NAME) }
         val latest = remember(info) { Version(info.version) }
         if (latest > current && !dismissed) {
@@ -107,7 +110,10 @@ fun UpdateCard(vm: ChatVM) {
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = { dismissed = true }) {
+                        IconButton(onClick = {
+                            dismissed = true
+                            vm.updateChecker.markPrompted(info.version)
+                        }) {
                             Icon(
                                 imageVector = HugeIcons.Cancel01,
                                 contentDescription = stringResource(R.string.update_card_close),

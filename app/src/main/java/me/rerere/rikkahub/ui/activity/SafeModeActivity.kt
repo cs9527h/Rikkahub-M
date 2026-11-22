@@ -5,7 +5,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.horizontalScroll
@@ -52,11 +56,16 @@ import me.rerere.rikkahub.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.pages.backup.components.BackupDialog
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import me.rerere.rikkahub.RouteActivity
@@ -69,6 +78,9 @@ private const val LARGE_FIELD_MIN_CHARS = 5_000_000
 
 class SafeModeActivity : ComponentActivity() {
     private val settingsStore by inject<SettingsStore>()
+
+    // 主界面进不去时的最后一道抢救手段：只用磁盘上的库文件与设置，不要求 Room 能打开
+    private val backupManager by inject<BackupManager>()
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,8 +96,102 @@ class SafeModeActivity : ComponentActivity() {
                     .collectAsStateWithLifecycle(emptyList())
                 var pendingClearKey by remember { mutableStateOf<String?>(null) }
                 var clearing by remember { mutableStateOf(false) }
+                var exporting by remember { mutableStateOf(false) }
+                var importing by remember { mutableStateOf(false) }
+                var showImportConfirm by remember { mutableStateOf(false) }
+                var restoreStaged by remember { mutableStateOf(false) }
+                val busy = exporting || importing
                 val scope = rememberCoroutineScope()
                 val context = LocalContext.current
+
+                val exportLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument("application/zip")
+                ) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    exporting = true
+                    scope.launch {
+                        try {
+                            val archive = backupManager.createBackup(includeDatabase = true, includeFiles = true)
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    val output = contentResolver.openOutputStream(uri)
+                                        ?: error("无法写入所选文件")
+                                    output.use { out ->
+                                        archive.inputStream().use { input ->
+                                            val buffer = ByteArray(64 * 1024)
+                                            while (true) {
+                                                val count = input.read(buffer)
+                                                if (count <= 0) break
+                                                out.write(buffer, 0, count)
+                                            }
+                                        }
+                                    }
+                                }
+                            } finally {
+                                archive.delete()
+                            }
+                            Toast.makeText(context, getString(R.string.backup_page_backup_success), Toast.LENGTH_SHORT).show()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            Log.e(TAG, "安全模式导出失败", e)
+                            Toast.makeText(context, "导出失败：" + (e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+                        } finally {
+                            exporting = false
+                        }
+                    }
+                }
+
+                // 先校验并暂存，下次启动时在 Room 打开库之前替换；当前库已损坏也能恢复
+                val importLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri == null) return@rememberLauncherForActivityResult
+                    importing = true
+                    scope.launch {
+                        try {
+                            val archive = withContext(Dispatchers.IO) {
+                                File.createTempFile("safe_mode_restore_", ".zip", cacheDir).also { file ->
+                                    try {
+                                        val input = contentResolver.openInputStream(uri)
+                                            ?: error("无法读取所选文件")
+                                        input.use { stream ->
+                                            file.outputStream().use { out ->
+                                                val buffer = ByteArray(64 * 1024)
+                                                while (true) {
+                                                    val count = stream.read(buffer)
+                                                    if (count <= 0) break
+                                                    out.write(buffer, 0, count)
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Throwable) {
+                                        file.delete()
+                                        throw e
+                                    }
+                                }
+                            }
+                            try {
+                                backupManager.stageRestore(archive, includeDatabase = true, includeFiles = true)
+                            } finally {
+                                archive.delete()
+                            }
+                            restoreStaged = true
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            Log.e(TAG, "安全模式导入失败", e)
+                            val message = e.message ?: "未知错误"
+                            Toast.makeText(
+                                context,
+                                if (message.contains("口令")) "该备份已加密，请回到应用内备份页恢复" else "导入失败：$message",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        } finally {
+                            importing = false
+                        }
+                    }
+                }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -128,6 +234,34 @@ class SafeModeActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.safe_mode_switch_assistant))
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                val timestamp = LocalDateTime.now()
+                                    .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+                                exportLauncher.launch("Rikkahub-M-backup-$timestamp.zip")
+                            },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (exporting) R.string.backup_page_exporting else R.string.backup_page_export_desc
+                                )
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { showImportConfirm = true },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (importing) R.string.backup_page_importing else R.string.backup_page_import_desc
+                                )
+                            )
                         }
 
                         if (largeFields.isNotEmpty()) {
@@ -194,6 +328,31 @@ class SafeModeActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                if (showImportConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showImportConfirm = false },
+                        title = { Text(stringResource(R.string.backup_page_local_backup_import)) },
+                        text = { Text(stringResource(R.string.backup_page_import_overwrite_confirm)) },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showImportConfirm = false
+                                    importLauncher.launch(arrayOf("application/zip"))
+                                }
+                            ) { Text(stringResource(R.string.confirm)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showImportConfirm = false }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        },
+                    )
+                }
+
+                if (restoreStaged) {
+                    BackupDialog()
                 }
 
                 pendingClearKey?.let { key ->

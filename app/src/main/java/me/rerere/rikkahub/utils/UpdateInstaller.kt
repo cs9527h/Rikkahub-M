@@ -22,6 +22,9 @@ import java.security.MessageDigest
 class InstallPermissionRequiredException(val apk: File) :
     IllegalStateException("系统尚未允许 Rikkahub-M 安装应用")
 
+/** 用户主动取消下载：已下载的部分会被删除，不留半包。 */
+class UpdateCancelledException : IllegalStateException("已取消下载")
+
 object UpdateInstaller {
 
     private const val UPDATE_DIR = "updates"
@@ -33,6 +36,8 @@ object UpdateInstaller {
         url: String,
         expectedSha256: String?,
         onProgress: (Long, Long) -> Unit = { _, _ -> },
+        onVerifying: () -> Unit = {},
+        isCancelled: () -> Boolean = { false },
     ): Result<File> = runCatching {
         val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
         val target = File(dir, UPDATE_FILE)
@@ -52,6 +57,7 @@ object UpdateInstaller {
                 FileOutputStream(target).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
+                        if (isCancelled()) throw UpdateCancelledException()
                         val count = input.read(buffer)
                         if (count <= 0) break
                         output.write(buffer, 0, count)
@@ -63,6 +69,9 @@ object UpdateInstaller {
             }
             if (total > 0 && read != total) throw UpdateCheckException("下载不完整（$read/$total 字节）")
         }
+
+        if (isCancelled()) throw UpdateCancelledException()
+        onVerifying()
 
         val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
         val expected = expectedSha256?.lowercase()?.replace(":", "")?.trim()
