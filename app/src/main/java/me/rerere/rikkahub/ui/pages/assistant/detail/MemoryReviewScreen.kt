@@ -337,7 +337,8 @@ internal fun MemoryReviewScreen(
 
                     CandidateTab.SKIPPED -> {
                         Text(
-                            "找回不会重新提取、不消耗 Token；候选正文、证据和来源都按原样恢复。",
+                            "找回不会重新提取、不消耗 Token；候选正文、证据和来源都按原样恢复。\n" +
+                                "恢复只改状态、不删除数据。需要完整备份时，可先到「设置 → 备份」导出数据库。",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         if (undoAvailable) {
