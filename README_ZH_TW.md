@@ -35,7 +35,7 @@
 >
 > SHA-256：`f0983bbf0b4b2c738bff31b80bd5aec34e1ad5f96982064db59011e9863e2676`
 >
-> 本版摘要：仓库主页重写：简体中文 / English / 繁體中文三个 README 统一结构（品牌封面、最新正式版区块、核心功能、当前状态、与上游区别、文档、许可），移动端优先，删掉 0.4.x 的过时版本说明与长表格。；README 自动同步：新增 `Sync README release block` 工作流，正式 Release 发布后自动把版本号、APK 链接、大小、SHA-256 与摘要写回三个 README 的受控区块；只认 `draft=false && prerelease=false` 且同时带 APK 与 `SHA256SUMS.txt` 的发布，API 失败或哈希核对失败时保持上次内容，依赖 `[skip ci]` 与并发组避免循环触发。
+> 本版摘要：可以跳过不想要的版本；README 与正式版自动同步；更新下载残留自动清理。
 >
 > 完整說明見 [v0.6.0 更新日誌](docs/releases/0.6.0.md)。
 <!-- RELEASE-BLOCK:END -->

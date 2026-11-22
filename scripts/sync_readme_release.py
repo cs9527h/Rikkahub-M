@@ -60,6 +60,18 @@ def sha256_for(release: dict, repo: str, token: str) -> str | None:
     return match[1].lower() if match else None
 
 
+def bundled_note(version: str) -> dict | None:
+    path = ROOT / "app/src/main/assets/updates.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for note in data.get("releases", []):
+        if note.get("version") == version:
+            return note
+    return None
+
+
 def bullets(body: str, limit: int = 2) -> list[str]:
     lines = []
     for raw in body.splitlines():
@@ -82,10 +94,13 @@ def block(release: dict, sha: str, lang: str) -> str:
     published = (release.get("published_at") or "")[:10]
     code = release.get("target_commitish", "")
     notes = f"docs/releases/{version}.md"
-    bullets_text = bullets(release.get("body") or "")
+    # 优先用内置日志里的手写摘要与要点；Release 正文偏技术，不适合当首页摘要
+    note = bundled_note(version) or {}
+    summary_text = (note.get("summary") or "").strip()
+    bullets_text = bullets(note.get("body") or "") or bullets(release.get("body") or "")
 
     if lang == "zh":
-        summary = "；".join(bullets_text) if bullets_text else "详见完整更新日志。"
+        summary = summary_text or ("；".join(bullets_text) if bullets_text else "详见完整更新日志。")
         return (
             f"{BEGIN}\n"
             f"> **最新正式版：v{version}**（{published}，commit `{code[:8]}`）\n>\n"
@@ -96,7 +111,7 @@ def block(release: dict, sha: str, lang: str) -> str:
             f"{END}"
         )
     if lang == "zh-TW":
-        summary = "；".join(bullets_text) if bullets_text else "詳見完整更新日誌。"
+        summary = summary_text or ("；".join(bullets_text) if bullets_text else "詳見完整更新日誌。")
         return (
             f"{BEGIN}\n"
             f"> **最新正式版：v{version}**（{published}，commit `{code[:8]}`）\n>\n"
