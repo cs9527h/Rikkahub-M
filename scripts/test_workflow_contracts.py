@@ -117,5 +117,23 @@ class WorkflowContractsTest(unittest.TestCase):
 
 
 
+    def test_release_body_comes_from_user_facing_notes(self):
+        """Release 正文必须由 updates.json 生成，禁止再把技术发布说明整段当正文。"""
+        self.assertNotIn('--notes-file "docs/releases/${VERSION}.md"', RELEASE)
+        self.assertIn("scripts/user_release_notes.py", RELEASE)
+        self.assertIn('--notes-file "$RUNNER_TEMP/release-notes.md"', RELEASE)
+
+    def test_bundled_updates_json_is_user_facing(self):
+        """内置日志只允许四个分类，不能出现开发过程章节。"""
+        import json, pathlib, re
+        data = json.loads(pathlib.Path("app/src/main/assets/updates.json").read_text(encoding="utf-8"))
+        allowed = {"新增", "优化", "修复", "其他"}
+        for note in data["releases"]:
+            heads = set(re.findall(r"^#{2,4}\s*(.+)$", note.get("body", ""), re.M))
+            self.assertLessEqual(heads, allowed, f"{note['version']} 出现了非用户分类: {heads - allowed}")
+            for banned in ("GitHub Actions", "JVM", "Android Lint", "发布策略", "README 同步"):
+                self.assertNotIn(banned, note.get("body", ""), f"{note['version']} 含开发者细节: {banned}")
+
+
 if __name__ == "__main__":
     unittest.main()

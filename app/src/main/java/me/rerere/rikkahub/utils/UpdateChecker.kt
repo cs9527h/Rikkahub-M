@@ -2,7 +2,6 @@ package me.rerere.rikkahub.utils
 
 import android.content.Context
 import android.os.SystemClock
-import android.widget.Toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -87,6 +86,8 @@ data class UpdateDownload(
     val url: String,
     val size: String,
     val sha256: String? = null,
+    /** 精确字节数（来自 GitHub asset 或镜像 manifest），用于下载完整性校验。 */
+    val bytes: Long = 0,
 )
 
 @Serializable
@@ -99,6 +100,8 @@ data class UpdateInfo(
     val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
     val prerelease: Boolean = false,
     val summary: String = "",
+    /** 置顶的「精选更新」：只在真实正式版本上使用，不用于计划或预告。 */
+    val featured: Boolean = false,
 )
 
 class UpdateChecker(
@@ -130,6 +133,15 @@ class UpdateChecker(
 
     /** 下载/校验的统一状态；界面、通知栏、聊天页卡片都读这一份。 */
     val download: StateFlow<UpdateDownloadState> = downloadState.asStateFlow()
+
+    /** 通知不可用等系统级问题的提示；非空时界面必须如实告知，而不是假装通知栏正常。 */
+    private val notificationProblemState = MutableStateFlow<String?>(null)
+    val notificationProblem: StateFlow<String?> = notificationProblemState.asStateFlow()
+
+    /** 前台服务/通知被拒绝时由下载服务回填。 */
+    fun reportNotificationProblem(message: String?) {
+        notificationProblemState.value = message
+    }
 
     /** 正在下载/待安装的版本信息，供界面从后台下载状态重新打开进度。 */
     val targetInfo: UpdateInfo? get() = activeInfo
@@ -175,11 +187,12 @@ class UpdateChecker(
                 val info = UpdateInfo(
                     version = latestStable.version,
                     publishedAt = latestStable.publishedAt,
-                    changelog = latestStable.body,
+                    changelog = UpdateNotes.userFacing(latestStable.body).ifBlank { latestStable.body },
                     downloads = downloadsOf(latestStable),
-                    summary = latestStable.summary.ifBlank { summarize(latestStable.body) },
+                    summary = latestStable.summary.ifBlank { UpdateNotes.summary(latestStable.body) },
                     tag = latestStable.tag,
                     pageUrl = latestStable.pageUrl,
+                    featured = latestStable.featured,
                 )
                 state.value = UiState.Success(info)
                 UpdateCheckResult.Available(info)
@@ -192,9 +205,9 @@ class UpdateChecker(
                     val info = UpdateInfo(
                         version = latestPreview.version,
                         publishedAt = latestPreview.publishedAt,
-                        changelog = latestPreview.body,
+                        changelog = UpdateNotes.userFacing(latestPreview.body).ifBlank { latestPreview.body },
                         downloads = downloadsOf(latestPreview),
-                        summary = latestPreview.summary.ifBlank { summarize(latestPreview.body) },
+                        summary = latestPreview.summary.ifBlank { UpdateNotes.summary(latestPreview.body) },
                         tag = latestPreview.tag,
                         pageUrl = latestPreview.pageUrl,
                         prerelease = true,
@@ -278,6 +291,7 @@ class UpdateChecker(
                 url = url,
                 size = note.apkSize?.let { "${it / 1024} KB" } ?: "universal APK",
                 sha256 = note.sha256,
+                bytes = note.apkSize ?: 0,
             )
         )
     }
@@ -285,7 +299,15 @@ class UpdateChecker(
     /** 更新日志：内置当前版本说明始终可读，联网后合并已发布的正式/预览版本。 */
     suspend fun releaseNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
         val bundled: List<ReleaseNote> = bundledNotes()
-        val remote: List<ReleaseNote> = fetchReleases() ?: emptyList()
+        val remote: List<ReleaseNote> = (fetchReleases() ?: emptyList()).map { note ->
+            // GitHub Release 正文是技术发布说明：只抽出四类里用户可读的条目，
+            // 抽不出来（纯技术文档）就留空，绝不让开发者细节整段进页面。
+            note.copy(
+                body = UpdateNotes.userFacing(note.body),
+                summary = note.summary.ifBlank { UpdateNotes.summary(note.body) },
+            )
+        }
+        // 内置条目优先：同一版本以 assets/updates.json 的精简文案为准，联网刷新不覆盖它
         bundled.plus(remote)
             .distinctBy { note -> note.version }
             .sortedByDescending { note -> Version(note.version) }
@@ -310,21 +332,27 @@ class UpdateChecker(
         activeInfo = info
         cancelRequested = false
         downloadState.value = UpdateDownloadState.Preparing(info.version)
+        // 检查更新与下载分离：无论刚才是从 GitHub、atom 还是备用源拿到的版本信息，
+        // 下载都按「GitHub 正式附件 → 已验证备用源」的顺序尝试，避免检查成功却下载必然失败。
+        val sources = downloadSources(info, download)
         downloadJob = appScope.launch {
             var lastEmit = 0L
             val result = UpdateInstaller.downloadAndVerify(
                 context = context,
                 client = client,
-                url = download.url,
+                sources = sources,
                 expectedSha256 = download.sha256,
-                onProgress = { read, total ->
+                expectedSize = download.bytes,
+                onProgress = { read, total, source ->
                     val now = SystemClock.elapsedRealtime()
                     if (now - lastEmit >= 120 || (total > 0 && read >= total)) {
                         lastEmit = now
-                        downloadState.value = UpdateDownloadState.Running(info.version, read, total)
+                        downloadState.value = UpdateDownloadState.Running(info.version, read, total, source)
                     }
                 },
-                onVerifying = { downloadState.value = UpdateDownloadState.Verifying(info.version) },
+                onVerifying = { source ->
+                    downloadState.value = UpdateDownloadState.Verifying(info.version, source)
+                },
                 isCancelled = { cancelRequested },
             )
             downloadJob = null
@@ -334,17 +362,58 @@ class UpdateChecker(
                 result.exceptionOrNull() is CancellationException -> UpdateDownloadState.Idle
                 else -> UpdateDownloadState.Failed(
                     info.version,
-                    result.exceptionOrNull()?.message ?: "下载失败",
+                    describeDownloadFailure(result.exceptionOrNull()),
+                    info.pageUrl,
                 )
             }
-        }.also { UpdateDownloadService.start(context) }
+        }
+        // 前台服务/通知失败不能让下载静默降级成「看不见」的下载：记录下来交给界面提示。
+        if (!UpdateDownloadService.start(context)) {
+            notificationProblem.value = "系统未允许下载通知（前台服务启动失败），进度仅在应用内显示"
+        }
     }
 
-    /** 取消下载：立刻停掉协程并删掉半截文件，状态回到空闲。 */
+    /** GitHub 正式附件优先；同一版本的备用源 APK 作为第二来源。 */
+    private fun downloadSources(info: UpdateInfo, download: UpdateDownload): List<UpdateSource> {
+        val github = "https://github.com/$REPO/releases/download/${info.tag.ifBlank { "v${info.version}" }}/${download.name}"
+        val mirror = "${mirrorBase()}/${download.name}"
+        val primary = if (download.url.contains("github.com", ignoreCase = true) || download.url.contains("githubusercontent.com", ignoreCase = true)) {
+            download.url
+        } else {
+            github
+        }
+        val candidates = listOf(
+            UpdateSource("GitHub", primary),
+            UpdateSource("备用源", mirror),
+        )
+        // 检查结果本身指向备用源时也保留原地址，避免域名/IP 变更后 manifest 地址失效
+        val extra = UpdateSource("原地址", download.url)
+        return (candidates + extra).distinctBy { it.url }
+    }
+
+    private fun describeDownloadFailure(error: Throwable?): String {
+        val raw = error?.message ?: return "下载失败，请检查网络后重试"
+        return when (error) {
+            is UpdateHttpException -> when (error.code) {
+                403 -> "下载被拒绝（403），已尝试备用源仍失败"
+                404 -> "安装包不存在（404），请稍后再试或到浏览器下载"
+                429 -> "请求过于频繁（429），请稍后重试"
+                in 500..599 -> "服务器异常（${error.code}），请稍后重试"
+                else -> "下载失败（HTTP ${error.code}）"
+            }
+            is java.net.UnknownHostException -> "无法连接下载服务器（域名解析失败）"
+            is java.net.SocketTimeoutException -> "下载超时，已保留进度，可点击重试续传"
+            is java.io.IOException -> "网络中断（${raw}），已保留进度，可重试续传"
+            else -> raw
+        }
+    }
+
+    /** 取消下载：停掉协程，保留已下载部分（下次同一来源可续传），状态回到空闲。 */
     fun cancelDownload() {
         cancelRequested = true
         downloadJob?.cancel()
         downloadJob = null
+        UpdateDownloadService.stop(context)
         downloadState.value = UpdateDownloadState.Idle
     }
 
@@ -369,7 +438,6 @@ class UpdateChecker(
             downloads = listOf(download),
         )
         startDownload(info)
-        Toast.makeText(context, "已开始下载更新包，可在通知栏查看进度", Toast.LENGTH_SHORT).show()
     }
 
     private fun mirrorBase(): String =

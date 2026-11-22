@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
@@ -42,6 +47,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -80,6 +86,7 @@ import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.InstallPermissionRequiredException
 import me.rerere.rikkahub.utils.UpdateDownloadState
 import me.rerere.rikkahub.utils.formatByteSize
+import me.rerere.rikkahub.utils.UpdateDownloadService
 import me.rerere.rikkahub.utils.UpdateInstaller
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
@@ -105,6 +112,21 @@ fun SettingAboutPage() {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val context = LocalContext.current
     val downloadState by updateChecker.download.collectAsStateWithLifecycle()
+    // 通知权限：下载前申请一次；拒绝也不阻塞下载，只是弹窗内改为显示应用内进度提示
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            updateChecker.reportNotificationProblem(null)
+            UpdateDownloadService.start(context)
+        } else {
+            updateChecker.reportNotificationProblem("通知权限未授予，下载进度仅在应用内显示")
+        }
+    }
+    val needsNotificationPermission =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
     val navController = LocalNavController.current
     val soundOptions = remember { listOf(R.raw.bingbingbing, R.raw.gangguan) }
     val soundEffectPlayer = remember(context) { SoundEffectPlayer(context) }
@@ -257,7 +279,7 @@ fun SettingAboutPage() {
                                         }
                                         is UpdateDownloadState.Verifying -> "正在校验更新包 ${state.version}"
                                         is UpdateDownloadState.Ready -> "更新包已就绪，点击继续安装"
-                                        is UpdateDownloadState.Failed -> "下载失败，点击重试"
+                                        is UpdateDownloadState.Failed -> "下载失败，点击重试或改用浏览器下载"
                                         UpdateDownloadState.Idle -> "versionCode ${BuildConfig.VERSION_CODE} · 点击检查更新"
                                     }
                                 )
@@ -363,6 +385,14 @@ fun SettingAboutPage() {
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                            val notificationProblem by updateChecker.notificationProblem.collectAsStateWithLifecycle()
+                            notificationProblem?.let { warning ->
+                                Text(
+                                    text = warning,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
                             when (val state = downloadState) {
                                 is UpdateDownloadState.Running -> {
                                     val fraction = state.fraction
@@ -379,7 +409,8 @@ fun SettingAboutPage() {
                                             modifier = Modifier.fillMaxWidth(),
                                         )
                                         Text(
-                                            "${formatByteSize(state.read)} / ${formatByteSize(state.total)} · ${(fraction * 100).toInt()}%",
+                                            "${formatByteSize(state.read)} / ${formatByteSize(state.total)} · ${(fraction * 100).toInt()}%" +
+                                                if (state.source.isNotBlank()) " · 来源 ${state.source}" else "",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -427,20 +458,31 @@ fun SettingAboutPage() {
                         }
                     },
                     confirmButton = {
-                        when (downloadState) {
+                        when (val state = downloadState) {
                             is UpdateDownloadState.Preparing,
                             is UpdateDownloadState.Running,
                             is UpdateDownloadState.Verifying
                             -> TextButton(onClick = { updateChecker.cancelDownload() }) { Text("取消下载") }
 
-                            is UpdateDownloadState.Failed ->
+                            is UpdateDownloadState.Failed -> Row {
+                                TextButton(onClick = {
+                                    val page = downloadState.let { (it as? UpdateDownloadState.Failed)?.pageUrl }
+                                        ?: "https://github.com/cs9527h/Rikkahub-M/releases"
+                                    runCatching { context.openUrl(page) }
+                                }) { Text("浏览器下载") }
                                 TextButton(onClick = { updateChecker.retryDownload() }) { Text("重试") }
+                            }
 
                             is UpdateDownloadState.Ready ->
                                 TextButton(onClick = {}, enabled = false) { Text("正在安装") }
 
                             UpdateDownloadState.Idle ->
-                                TextButton(onClick = { updateChecker.startDownload(info) }) { Text("立即更新") }
+                                TextButton(onClick = {
+                                    updateChecker.startDownload(info)
+                                    if (needsNotificationPermission) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                }) { Text("立即更新") }
                         }
                     },
                     dismissButton = {

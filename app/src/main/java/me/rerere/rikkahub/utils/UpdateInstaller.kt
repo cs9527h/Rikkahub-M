@@ -4,26 +4,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.provider.Settings
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
-import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
 import java.security.MessageDigest
 
 /**
  * 应用内更新下载与校验。
- * 优先级：SHA-256 → 包名 → 版本号（必须更高）→ 与已安装应用相同的签名证书。
- * 校验全部通过后才交给系统安装器，用户仍需在系统弹窗里确认，绝不静默安装。
+ *
+ * 下载委托给 [UpdateDownloadEngine]：多来源、退避重试、Range 断点续传、大小与 SHA-256 校验；
+ * 这里只负责 Android 侧的安装校验（包名、versionCode、签名证书）与系统安装器入口。
+ * 全部校验通过后交给系统安装器，用户仍需在系统弹窗确认，绝不静默安装。
  */
 class InstallPermissionRequiredException(val apk: File) :
     IllegalStateException("系统尚未允许 Rikkahub-M 安装应用")
 
-/** 用户主动取消下载：已下载的部分会被删除，不留半包。 */
+/** 用户主动取消下载：保留已下载部分，下次可续传。 */
 class UpdateCancelledException : IllegalStateException("已取消下载")
+
+/** 一次下载来源（GitHub 正式附件 / 已验证的备用源）。 */
+data class UpdateSource(val label: String, val url: String)
 
 object UpdateInstaller {
 
@@ -33,56 +35,32 @@ object UpdateInstaller {
     suspend fun downloadAndVerify(
         context: Context,
         client: OkHttpClient,
-        url: String,
+        sources: List<UpdateSource>,
         expectedSha256: String?,
-        onProgress: (Long, Long) -> Unit = { _, _ -> },
-        onVerifying: () -> Unit = {},
+        expectedSize: Long? = null,
+        onProgress: (read: Long, total: Long, source: String) -> Unit = { _, _, _ -> },
+        onVerifying: (source: String) -> Unit = {},
         isCancelled: () -> Boolean = { false },
     ): Result<File> = runCatching {
         val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
-        val target = File(dir, UPDATE_FILE)
-        if (target.exists()) target.delete()
-
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
-            .build()
-        val digest = MessageDigest.getInstance("SHA-256")
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw UpdateHttpException(response.code, "")
-            val body = response.body
-            val total = body.contentLength()
-            var read = 0L
-            body.byteStream().use { input ->
-                FileOutputStream(target).use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        if (isCancelled()) throw UpdateCancelledException()
-                        val count = input.read(buffer)
-                        if (count <= 0) break
-                        output.write(buffer, 0, count)
-                        digest.update(buffer, 0, count)
-                        read += count
-                        onProgress(read, total)
-                    }
-                }
-            }
-            if (total > 0 && read != total) throw UpdateCheckException("下载不完整（$read/$total 字节）")
+        val apk = UpdateDownloadEngine.download(
+            client = client,
+            sources = sources,
+            target = File(dir, UPDATE_FILE),
+            expectedSha256 = expectedSha256,
+            expectedSize = expectedSize,
+            onProgress = onProgress,
+            onVerifying = onVerifying,
+            isCancelled = isCancelled,
+        )
+        try {
+            verifyArchive(context, apk)
+        } catch (e: UpdateCheckException) {
+            // 包名/版本/签名不对的包不可复用，删除后让用户重试或换浏览器下载
+            apk.delete()
+            throw e
         }
-
-        if (isCancelled()) throw UpdateCancelledException()
-        onVerifying()
-
-        val sha256 = digest.digest().joinToString("") { "%02x".format(it) }
-        val expected = expectedSha256?.lowercase()?.replace(":", "")?.trim()
-        if (!expected.isNullOrEmpty() && sha256 != expected) {
-            throw UpdateCheckException("SHA-256 不匹配，已丢弃下载文件")
-        }
-
-        verifyArchive(context, target)
-        target
-    }.onFailure {
-        File(File(context.cacheDir, UPDATE_DIR), UPDATE_FILE).takeIf { it.exists() }?.delete()
+        apk
     }
 
     private fun verifyArchive(context: Context, apk: File) {
@@ -106,6 +84,28 @@ object UpdateInstaller {
         if (archiveCert == null || installedCert == null || archiveCert != installedCert) {
             throw UpdateCheckException("签名证书与已安装版本不一致，拒绝安装")
         }
+    }
+
+    private fun readMeta(file: File): DownloadMeta? = runCatching {
+        if (!file.isFile) return null
+        val lines = file.readLines()
+        if (lines.firstOrNull().isNullOrBlank()) return null
+        DownloadMeta(
+            url = lines[0],
+            etag = lines.getOrNull(1)?.takeIf { it.isNotBlank() },
+            lastModified = lines.getOrNull(2)?.takeIf { it.isNotBlank() },
+        )
+    }.getOrNull()
+
+    private fun writeMeta(file: File, meta: DownloadMeta) {
+        runCatching {
+            file.writeText(listOf(meta.url, meta.etag.orEmpty(), meta.lastModified.orEmpty()).joinToString("\n"))
+        }
+        Unit
+    }
+
+    private fun deleteQuietly(vararg files: File) {
+        files.forEach { runCatching { if (it.exists()) it.delete() } }
     }
 
     /** Android 8 起，覆盖安装必须由用户为本应用单独打开「安装未知应用」。 */

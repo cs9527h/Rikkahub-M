@@ -23,11 +23,16 @@ sealed interface UpdateDownloadState {
     }
 
     /** 下载完成，正在校验 SHA-256、包名、版本号与签名。 */
-    data class Verifying(val version: String) : UpdateDownloadState
+    data class Verifying(val version: String, val source: String = "") : UpdateDownloadState
 
     data class Ready(val version: String, val apk: File) : UpdateDownloadState
 
-    data class Failed(val version: String, val message: String) : UpdateDownloadState
+    /** pageUrl 用于「浏览器下载」入口，保证应用内失败时用户仍有退路。 */
+    data class Failed(
+        val version: String,
+        val message: String,
+        val pageUrl: String? = null,
+    ) : UpdateDownloadState
 }
 
 /** 1.2 MB / 812 KB；只用于界面显示，不参与任何校验。 */

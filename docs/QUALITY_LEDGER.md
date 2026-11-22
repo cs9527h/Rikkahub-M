@@ -12,6 +12,17 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.6.1）
+
+### 已完成（代码 + CI 覆盖）
+
+- 0.6.1：更新下载多源回退（GitHub 正式附件 → 已校验备用源 → 原检查地址），每源最多 3 次退避重试；4xx（除 408/429）不重试。
+- 0.6.1：Range 断点续传，校验 `206`、`Content-Range` 起点与 `If-Range`；服务端忽略 Range 或区间非法时安全重下；仅校验失败删除文件。
+- 0.6.1：`UpdateDownloadService` 不再静默吞异常，检查通知权限/前台服务限制，持续通知含百分比与取消动作；通知不可用时弹窗如实提示。
+- 0.6.1：Release 正文由 `scripts/user_release_notes.py` 从 `updates.json` 生成，发布前断言只有四个用户分类；`docs/releases/<v>.md` 保留技术细节。
+- 0.6.1：`UpdateNotes` 解析/净化 + 分类页面、历史折叠、刷新保留旧列表；新增 `UpdateNotesTest`、`UpdateTransferPolicyTest`。
+- 0.6.1：失败原因区分 HTTP/网络，关于页提供浏览器下载；去掉重复 Toast；取消保留续传文件。
+
 ## 当前状态（0.6.0）
 
 说明：只写代码与 CI 层面已确认的事实；凡标「未真机」的项一律不算完成。

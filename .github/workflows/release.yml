@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.6.0'
+  VERSION: '0.6.1'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -162,7 +162,7 @@ jobs:
           apk=${apks[0]}
           test -x "$APKANALYZER"
           test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
-          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 22
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 23
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -262,6 +262,21 @@ jobs:
         with:
           name: Rikkahub-M-signed-apk
           path: dist
+      - name: Render user-facing release notes
+        run: |
+          set -euo pipefail
+          python3 scripts/user_release_notes.py "$VERSION" > "$RUNNER_TEMP/release-notes.md"
+          # 正文只允许四个用户分类，技术章节（发布策略/CI/构建记录）一律不得出现
+          python3 - "$RUNNER_TEMP/release-notes.md" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding="utf-8").read()
+          heads = set(re.findall(r"^### (.+)$", text, re.M))
+          if not heads or heads - {"新增", "优化", "修复", "其他"}:
+              raise SystemExit("Release 正文分类不合规: " + str(sorted(heads)))
+          if re.search(r"^##\s*(发布策略|CI|构建|测试)", text, re.M):
+              raise SystemExit("Release 正文混入了开发者技术章节")
+          PY
+          cp "$RUNNER_TEMP/release-notes.md" release-notes.md
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -300,13 +315,13 @@ jobs:
             }
             if [[ "${#flags[@]}" -eq 0 ]]; then
               gh release edit "$TAG" --repo "$GH_REPO" --latest \
-                --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md" --prerelease=false
+                --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease=false
             else
               gh release edit "$TAG" --repo "$GH_REPO" \
-                --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md" --prerelease=true
+                --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease=true
             fi
           else
             gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
               --repo "$GH_REPO" --target "$GITHUB_SHA" "${flags[@]}" \
-              --title "Rikkahub-M ${VERSION}" --notes-file "docs/releases/${VERSION}.md"
+              --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
