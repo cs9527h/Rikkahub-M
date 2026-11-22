@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.6.1**（2026-11-22，commit `3dbb3d18`）
+> **最新正式版：v0.7.0**（2026-11-22，commit `c7cf9960`）
 >
-> 安裝包：[Rikkahub-M-0.6.1.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.6.1/Rikkahub-M-0.6.1.apk) · 18.5 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-0.7.0.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.7.0/Rikkahub-M-0.7.0.apk) · 18.5 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`1a6f525c42e8f1ad3b46b6b87d28bb7da4cba3e381519470b9936da2531b1ff9`
+> SHA-256：`19f6f5a1b1303436661f65ca4c3f8db8545d6c84defb2678a2baa03a8f8da050`
 >
-> 本版摘要：更新下载更可靠，通知栏能看到进度；更新日志恢复简洁分类。
+> 本版摘要：历史聊天可以批量转成可审核的长期记忆，新聊天能按需召回。
 >
-> 完整說明見 [v0.6.1 更新日誌](docs/releases/0.6.1.md)。
+> 完整說明見 [v0.7.0 更新日誌](docs/releases/0.7.0.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
