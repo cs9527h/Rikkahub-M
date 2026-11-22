@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -129,10 +128,13 @@ fun UpdateCard(vm: ChatVM) {
                             )
                         }
                     }
-                    MarkdownBlock(
-                        content = info.changelog,
+                    // 卡片只放两三行摘要；完整分类日志在独立页面查看
+                    Text(
+                        text = info.summary.ifBlank { "点击查看本次更新内容" },
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.heightIn(max = 200.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
             }

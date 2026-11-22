@@ -1,5 +1,5 @@
 {
-  "version": "0.6.0",
+  "version": "0.6.1",
   "measured": false,
   "source": "未采集（本版只有 CI 模拟器与自动化门禁，无真机数据）",
   "device": "",
