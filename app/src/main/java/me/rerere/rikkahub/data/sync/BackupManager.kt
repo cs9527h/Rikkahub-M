@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -104,7 +105,7 @@ class BackupManager(
                     }
                     if (backupDatabase) {
                         val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
-                        DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
+                        createDatabaseSnapshot(snapshot)
                         entries += addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
                     }
                     if (backupSettings && !includeFiles) {
@@ -358,6 +359,30 @@ class BackupManager(
         )
     }
 
+    /**
+     * 备份数据库。正常走 Room 的 VACUUM INTO；迁移失败或降级安装时 Room 打不开库，
+     * 改为只读打开盘上的库文件拍快照，保留原 schema 版本，恢复时再走迁移。
+     * 两条路径都不改动原库数据。
+     */
+    private fun createDatabaseSnapshot(destination: File) {
+        try {
+            DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, destination)
+        } catch (e: Exception) {
+            Log.w(TAG, "Room snapshot failed, snapshotting the database file instead", e)
+            check(!destination.exists() || destination.delete()) { "无法清理未完成的快照" }
+            try {
+                DatabaseBackup.createSnapshot(
+                    context,
+                    context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME),
+                    destination,
+                )
+            } catch (fallback: Exception) {
+                e.addSuppressed(fallback)
+                throw e
+            }
+        }
+    }
+
     private fun isAttachment(name: String): Boolean {
         val folder = name.substringBefore('/')
         if (folder !in ATTACHMENT_FOLDERS || '/' !in name) return false
@@ -389,6 +414,8 @@ class BackupManager(
     companion object {
         private const val MAX_SETTINGS_BYTES = 64L * 1024 * 1024
         private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
+        private const val TAG = "BackupManager"
+
         private val ATTACHMENT_FOLDERS =
             listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
 

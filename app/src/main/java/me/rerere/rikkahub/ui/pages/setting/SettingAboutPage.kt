@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
@@ -27,6 +28,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -56,7 +59,6 @@ import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.drawAppLogo
@@ -75,6 +77,8 @@ import androidx.compose.ui.platform.LocalResources
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.utils.InstallPermissionRequiredException
+import me.rerere.rikkahub.utils.UpdateDownloadState
+import me.rerere.rikkahub.utils.formatByteSize
 import me.rerere.rikkahub.utils.UpdateInstaller
 import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.plus
@@ -91,8 +95,6 @@ fun SettingAboutPage() {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var checking by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var pendingUpdate by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<me.rerere.rikkahub.utils.UpdateInfo?>(null) }
-    var installing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var installStage by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     // 已校验通过、只等用户授权「安装未知应用」的安装包
     var needsInstallPermission by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<java.io.File?>(null)
@@ -101,6 +103,7 @@ fun SettingAboutPage() {
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val context = LocalContext.current
+    val downloadState by updateChecker.download.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val soundOptions = remember { listOf(R.raw.bingbingbing, R.raw.gangguan) }
     val soundEffectPlayer = remember(context) { SoundEffectPlayer(context) }
@@ -216,7 +219,14 @@ fun SettingAboutPage() {
                         item(
                             modifier = Modifier.combinedClickable(
                                 onClick = {
-                                    if (checking) {
+                                    if (downloadState is UpdateDownloadState.Failed) {
+                                        updateChecker.retryDownload()
+                                    } else if (pendingUpdate == null && updateChecker.targetInfo != null &&
+                                        downloadState !is UpdateDownloadState.Idle
+                                    ) {
+                                        // 后台下载进行中：点版本行直接回到进度弹窗，不重新检查
+                                        pendingUpdate = updateChecker.targetInfo
+                                    } else if (checking) {
                                         // 已在检查中，忽略重复点击。
                                     } else {
                                     checking = true
@@ -235,7 +245,22 @@ fun SettingAboutPage() {
                                 onLongClick = { navController.navigate(Screen.Debug) },
                             ),
                             leadingContent = { CardGroupIcon(HugeIcons.Code, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("versionCode ${BuildConfig.VERSION_CODE} · 点击检查更新") },
+                            supportingContent = {
+                                Text(
+                                    when (val state = downloadState) {
+                                        is UpdateDownloadState.Preparing -> "正在准备下载 ${state.version}"
+                                        is UpdateDownloadState.Running -> {
+                                            val percent = state.fraction?.let { (it * 100).toInt() }
+                                            if (percent == null) "正在下载 ${state.version} · ${formatByteSize(state.read)}"
+                                            else "正在下载 ${state.version} · $percent%"
+                                        }
+                                        is UpdateDownloadState.Verifying -> "正在校验更新包 ${state.version}"
+                                        is UpdateDownloadState.Ready -> "更新包已就绪，点击继续安装"
+                                        is UpdateDownloadState.Failed -> "下载失败，点击重试"
+                                        UpdateDownloadState.Idle -> "versionCode ${BuildConfig.VERSION_CODE} · 点击检查更新"
+                                    }
+                                )
+                            },
                             headlineContent = { Text(if (checking) stringResource(R.string.about_page_checking_update) else BuildConfig.VERSION_NAME) },
                         )
                     }
@@ -327,59 +352,116 @@ fun SettingAboutPage() {
 
             pendingUpdate?.let { info ->
                 AlertDialog(
-                    onDismissRequest = { if (!installing) pendingUpdate = null },
+                    onDismissRequest = { pendingUpdate = null },
                     title = { Text(if (info.prerelease) "发现预览版本 ${info.version}" else "发现新版本 ${info.version}") },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                text = if (installStage.isNullOrBlank()) "更新包会先校验 SHA-256、包名、版本号和签名，再交给系统安装。" else installStage!!,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            MarkdownBlock(
-                                content = info.changelog.ifBlank { "该版本没有填写更新说明。" },
+                                text = info.summary.ifBlank {
+                                    "更新包会先校验 SHA-256、包名、版本号和签名，再交给系统安装。"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier
-                                    .heightIn(max = 260.dp)
-                                    .verticalScroll(rememberScrollState()),
                             )
+                            when (val state = downloadState) {
+                                is UpdateDownloadState.Running -> {
+                                    val fraction = state.fraction
+                                    if (fraction == null) {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                        Text(
+                                            "已下载 ${formatByteSize(state.read)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else {
+                                        LinearProgressIndicator(
+                                            progress = { fraction },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                        Text(
+                                            "${formatByteSize(state.read)} / ${formatByteSize(state.total)} · ${(fraction * 100).toInt()}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                is UpdateDownloadState.Preparing -> {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    Text(
+                                        "正在连接下载源…",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                is UpdateDownloadState.Verifying -> {
+                                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                    Text(
+                                        "正在校验 SHA-256、包名、版本号和签名…",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                is UpdateDownloadState.Failed -> Text(
+                                    "下载失败：${state.message}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                is UpdateDownloadState.Ready -> Text(
+                                    "校验通过，正在打开系统安装器",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                UpdateDownloadState.Idle -> {}
+                            }
+                            TextButton(onClick = { navController.navigate(Screen.MateChangelog) }) {
+                                Text("查看完整更新日志")
+                            }
                         }
                     },
                     confirmButton = {
-                        TextButton(
-                            enabled = !installing,
-                            onClick = {
-                                installing = true
-                                installStage = "正在下载更新包…"
-                                scope.launch {
-                                    val result = updateChecker.installUpdate(info)
-                                    installing = false
-                                    val error = result.exceptionOrNull()
-                                    when {
-                                        result.isSuccess -> {
-                                            installStage = "校验通过，请在系统弹窗中确认安装"
-                                            pendingUpdate = null
-                                        }
-                                        error is InstallPermissionRequiredException -> {
-                                            // 只授权一次，不再重复弹同一个错误
-                                            pendingUpdate = null
-                                            installStage = null
-                                            needsInstallPermission = error.apk
-                                        }
-                                        else -> {
-                                            pendingUpdate = null
-                                            installStage = null
-                                            installFailure = error?.message ?: "未知错误"
-                                        }
-                                    }
-                                }
-                            },
-                        ) { Text("立即更新") }
+                        when (downloadState) {
+                            is UpdateDownloadState.Preparing,
+                            is UpdateDownloadState.Running,
+                            is UpdateDownloadState.Verifying
+                            -> TextButton(onClick = { updateChecker.cancelDownload() }) { Text("取消下载") }
+
+                            is UpdateDownloadState.Failed ->
+                                TextButton(onClick = { updateChecker.retryDownload() }) { Text("重试") }
+
+                            is UpdateDownloadState.Ready ->
+                                TextButton(onClick = {}, enabled = false) { Text("正在安装") }
+
+                            UpdateDownloadState.Idle ->
+                                TextButton(onClick = { updateChecker.startDownload(info) }) { Text("立即更新") }
+                        }
                     },
                     dismissButton = {
-                        TextButton(enabled = !installing, onClick = { pendingUpdate = null }) { Text("稍后") }
+                        TextButton(onClick = { pendingUpdate = null }) {
+                            Text(
+                                when (downloadState) {
+                                    is UpdateDownloadState.Idle, is UpdateDownloadState.Failed -> "稍后"
+                                    else -> "后台下载"
+                                }
+                            )
+                        }
                     },
                 )
+            }
+
+            // 下载完成：只在这里拉起一次系统安装器，失败按权限/其他原因分别给提示
+            val readyState = downloadState as? UpdateDownloadState.Ready
+            LaunchedEffect(readyState) {
+                val ready = readyState ?: return@LaunchedEffect
+                val result = runCatching { UpdateInstaller.startSystemInstall(context, ready.apk) }
+                val error = result.exceptionOrNull()
+                if (error != null) {
+                    pendingUpdate = null
+                    if (error is InstallPermissionRequiredException) {
+                        needsInstallPermission = error.apk
+                    } else {
+                        installFailure = error.message ?: "未知错误"
+                    }
+                }
+                updateChecker.clearDownload()
             }
         }
     }

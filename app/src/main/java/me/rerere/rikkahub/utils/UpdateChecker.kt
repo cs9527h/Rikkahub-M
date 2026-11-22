@@ -1,8 +1,11 @@
 package me.rerere.rikkahub.utils
 
 import android.content.Context
+import android.os.SystemClock
 import android.widget.Toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +70,8 @@ data class ReleaseNote(
     val apkSize: Long? = null,
     val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
     val source: String = "github",
+    /** 弹窗用的一两行摘要；留空时从 body 提取。 */
+    val summary: String = "",
 )
 
 @Serializable
@@ -93,6 +98,7 @@ data class UpdateInfo(
     val tag: String = "v$version",
     val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
     val prerelease: Boolean = false,
+    val summary: String = "",
 )
 
 class UpdateChecker(
@@ -114,6 +120,19 @@ class UpdateChecker(
 
     /** 最近一次检查失败原因，供“检查更新”展示，不覆盖已有的成功数据。 */
     val lastFailure: StateFlow<String?> = lastError.asStateFlow()
+
+    private val downloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
+    private var downloadJob: Job? = null
+    private var activeInfo: UpdateInfo? = null
+
+    @Volatile
+    private var cancelRequested = false
+
+    /** 下载/校验的统一状态；界面、通知栏、聊天页卡片都读这一份。 */
+    val download: StateFlow<UpdateDownloadState> = downloadState.asStateFlow()
+
+    /** 正在下载/待安装的版本信息，供界面从后台下载状态重新打开进度。 */
+    val targetInfo: UpdateInfo? get() = activeInfo
 
     private val cacheFile = File(context.filesDir, "update-cache.json")
 
@@ -146,6 +165,7 @@ class UpdateChecker(
                     publishedAt = latestStable.publishedAt,
                     changelog = latestStable.body,
                     downloads = downloadsOf(latestStable),
+                    summary = latestStable.summary.ifBlank { summarize(latestStable.body) },
                     tag = latestStable.tag,
                     pageUrl = latestStable.pageUrl,
                 )
@@ -162,6 +182,7 @@ class UpdateChecker(
                         publishedAt = latestPreview.publishedAt,
                         changelog = latestPreview.body,
                         downloads = downloadsOf(latestPreview),
+                        summary = latestPreview.summary.ifBlank { summarize(latestPreview.body) },
                         tag = latestPreview.tag,
                         pageUrl = latestPreview.pageUrl,
                         prerelease = true,
@@ -263,41 +284,80 @@ class UpdateChecker(
         json.decodeFromString(MirrorManifest.serializer(), text).releases
     }.getOrNull() ?: emptyList()
 
-    /** 下载 → 校验 SHA-256/包名/版本号/签名 → 交给系统安装器确认，绝不静默安装。 */
-    suspend fun installUpdate(info: UpdateInfo): Result<File> = withContext(Dispatchers.IO) {
+    /**
+     * 开始下载更新包。已在下载则不重复开始，避免并发和多份半截文件。
+     * 进度与校验都写进 [download]，界面关掉再打开也能接着看。
+     */
+    fun startDownload(info: UpdateInfo) {
+        if (downloadJob?.isActive == true) return
         val download = info.downloads.firstOrNull()
-            ?: return@withContext Result.failure(UpdateCheckException("该版本没有可下载的安装包"))
-        val result = UpdateInstaller.downloadAndVerify(
-            context = context,
-            client = client,
-            url = download.url,
-            expectedSha256 = download.sha256,
-        )
-        result.mapCatching { file ->
-            // 没有「安装未知应用」授权时先不 panic，交给界面引导用户去设置一次。
-            UpdateInstaller.startSystemInstall(context, file)
-            file
+        if (download == null) {
+            downloadState.value = UpdateDownloadState.Failed(info.version, "该版本没有可下载的安装包")
+            return
         }
+        activeInfo = info
+        cancelRequested = false
+        downloadState.value = UpdateDownloadState.Preparing(info.version)
+        downloadJob = appScope.launch {
+            var lastEmit = 0L
+            val result = UpdateInstaller.downloadAndVerify(
+                context = context,
+                client = client,
+                url = download.url,
+                expectedSha256 = download.sha256,
+                onProgress = { read, total ->
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastEmit >= 120 || (total > 0 && read >= total)) {
+                        lastEmit = now
+                        downloadState.value = UpdateDownloadState.Running(info.version, read, total)
+                    }
+                },
+                onVerifying = { downloadState.value = UpdateDownloadState.Verifying(info.version) },
+                isCancelled = { cancelRequested },
+            )
+            downloadJob = null
+            downloadState.value = when {
+                result.isSuccess -> UpdateDownloadState.Ready(info.version, result.getOrThrow())
+                cancelRequested -> UpdateDownloadState.Idle
+                result.exceptionOrNull() is CancellationException -> UpdateDownloadState.Idle
+                else -> UpdateDownloadState.Failed(
+                    info.version,
+                    result.exceptionOrNull()?.message ?: "下载失败",
+                )
+            }
+        }.also { UpdateDownloadService.start(context) }
     }
 
-    /** 兼容旧调用点：聊天页更新卡片点下载时也走校验流程。 */
+    /** 取消下载：立刻停掉协程并删掉半截文件，状态回到空闲。 */
+    fun cancelDownload() {
+        cancelRequested = true
+        downloadJob?.cancel()
+        downloadJob = null
+        downloadState.value = UpdateDownloadState.Idle
+    }
+
+    /** 失败后重试同一个版本；没有记录时什么也不做，由界面提示手动检查。 */
+    fun retryDownload() {
+        val info = activeInfo ?: return
+        startDownload(info)
+    }
+
+    /** 安装器已经接管（或用户放弃）后清空状态，避免残留 Ready 反复拉起安装。 */
+    fun clearDownload() {
+        if (downloadJob?.isActive == true) return
+        downloadState.value = UpdateDownloadState.Idle
+    }
+
+    /** 兼容旧入口：聊天页更新卡片点击下载时也走同一套下载与校验。 */
     fun downloadUpdate(context: Context, download: UpdateDownload) {
-        appScope.launch {
-            val info = UpdateInfo(
-                version = download.name.removePrefix("Rikkahub-M-").removeSuffix(".apk"),
-                publishedAt = "",
-                changelog = "",
-                downloads = listOf(download),
-            )
-            installUpdate(info).exceptionOrNull()?.let { error ->
-                val message = if (error is InstallPermissionRequiredException) {
-                    "需要先在系统设置里允许 Rikkahub-M 安装应用"
-                } else {
-                    "更新失败：" + (error.message ?: "未知错误")
-                }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-            }
-        }
+        val info = UpdateInfo(
+            version = download.name.removePrefix("Rikkahub-M-").removeSuffix(".apk"),
+            publishedAt = "",
+            changelog = "",
+            downloads = listOf(download),
+        )
+        startDownload(info)
+        Toast.makeText(context, "已开始下载更新包，可在通知栏查看进度", Toast.LENGTH_SHORT).show()
     }
 
     private fun mirrorBase(): String =
@@ -338,10 +398,36 @@ class UpdateChecker(
         else -> UpdateCheckResult.Failed("上次检查未完成")
     }
 
+    /** 同一版本在聊天页只提示一次，关掉就不再重复打扰；「关于」页仍可手动检查。 */
+    fun shouldPrompt(version: String): Boolean =
+        prefs.getString(KEY_PROMPTED_VERSION, null) != version
+
+    fun markPrompted(version: String) {
+        prefs.edit().putString(KEY_PROMPTED_VERSION, version).apply()
+    }
+
     private fun apkName(version: String) = UpdateParsing.apkName(version)
+
+    /** 从更新日志里挑最前面的几条要点做弹窗摘要，最多三条、不超过 120 字。 */
+    private fun summarize(body: String): String {
+        val bullets = body.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("- ") || it.startsWith("* ") }
+            .map { it.removePrefix("- ").removePrefix("* ").replace("**", "").trim() }
+            .filter { it.isNotEmpty() }
+            .take(3)
+            .toList()
+        if (bullets.isNotEmpty()) return bullets.joinToString(" · ").take(120)
+        return body.lineSequence()
+            .map { it.trim().removePrefix("#").trim() }
+            .firstOrNull { it.isNotEmpty() }
+            ?.take(120)
+            ?: ""
+    }
 
     private companion object {
         const val KEY_LAST_CHECK = "last_check"
+        const val KEY_PROMPTED_VERSION = "prompted_version"
         const val KEY_MIRROR_BASE = "mirror_base"
 
     }
