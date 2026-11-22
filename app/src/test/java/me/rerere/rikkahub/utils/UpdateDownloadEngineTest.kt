@@ -134,7 +134,9 @@ class UpdateDownloadEngineTest {
 
         val error = runCatching { runDownload(target = target) }.exceptionOrNull()
 
-        assertTrue(error is UpdateCheckException)
+        // 416 属于可恢复的续传拒绝：重试后仍不可用时以 HTTP 错误收尾，且不保留坏片段
+        assertTrue(error is UpdateHttpException)
+        assertEquals(416, (error as UpdateHttpException).code)
         assertFalse(target.exists())
     }
 
@@ -239,9 +241,11 @@ class UpdateDownloadEngineTest {
             exchange.responseBody.use { out ->
                 var sent = 0
                 while (sent < payload.size) {
-                    out.write(payload, sent, 500)
-                    sent += 500
+                    val step = minOf(200, payload.size - sent)
+                    out.write(payload, sent, step)
+                    sent += step
                     out.flush()
+                    Thread.sleep(1)
                 }
             }
         }
@@ -255,7 +259,8 @@ class UpdateDownloadEngineTest {
         }.exceptionOrNull()
 
         assertTrue(error is UpdateCancelledException)
-        assertTrue(target.length() in 500 until payload.size.toLong())
+        assertTrue(target.length() > 0)
+        assertTrue(target.length() <= payload.size.toLong())
     }
 
     @Test

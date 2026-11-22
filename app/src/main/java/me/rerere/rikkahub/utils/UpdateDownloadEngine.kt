@@ -199,6 +199,7 @@ object UpdateDownloadEngine {
                 }
             }
 
+            if (isCancelled()) throw UpdateCancelledException()
             val written = target.length()
             if (total > 0 && written != total) {
                 throw UpdateCheckException("下载不完整（$written/$total 字节），已保留可续传的部分")

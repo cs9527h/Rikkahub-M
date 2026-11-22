@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.utils
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -113,6 +114,7 @@ class UpdateDownloadService : Service(), KoinComponent {
         stopSelf()
     }
 
+    @SuppressLint("MissingPermission") // 调用前已检查 areNotificationsEnabled 与 POST_NOTIFICATIONS
     private fun post(notification: android.app.Notification): Boolean = try {
         NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
         true
