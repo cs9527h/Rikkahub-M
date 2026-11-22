@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
-PREVIEW = (ROOT / ".github/workflows/mate-v1-preview.yml").read_text()
+CI = (ROOT / ".github/workflows/ci-build.yml").read_text() if (ROOT / ".github/workflows/ci-build.yml").exists() else (ROOT / ".github/workflows/daily-build.yml").read_text()
 
 
 def job(workflow, name):
@@ -16,6 +16,18 @@ def job(workflow, name):
 
 
 class WorkflowContractsTest(unittest.TestCase):
+    def test_only_the_release_workflow_publishes_releases(self):
+        workflows = list((ROOT / ".github/workflows").glob("*.yml"))
+        names = {path.name for path in workflows}
+        # 历史 nightly / 预览 / 一次性迁移工作流已移除，避免与正式发布链重复
+        self.assertNotIn("mate-v1-preview.yml", names)
+        self.assertNotIn("promote-043-stable.yml", names)
+        publishers = [path.name for path in workflows if "gh release create" in path.read_text() or "softprops/action-gh-release" in path.read_text()]
+        self.assertEqual(["release.yml"], publishers)
+        # 日常检查只编译和测试，不产出安装包
+        self.assertNotIn("assembleGithubRelease", CI)
+        self.assertIn(":app:assembleGithubDebug", CI)
+
     def test_publish_requires_successful_build_and_upgrade(self):
         publish = job(RELEASE, "publish")
         needs = re.search(r"^    needs: \[([^]]+)\]$", publish, re.M)
@@ -54,7 +66,7 @@ class WorkflowContractsTest(unittest.TestCase):
         self.assertIn('"${#apks[@]}" -eq 1', RELEASE)
 
     def test_full_instrumentation_static_analysis_and_failure_reports_are_wired(self):
-        for workflow in (RELEASE, PREVIEW):
+        for workflow in (RELEASE,):
             self.assertIn(":app:lintGithubDebug", workflow)
             self.assertIn("script: bash scripts/run-connected-verification.sh", workflow)
             wrapper = (ROOT / "scripts/run-connected-verification.sh").read_text()
@@ -66,7 +78,7 @@ class WorkflowContractsTest(unittest.TestCase):
             self.assertIn("app/build/test-results/**", workflow)
             self.assertIn("app/schemas/**", workflow)
             self.assertIn("if: always()", workflow)
-        self.assertNotIn("continue-on-error:", PREVIEW)
+        self.assertNotIn("continue-on-error:", CI)
 
     def test_signed_upgrade_uses_release_package_artifacts_and_data_contract(self):
         script = (ROOT / "scripts/compare-installed-screens.sh").read_text()
@@ -79,7 +91,8 @@ class WorkflowContractsTest(unittest.TestCase):
         self.assertNotIn('WARN: $label($theme) window not confirmed', script)
 
     def test_workflow_secrets_are_environment_values_not_interpolated_shell(self):
-        for workflow in (RELEASE, PREVIEW):
+        # CI 日常检查不再接触签名密钥；只有正式发布工作流需要这条约束
+        for workflow in (RELEASE,):
             self.assertIn('"$STORE_PASSWORD"', workflow)
             self.assertNotIn('echo "storePassword=${{', workflow)
             self.assertNotIn('echo "keyPassword=${{', workflow)

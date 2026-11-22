@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -412,8 +413,16 @@ fun SettingAboutPage() {
                                 )
                                 UpdateDownloadState.Idle -> {}
                             }
-                            TextButton(onClick = { navController.navigate(Screen.MateChangelog) }) {
-                                Text("查看完整更新日志")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(onClick = { navController.navigate(Screen.MateChangelog) }) {
+                                    Text("查看完整更新日志")
+                                }
+                                TextButton(onClick = {
+                                    updateChecker.ignoreVersion(info.version)
+                                    pendingUpdate = null
+                                }) {
+                                    Text("跳过此版本")
+                                }
                             }
                         }
                     },

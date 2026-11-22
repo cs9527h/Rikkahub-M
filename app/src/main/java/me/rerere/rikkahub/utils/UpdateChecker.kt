@@ -137,7 +137,19 @@ class UpdateChecker(
     private val cacheFile = File(context.filesDir, "update-cache.json")
 
     init {
+        pruneStaleDownloads()
         appScope.launch { runCatching { refresh(force = false) } }
+    }
+
+    /** 清理上次没下完或校验失败的残留安装包，避免占着缓存却不会被用到。 */
+    private fun pruneStaleDownloads() {
+        val dir = File(context.cacheDir, "updates")
+        val cutoff = System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000
+        runCatching {
+            dir.listFiles()?.forEach { file ->
+                if (file.isFile && file.lastModified() < cutoff) file.delete()
+            }
+        }
     }
 
     suspend fun checkNow(): UpdateCheckResult = refresh(force = true)
@@ -398,13 +410,24 @@ class UpdateChecker(
         else -> UpdateCheckResult.Failed("上次检查未完成")
     }
 
-    /** 同一版本在聊天页只提示一次，关掉就不再重复打扰；「关于」页仍可手动检查。 */
+    /** 同一版本只提示一次；主动「跳过此版本」后连卡片也不再出现。 */
     fun shouldPrompt(version: String): Boolean =
-        prefs.getString(KEY_PROMPTED_VERSION, null) != version
+        prefs.getString(KEY_PROMPTED_VERSION, null) != version &&
+            prefs.getString(KEY_IGNORED_VERSION, null) != version
 
     fun markPrompted(version: String) {
         prefs.edit().putString(KEY_PROMPTED_VERSION, version).apply()
     }
+
+    /** 用户明确跳过某个版本：不再提示，但在「关于」页仍能看到并手动检查。 */
+    fun ignoreVersion(version: String) {
+        prefs.edit()
+            .putString(KEY_IGNORED_VERSION, version)
+            .putString(KEY_PROMPTED_VERSION, version)
+            .apply()
+    }
+
+    fun ignoredVersion(): String? = prefs.getString(KEY_IGNORED_VERSION, null)
 
     private fun apkName(version: String) = UpdateParsing.apkName(version)
 
@@ -428,6 +451,7 @@ class UpdateChecker(
     private companion object {
         const val KEY_LAST_CHECK = "last_check"
         const val KEY_PROMPTED_VERSION = "prompted_version"
+        const val KEY_IGNORED_VERSION = "ignored_version"
         const val KEY_MIRROR_BASE = "mirror_base"
 
     }

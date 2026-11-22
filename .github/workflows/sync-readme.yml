@@ -1,0 +1,44 @@
+name: Sync README release block
+
+# 正式 Release 发布后，把版本号、下载链接、大小、SHA-256 与本版摘要写回各语言 README。
+# 只处理 draft=false 且 prerelease=false 的发布；失败时保留上次正确内容。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: readme-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Update README blocks
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - name: Sync release block
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/sync_readme_release.py
+      - name: Commit when changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md README_ZH_CN.md README_EN.md README_ZH_TW.md; then
+            echo "README 与最新正式版一致，无需提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md README_ZH_CN.md README_EN.md README_ZH_TW.md
+          git commit -m "docs: 同步最新正式版到 README [skip ci]"
+          git push

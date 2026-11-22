@@ -1,51 +1,78 @@
-# Rikkahub-M
+<p align="center">
+  <img src="docs/readme-cover.svg" width="100%" alt="Rikkahub-M" />
+</p>
 
-**Independent open-source Android AI client | Direct model APIs | Local assistants and prompts | Chat history and backups**
+<h1 align="center">Rikkahub-M</h1>
+<p align="center">
+  <strong>Your models. Your assistants. Your data.</strong><br />
+  Direct model APIs · local assistants and prompts · chat and long-term memory · encrypted backups
+</p>
 
-**Language / 语言: [简体中文（默认）](README.md) · English · [繁體中文](README_ZH_TW.md)**
+<p align="center">
+  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/cs9527h/Rikkahub-M?display_name=tag&label=release&color=4169e1" /></a>
+  <a href="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml"><img alt="Release workflow" src="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml/badge.svg" /></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-7b61ff" /></a>
+</p>
 
-> [!CAUTION]
-> **v0.4.0 has been published as a test preview, NOT a stable release.** Its [release notes](https://github.com/cs9527h/Rikkahub-M/releases/tag/v0.4.0) warn that the shipped binary still contains a startup path that may implicitly delete an old standalone chat database and local backup directory. **Do not install or launch that preview until the migration and safety fixes have been verified.** Preserve your previous installation and independent backups.
+<p align="center">
+  <a href="README.md">简体中文</a> · <strong>English</strong> · <a href="README_ZH_TW.md">繁體中文</a>
+</p>
 
-## About
+<p align="center">
+  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>Download</strong></a>　·　
+  <a href="CHANGELOG_MATE.md">Changelog</a>　·　
+  <a href="docs/MATE_USER_GUIDE.md">User guide</a>　·　
+  <a href="docs/RM_VS_RB.md">Differences from upstream</a>　·　
+  <a href="https://github.com/cs9527h/Rikkahub-M/issues">Issues</a>
+</p>
 
-Rikkahub-M is an **unofficial independent fork** of [RikkaHub](https://github.com/rikkahub/rikkahub), built with Kotlin, Jetpack Compose, and Material 3 Expressive. It retains upstream native chat, model providers, assistant configurations, search, and other applicable features.
+---
 
-The project is moving toward a **standalone Android client**: AI requests go directly to user-configured model APIs. Local management of assistant identities, prompt injection, conversations, and long-term memory is the goal. Legacy Mate/AstrBot-specific chat gateway, pairing, cloud persona injection, and cross-platform memory integrations have been retired from the client architecture.
+<!-- RELEASE-BLOCK:BEGIN -->
+> **Latest stable release: v0.5.1** (versionCode 22, 2026-11-22)
+>
+> APK: [Rikkahub-M-0.5.1.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.5.1/Rikkahub-M-0.5.1.apk) · 18.4 MB · universal (arm64-v8a + x86_64)
+>
+> SHA-256: `eb882389ab3ab8584dbcb82fd3f9f80a7ac63d7a5d56bd78b396ac213c708d88`
+>
+> This release: update downloads now show progress, can be cancelled, and continue in the background with a notification; safe mode can export and import a full backup when the main UI cannot start.
+>
+> Details: [v0.5.1 release notes](docs/releases/0.5.1.md).
+<!-- RELEASE-BLOCK:END -->
 
-## Features and development direction
+## What is this
 
-- **Multi-model chat:** Native provider and tool integrations inherited from RikkaHub; actual availability depends on the release and configuration.
-- **Local assistants and prompts:** User-defined assistants, with ongoing validation of Markdown/TXT/JSON prompt import, priority, and persistence in new chats.
-- **Local conversations and memory:** Chat history, with continued work on memory extraction, search, editing, deletion, and cross-chat retrieval.
-- **Backups:** WebDAV and S3 client integrations exist; the optional cloud server is intended for backup storage only. Encryption, recovery keys, and rollback still require end-to-end validation.
-- **User experience:** Startup speed, long conversations, streaming, notifications, consistent UI, and smooth animation are ongoing priorities.
+Rikkahub-M is an **independently maintained open-source Android AI client** forked from [RikkaHub](https://github.com/rikkahub/rikkahub), built with Kotlin, Jetpack Compose and Material 3 Expressive. Chats go directly to the model APIs you configure — no legacy Mate/AstrBot gateway, device pairing or cloud persona injection.
 
-Some items above are **in development or not fully validated**. This list does not claim that the current APK supports them reliably.
+## Core features
 
-## Release status and acceptance criteria
+- **Bring your own models**: OpenAI-compatible, DeepSeek, Gemini-compatible, Claude-compatible, NewAPI-style relays and custom endpoints. Model lists and API errors are reported as they are.
+- **Local assistants**: custom name, avatar, persona prompt and model binding; your existing assistant configuration is never rewritten.
+- **Prompt injection**: import `.md` / `.txt` / `.json`, edit priority, injection position and assistant binding.
+- **Chat and memory**: conversation history, search, message actions; local long-term memory extraction, editing, deletion and recall.
+- **Backup and restore**: single-page backup, no manual passphrase, Keystore-backed recovery key, automatic backup, local / WebDAV / S3.
+- **Safe updates**: GitHub → Atom → China mirror → cache fallback; SHA-256, package name, version code and signature are all verified before handing the APK to the system installer.
 
-[PR #16](https://github.com/cs9527h/Rikkahub-M/pull/16) was merged on November 20, 2026. The v0.4.0 preview was published, but **upgrade safety, data migration, encrypted backup, and on-device acceptance testing remain unverified**.
+## Project status
 
-Before declaring a stable release, the project must:
+- Automated gates run on every release: compile, JVM unit tests, emulator instrumented tests, Android Lint, signature and universal-APK checks, and the historical-version upgrade data contract.
+- **Anything not verified on a physical device is labelled as such**: notification progress and cancel, background download, install-permission return, safe-mode export/import, cross-device restore, and real-device performance numbers.
+- Performance figures are published only when measured on a device; this repository contains no estimated percentages.
 
-- Remove any risk of unintended old database or backup-directory deletion, then verify in-place upgrades, data preservation, and failure recovery on real devices.
-- Verify local prompt injection, memory, migration of provider settings, image/attachment handling, and tools.
-- Test WebDAV/S3 upload, download, restoration, encryption, and key recovery; protect chat content and credentials.
-- Verify startup, long-chat performance, streaming, notification identity, keyboard, and animation.
-- Preserve application ID `com.rikkahub.mate`, signing continuity, and user data; distribute only one universal APK.
+## Differences from upstream
 
-> [!WARNING]
-> **Do not assume ordinary ZIP backups are end-to-end encrypted.** Do not upload sensitive chats or credentials to untrusted storage until client-side encryption and recovery have been verified.
+- Keeps upstream native capabilities and design language; no sponsorships, donations or promoted providers.
+- Independent package name `com.rikkahub.mate`, independent signing and release chain, one universal APK only.
+- Backup and update systems are rebuilt around this project's feedback: single-page backup, no passphrase prompt, four-step verified install.
+- See [docs/RM_VS_RB.md](docs/RM_VS_RB.md) and [docs/RM_VS_RB_FILE_DIFF.md](docs/RM_VS_RB_FILE_DIFF.md).
 
-## Project links
+## Documentation
 
-- [Releases](https://github.com/cs9527h/Rikkahub-M/releases) — read each release's safety notes first
-- [Changelog (Chinese)](CHANGELOG_MATE.md)
-- [Standalone architecture and migration (Chinese)](docs/STANDALONE_BACKUP_ONLY.md)
-- [Legacy bugs and release checklist (Chinese)](docs/LEGACY_BUG_FIX_CHECKLIST.md)
-- [Upstream RikkaHub](https://github.com/rikkahub/rikkahub)
+- [User guide](docs/MATE_USER_GUIDE.md)
+- [Changelog](CHANGELOG_MATE.md) · [Release notes](docs/releases/)
+- [Quality ledger](docs/QUALITY_LEDGER.md)
+- [Backup and architecture notes](docs/STANDALONE_BACKUP_ONLY.md)
 
-## License and privacy
+## License
 
-This is **not** an official RikkaHub release. The project retains upstream copyright and applicable third-party notices under the existing [AGPL-3.0 license](LICENSE). Do not commit personal chats, private persona prompts, API keys, device tokens, or server credentials to this public repository.
+Released under [AGPL-3.0](LICENSE), retaining upstream RikkaHub copyright and attribution. Modified distributions must comply with AGPL-3.0 as well.
