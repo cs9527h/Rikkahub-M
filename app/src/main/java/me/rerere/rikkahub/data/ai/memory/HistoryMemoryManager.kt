@@ -65,7 +65,7 @@ internal class HistoryMemoryManager(
     fun count(id: String, status: String) = dao.count(id, status)
 
     /** 审核页按记忆库取候选：任务被替换后，上一轮没审完的候选仍然可见可恢复。 */
-    fun candidates(scope: String, status: String) = dao.candidatesOfStatus(scope, status)
+    fun candidates(scope: String, status: String) = dao.candidatesOfStatus(scope, status, MAX_BULK)
     fun countOf(scope: String, status: String) = dao.countOfStatus(scope, status)
     fun state(scope: String) = dao.observeState(scope)
 
