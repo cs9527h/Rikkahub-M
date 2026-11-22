@@ -169,7 +169,8 @@ class HistoryMemoryBulkTest {
             history.skipSelected(scope, candidates.map { it.key }.toSet())
             assertEquals(200, history.skippedCount(scope))
             assertEquals(200, history.restoreSkipped(scope))
-            assertEquals(200, history.pendingKeys(scope).size)
+            // 另外 1 条“需确认”的候选从头到尾都留在待审核
+            assertEquals(201, history.pendingKeys(scope).size)
         } finally {
             db.close()
             diskScope.coroutineContext[Job]?.cancelAndJoin()
