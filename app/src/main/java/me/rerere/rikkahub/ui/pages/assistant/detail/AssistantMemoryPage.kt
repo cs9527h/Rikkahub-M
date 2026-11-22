@@ -170,12 +170,12 @@ fun AssistantMemoryPage(id: String) {
         if (keys.isEmpty()) return@LaunchedEffect
         busy = true
         try {
-            result = history.saveSelected(
-                memoryId,
-                current.id,
-                keys.toSet(),
-                if (autoSave) HistoryMemoryManager.BulkMode.SAVE_NEW_ONLY else HistoryMemoryManager.BulkMode.SAVE_SELECTED,
-            )
+            result = if (autoSave) {
+                history.saveSelected(memoryId, current.id, keys.toSet(), HistoryMemoryManager.BulkMode.SAVE_NEW_ONLY)
+            } else {
+                // 用户关掉了自动保存：一条都不写，全部留在待确认
+                HistoryMemoryManager.BulkResult(pending = keys.size)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
