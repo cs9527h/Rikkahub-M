@@ -97,6 +97,8 @@ object UpdateDownloadEngine {
                     target = target,
                     metaFile = metaFile,
                     source = source,
+                    expectedSha256 = expectedSha256,
+                    expectedSize = expectedSize,
                     onProgress = onProgress,
                     isCancelled = isCancelled,
                 )
@@ -135,6 +137,8 @@ object UpdateDownloadEngine {
         target: File,
         metaFile: File,
         source: UpdateSource,
+        expectedSha256: String?,
+        expectedSize: Long?,
         onProgress: (Long, Long, String) -> Unit,
         isCancelled: () -> Boolean,
     ) {
@@ -158,6 +162,9 @@ object UpdateDownloadEngine {
         client.newCall(request).execute().use { response ->
             if (isCancelled()) throw UpdateCancelledException()
             if (response.code == 416 && resumeFrom > 0) {
+                // 416 通常意味着本地已经是完整文件：先按发布信息校验，通过就不再重下。
+                val complete = runCatching { verifyFile(target, expectedSha256, expectedSize) }.isSuccess
+                if (complete) return
                 deleteQuietly(target, metaFile)
                 throw UpdateRestartException("服务端拒绝续传，已重置下载")
             }
@@ -182,6 +189,8 @@ object UpdateDownloadEngine {
                 total = response.body.contentLength()
             }
 
+            // 续传元数据必须在写正文之前落盘：第一次下载就被中断时，下次才知道能从哪儿接着下。
+            writeMeta(metaFile, DownloadMeta(source.url, response.header("ETag"), response.header("Last-Modified")))
             FileOutputStream(target, append).use { output ->
                 response.body.byteStream().use { input ->
                     var read = resumeFrom
@@ -204,7 +213,6 @@ object UpdateDownloadEngine {
             if (total > 0 && written != total) {
                 throw UpdateCheckException("下载不完整（$written/$total 字节），已保留可续传的部分")
             }
-            writeMeta(metaFile, DownloadMeta(source.url, response.header("ETag"), response.header("Last-Modified")))
         }
     }
 
@@ -229,12 +237,15 @@ object UpdateDownloadEngine {
 
     internal fun verifyFile(target: File, expectedSha256: String?, expectedSize: Long?) {
         if (!target.isFile || target.length() == 0L) throw UpdateCheckException("下载文件为空")
+        val expected = expectedSha256?.lowercase()?.replace(":", "")?.trim()
+        if (!expected.isNullOrEmpty()) {
+            // 有哈希时以哈希为准：manifest/asset 里的字节数可能是错的，但内容对就是对的
+            if (sha256(target) != expected) throw UpdateCheckException("SHA-256 不匹配，已删除损坏文件")
+            return
+        }
         if (expectedSize != null && expectedSize > 0 && target.length() != expectedSize) {
             throw UpdateCheckException("文件大小与发布信息不一致（${target.length()} ≠ $expectedSize）")
         }
-        val expected = expectedSha256?.lowercase()?.replace(":", "")?.trim()
-        if (expected.isNullOrEmpty()) return
-        if (sha256(target) != expected) throw UpdateCheckException("SHA-256 不匹配，已删除损坏文件")
     }
 
     /** 流式计算，大文件不占内存；测试与安装前校验共用。 */

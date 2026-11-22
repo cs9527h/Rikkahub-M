@@ -25,18 +25,46 @@ internal fun recallTerms(query: String): Set<String> =
         }
     }.filter { it.length >= 2 && it !in stopWords }.distinct().take(48).toSet()
 
-internal fun memoryRelevance(file: MemoryFile, terms: Set<String>): Int {
+internal fun memoryRelevance(file: MemoryFile, terms: Set<String>): Int = memoryMatch(file, terms).score
+
+internal data class MemoryMatch(
+    /** 标题、路径、别名的命中次数 */
+    val headingHits: Int,
+    /** 正文命中次数 */
+    val bodyHits: Int,
+    /** 查询原句出现在标题或正文里 */
+    val phrase: Boolean,
+) {
+    val score: Int get() = headingHits * 6 + bodyHits * 2
+
+    /**
+     * 一条记忆值不值得召回。
+     *
+     * 旧实现只要有一个共同词就算命中，于是“阅读软件”会匹配到所有带“阅读”两字的记忆。
+     * 现在要求至少两个不同关键词，或者整句出现/标题命中加一个正文佐证。
+     */
+    val relevant: Boolean
+        get() = phrase ||
+            headingHits >= 1 && headingHits + bodyHits >= 2 ||
+            bodyHits >= 3
+}
+
+internal fun memoryMatch(file: MemoryFile, terms: Set<String>, query: String = ""): MemoryMatch {
     val heading = listOf(file.title, file.description, file.path, file.aliases.joinToString(" "))
         .joinToString(" ").lowercase(Locale.ROOT)
     val body = file.recallBody.lowercase(Locale.ROOT)
-    val hits = terms.sumOf { term ->
-        when {
-            term in heading -> 5
-            term in body -> 2
-            else -> 0
-        }
+    var headingHits = 0
+    var bodyHits = 0
+    for (term in terms) {
+        val inHeading = term in heading
+        val inBody = !inHeading && term in body
+        if (inHeading) headingHits++
+        if (inBody) bodyHits++
     }
-    return hits
+    val phrase = query.trim().lowercase(Locale.ROOT).let {
+        it.length >= 4 && (it in heading || it in body)
+    }
+    return MemoryMatch(headingHits, bodyHits, phrase)
 }
 
 @Serializable

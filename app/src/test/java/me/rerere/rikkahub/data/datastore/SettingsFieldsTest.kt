@@ -167,6 +167,8 @@ private val SAMPLE = Settings(
     webServerAccessPassword = "secret",
     webServerLocalhostOnly = true,
     backupReminderConfig = BackupReminderConfig(enabled = true),
+    memoryRunTokenBudget = 50_000,
+    memoryDailyTokenBudget = 200_000,
 )
 
 private val STORED_KEYS = setOf(
@@ -182,6 +184,8 @@ private val STORED_KEYS = setOf(
     "fast_model_reasoning_level",
     "memory_model",
     "memory_model_reasoning_level",
+    "memory_run_token_budget",
+    "memory_daily_token_budget",
     "translate_model",
     "enable_suggestion",
     "enable_auto_title",

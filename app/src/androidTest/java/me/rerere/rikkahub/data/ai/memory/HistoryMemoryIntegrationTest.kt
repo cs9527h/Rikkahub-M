@@ -25,6 +25,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.entity.ConversationEntity
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -121,16 +122,23 @@ class HistoryMemoryIntegrationTest {
             assertEquals(listOf(saved.path), memory.searchForRecall(scope, "测试项目").map { it.path })
 
             val repeated = restarted.persistConfirmedPlan(restarted.prepare(scope, assistant, hundred))
+            val attemptsBeforeRepeat = fixture.attempts
             assertFalse(restarted.run(scope, repeated.id, repeated.generation))
-            val duplicate = restarted.candidates(repeated.id).first().single()
-            restarted.resolve(scope, repeated.id, duplicate.key, duplicate.fact)
-            assertEquals(1, restarted.count(repeated.id, "duplicate").first())
+            // 跨任务批次指纹：同样的聊天第二次整理不会再调用模型，也不会重复产生候选
+            assertEquals(attemptsBeforeRepeat, fixture.attempts)
+            assertTrue(restarted.candidates(repeated.id).first().isEmpty())
             assertEquals(1, memory.getFiles(scope).size)
 
-            val forMerge = duplicate.copy(
+            val forMerge = HistoryMemoryCandidate(
+                jobId = repeated.id,
                 key = "synthetic-merge-key",
+                category = "projects",
+                subject = "测试项目",
                 fact = "测试项目也用 Compose",
                 evidence = "测试项目也用 Compose",
+                conversationId = candidate.conversationId,
+                messageId = candidate.messageId,
+                sourceTime = candidate.sourceTime,
                 status = "pending",
             )
             db.historyMemoryDao().addCandidates(listOf(forMerge))
@@ -154,8 +162,12 @@ class HistoryMemoryIntegrationTest {
             try {
                 checkNotNull(staged.memoryDao().getFile(scope, saved.path))
                 assertEquals(1000, staged.conversationDao().countAll())
-                assertEquals(null, staged.historyMemoryDao().job(scope))
-                assertTrue(staged.historyMemoryDao().pending(repeated.id).first().isEmpty())
+                // 备份必须保住任务状态和候选正文：换机后还能继续审核，也不会重复付费
+                assertEquals(repeated.id, staged.historyMemoryDao().job(scope)?.id)
+                val restoredCandidate = staged.historyMemoryDao().candidatesOf(repeated.id).first().single()
+                assertEquals("测试项目也用 Compose", restoredCandidate.fact)
+                assertEquals("测试项目也用 Compose", restoredCandidate.evidence)
+                assertEquals("saved", restoredCandidate.status)
             } finally {
                 staged.close()
             }

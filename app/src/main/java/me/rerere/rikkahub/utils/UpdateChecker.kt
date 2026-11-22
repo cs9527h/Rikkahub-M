@@ -41,6 +41,8 @@ data class ReleaseAsset(
     val name: String = "",
     val size: Long = 0,
     @SerialName("browser_download_url") val url: String = "",
+    /** GitHub 新 API 直接给出 "sha256:..."，有它就不必再猜。 */
+    val digest: String = "",
 )
 
 @Serializable
@@ -67,6 +69,9 @@ data class ReleaseNote(
     val apkUrl: String? = null,
     val sha256: String? = null,
     val apkSize: Long? = null,
+    /** 备用源 manifest 里的别名（老版本只认 apkUrl，兼容两种写法）。 */
+    @SerialName("url") val directUrl: String? = null,
+    @SerialName("size") val exactSize: Long? = null,
     val pageUrl: String = "https://github.com/$REPO/releases/tag/$tag",
     val source: String = "github",
     /** 弹窗用的一两行摘要；留空时从 body 提取。 */
@@ -185,6 +190,7 @@ class UpdateChecker(
             lastError.value = null
             saveCache(notes)
             val latestStable = UpdateParsing.latestStable(notes, BuildConfig.VERSION_NAME)
+                ?.let { ensureSha256(it) }
             if (latestStable != null) {
                 val info = UpdateInfo(
                     version = latestStable.version,
@@ -203,6 +209,7 @@ class UpdateChecker(
                 val latestPreview = notes.filter { it.prerelease }
                     .maxByOrNull { Version(it.version) }
                     ?.takeIf { Version(it.version) > Version(BuildConfig.VERSION_NAME) }
+                    ?.let { ensureSha256(it) }
                 if (force && latestPreview != null) {
                     val info = UpdateInfo(
                         version = latestPreview.version,
@@ -273,6 +280,27 @@ class UpdateChecker(
 
     private suspend fun mirrorReleases(): List<ReleaseNote> =
         UpdateParsing.manifest(json, httpGet("${mirrorBase()}/manifest.json"), mirrorBase())
+
+    /**
+     * GitHub API 不一定给 digest，正式包旁边却有 SHA256SUMS.txt。
+     * 有哈希才谈得上“下载完整性校验”，所以这里补一次，失败就如实退化为只校验大小。
+     */
+    private suspend fun ensureSha256(note: ReleaseNote): ReleaseNote {
+        if (!note.sha256.isNullOrBlank()) return note
+        val sumsUrl = "https://github.com/$REPO/releases/download/${note.tag.ifBlank { "v${note.version}" }}/SHA256SUMS.txt"
+        return runCatching {
+            val body = httpGet(sumsUrl, accept = "text/plain")
+            val expected = apkName(note.version)
+            body.lineSequence()
+                .map { it.trim().split(Regex("\\s+")) }
+                .firstOrNull { it.size >= 2 && it.last().removePrefix("*").equals(expected, ignoreCase = true) }
+                ?.firstOrNull()
+                ?.lowercase()
+                ?.takeIf { it.length == 64 }
+                ?.let { note.copy(sha256 = it) }
+                ?: note
+        }.getOrDefault(note)
+    }
 
     private suspend fun loadCache(): List<ReleaseNote> = withContext(Dispatchers.IO) {
         if (!cacheFile.exists()) return@withContext emptyList()
@@ -390,7 +418,10 @@ class UpdateChecker(
         )
         // 检查结果本身指向备用源时也保留原地址，避免域名/IP 变更后 manifest 地址失效
         val extra = UpdateSource("原地址", download.url)
-        return (candidates + extra).distinctBy { it.url }
+        // 更新包只允许走 HTTPS，避免明文链路被替换
+        return (candidates + extra)
+            .filter { it.url.startsWith("https://", ignoreCase = true) }
+            .distinctBy { it.url }
     }
 
     private fun describeDownloadFailure(error: Throwable?): String {
@@ -405,7 +436,11 @@ class UpdateChecker(
             }
             is java.net.UnknownHostException -> "无法连接下载服务器（域名解析失败）"
             is java.net.SocketTimeoutException -> "下载超时，已保留进度，可点击重试续传"
-            is java.io.IOException -> "网络中断（${raw}），已保留进度，可重试续传"
+            is java.io.IOException -> when {
+                raw.contains("ENOSPC", ignoreCase = true) || raw.contains("No space left", ignoreCase = true) ->
+                    "手机存储空间不足，安装包没有下完；清理空间后可以重试"
+                else -> "网络中断（$raw），已保留进度，可重试续传"
+            }
             else -> raw
         }
     }

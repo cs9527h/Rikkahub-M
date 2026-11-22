@@ -42,6 +42,10 @@ data class Settings(
     val fastModelReasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
     // 记忆整理用的模型，没设置时用快速模型
     val memoryModelId: Uuid? = null,
+    /** 单次整理的估算 Token 上限，0 表示不限制。达到上限时会暂停并等用户确认。 */
+    val memoryRunTokenBudget: Int = 0,
+    /** 每天整理的估算 Token 预算，0 表示不限制。 */
+    val memoryDailyTokenBudget: Int = 0,
     val memoryModelReasoningLevel: ReasoningLevel = ReasoningLevel.AUTO,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val enableAutoTitle: Boolean = true,

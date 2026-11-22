@@ -220,6 +220,10 @@ class AssistantDetailVM(
         memoryConsolidationScheduler.organize(memoryId)
     }
 
+    /** 检索预览：让用户看到“问这句话时到底会带哪几条记忆”，不真的发请求。 */
+    suspend fun previewRecall(query: String): List<MemoryFile> =
+        memoryRepository.searchForRecall(memoryIdOf(assistant.value), query)
+
     /** 移入“最近删除”，不会立刻丢内容。 */
     fun deleteMemory(memory: MemoryFile) {
         viewModelScope.launch {
