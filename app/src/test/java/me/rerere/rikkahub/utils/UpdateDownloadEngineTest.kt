@@ -152,9 +152,9 @@ class UpdateDownloadEngineTest {
 
         val error = runCatching { runDownload(target = target) }.exceptionOrNull()
 
-        // 本地片段不完整时 416 不可恢复：以 HTTP 错误收尾，且不保留坏片段
-        assertTrue(error is UpdateHttpException)
-        assertEquals(416, (error as UpdateHttpException).code)
+        // 本地片段不完整时 416 不可恢复：以来源失败收尾，且不保留坏片段
+        val sourceError = error as UpdateSourcesException
+        assertTrue(sourceError.failures.single().reason.contains("416"))
         assertFalse(target.exists())
     }
 
@@ -169,8 +169,9 @@ class UpdateDownloadEngineTest {
 
         val error = runCatching { runDownload() }.exceptionOrNull()
 
-        assertTrue(error is UpdateHttpException)
-        assertEquals(403, (error as UpdateHttpException).code)
+        // 403 不可重试：每个来源只请求一次，然后汇总失败原因
+        val sourceError = error as UpdateSourcesException
+        assertTrue(sourceError.failures.single().reason.contains("403"))
         assertEquals(1, calls.get())
     }
 
@@ -178,7 +179,8 @@ class UpdateDownloadEngineTest {
     fun serverErrorsAreRetriedThenSucceed() {
         val calls = AtomicInteger(0)
         handler = { exchange ->
-            if (calls.incrementAndGet() < 3) {
+            // 每源最多两次：第一次 500，第二次成功
+            if (calls.incrementAndGet() < 2) {
                 exchange.sendResponseHeaders(500, -1)
                 exchange.close()
             } else {
@@ -188,7 +190,7 @@ class UpdateDownloadEngineTest {
 
         val file = runDownload()
 
-        assertEquals(3, calls.get())
+        assertEquals(2, calls.get())
         assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
     }
 
@@ -236,7 +238,8 @@ class UpdateDownloadEngineTest {
         // 没有哈希时才靠大小判断完整性
         val error = runCatching { runDownload(sha = null, size = 9999, target = target) }.exceptionOrNull()
 
-        assertTrue(error is UpdateCheckException)
+        assertTrue(error is UpdateSourcesException)
+        assertTrue((error as UpdateSourcesException).failures.single().reason.contains("大小"))
         assertFalse(target.exists())
     }
 
@@ -259,8 +262,77 @@ class UpdateDownloadEngineTest {
 
         val error = runCatching { runDownload(sha = "deadbeef", target = target) }.exceptionOrNull()
 
-        assertTrue(error is UpdateCheckException)
+        assertTrue(error is UpdateSourcesException)
+        assertTrue((error as UpdateSourcesException).failures.single().reason.contains("SHA-256"))
         assertFalse(target.exists())
+    }
+
+    @Test
+    fun allSourcesFailWithPerSourceReasons() {
+        handler = { exchange ->
+            exchange.sendResponseHeaders(404, -1)
+            exchange.close()
+        }
+        val other = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        other.createContext("/apk") { exchange ->
+            exchange.sendResponseHeaders(403, -1)
+            exchange.close()
+        }
+        other.start()
+        try {
+            val second = "http://127.0.0.1:${other.address.port}/apk"
+            val error = runCatching {
+                runBlocking {
+                    UpdateDownloadEngine.download(
+                        client = client,
+                        sources = listOf(UpdateSource("备用源", base), UpdateSource("GitHub", second)),
+                        target = File(dir, "update.apk"),
+                        expectedSha256 = payloadSha,
+                        expectedSize = payload.size.toLong(),
+                        retryDelayMillis = { 0 },
+                    )
+                }
+            }.exceptionOrNull()
+
+            // 界面要能告诉用户「哪个源、什么原因」，而不是笼统的下载失败
+            val failures = (error as UpdateSourcesException).failures
+            assertEquals(2, failures.size)
+            assertEquals("备用源", failures[0].label)
+            assertTrue(failures[0].reason.contains("404"))
+            assertEquals("GitHub", failures[1].label)
+            assertTrue(failures[1].reason.contains("403"))
+        } finally {
+            other.stop(0)
+        }
+    }
+
+    @Test
+    fun versionChangeDoesNotResumeStalePartialFile() {
+        val target = File(dir, "update.apk")
+        target.writeBytes(payload.copyOfRange(0, 500))
+        // 半截文件属于旧版本：即便 URL 相同也不能续传
+        File(target.path + ".meta").writeText("$base\n\"v1\"\n\n0.8.1")
+        val seenRange = java.util.concurrent.atomic.AtomicReference<String>()
+        handler = { exchange ->
+            seenRange.set(exchange.requestHeaders.getFirst("Range"))
+            ok(exchange, payload)
+        }
+
+        val file = runBlocking {
+            UpdateDownloadEngine.download(
+                client = client,
+                sources = listOf(UpdateSource("test", base)),
+                target = target,
+                expectedSha256 = payloadSha,
+                expectedSize = payload.size.toLong(),
+                version = "0.8.2",
+                retryDelayMillis = { 0 },
+            )
+        }
+
+        assertEquals(null, seenRange.get())
+        assertEquals(payload.size.toLong(), file.length())
+        assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
     }
 
     @Test

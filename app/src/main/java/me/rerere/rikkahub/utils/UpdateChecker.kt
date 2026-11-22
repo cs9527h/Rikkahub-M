@@ -132,6 +132,10 @@ class UpdateChecker(
     val lastFailure: StateFlow<String?> = lastError.asStateFlow()
 
     private val downloadState = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
+
+    /** 上次中断留下的半截安装包；界面据此提示「继续上次下载」。 */
+    private val partialBytes = MutableStateFlow(0L)
+    val partialDownloadBytes: StateFlow<Long> = partialBytes.asStateFlow()
     private var downloadJob: Job? = null
     private var activeInfo: UpdateInfo? = null
 
@@ -157,6 +161,10 @@ class UpdateChecker(
 
     init {
         pruneStaleDownloads()
+        partialBytes.value = runCatching {
+            File(File(context.cacheDir, "updates"), "Rikkahub-M-update.apk")
+                .takeIf { it.isFile }?.length() ?: 0L
+        }.getOrDefault(0L)
         appScope.launch { runCatching { refresh(force = false) } }
     }
 
@@ -367,13 +375,16 @@ class UpdateChecker(
         val sources = downloadSources(info, download)
         downloadJob = appScope.launch {
             var lastEmit = 0L
+            var activeSource = ""
             val result = UpdateInstaller.downloadAndVerify(
                 context = context,
                 client = client,
                 sources = sources,
                 expectedSha256 = download.sha256,
                 expectedSize = download.bytes,
+                version = info.version,
                 onProgress = { read, total, source ->
+                    if (source.isNotBlank() && !source.startsWith("切换")) activeSource = source
                     val now = SystemClock.elapsedRealtime()
                     if (now - lastEmit >= 120 || (total > 0 && read >= total)) {
                         lastEmit = now
@@ -381,11 +392,13 @@ class UpdateChecker(
                     }
                 },
                 onVerifying = { source ->
+                    if (source.isNotBlank()) activeSource = source
                     downloadState.value = UpdateDownloadState.Verifying(info.version, source)
                 },
                 isCancelled = { cancelRequested },
             )
             downloadJob = null
+            if (result.isSuccess) rememberGoodSource(activeSource, downloadSources(info, download).firstOrNull { it.label == activeSource }?.url.orEmpty())
             downloadState.value = when {
                 result.isSuccess -> UpdateDownloadState.Ready(info.version, result.getOrThrow())
                 cancelRequested -> UpdateDownloadState.Idle
@@ -403,37 +416,51 @@ class UpdateChecker(
         }
     }
 
-    /** GitHub 正式附件优先；同一版本的备用源 APK 作为第二来源。 */
+    /**
+     * 下载顺序：上次成功过的来源 → 已验证的国内备用源 → GitHub 正式附件 → 检查结果里的原地址。
+     *
+     * 真实反馈是 GitHub 附件在国内经常失败：把备用源放在前面，主源只作为兜底，
+     * 不再让用户先干等 GitHub 连接超时。所有来源都必须是 HTTPS。
+     */
     private fun downloadSources(info: UpdateInfo, download: UpdateDownload): List<UpdateSource> {
         val github = "https://github.com/$REPO/releases/download/${info.tag.ifBlank { "v${info.version}" }}/${download.name}"
-        val mirror = "${mirrorBase()}/${download.name}"
-        val primary = if (download.url.contains("github.com", ignoreCase = true) || download.url.contains("githubusercontent.com", ignoreCase = true)) {
-            download.url
-        } else {
-            github
-        }
-        val candidates = listOf(
-            UpdateSource("GitHub", primary),
-            UpdateSource("备用源", mirror),
+        val mirror = "${mirrorBase().trimEnd('/')}/${download.name}"
+        val mirrorSource = UpdateSource("备用源", mirror)
+        val githubSource = UpdateSource(
+            "GitHub",
+            if (download.url.startsWith("https://github.com", ignoreCase = true)) download.url else github,
         )
-        // 检查结果本身指向备用源时也保留原地址，避免域名/IP 变更后 manifest 地址失效
-        val extra = UpdateSource("原地址", download.url)
-        // 更新包只允许走 HTTPS，避免明文链路被替换
-        return (candidates + extra)
+        val lastGood = prefs.getString(KEY_LAST_GOOD_SOURCE, null)
+        val preferred = listOfNotNull(
+            mirrorSource.takeIf { it.url == lastGood },
+            githubSource.takeIf { it.url == lastGood },
+        )
+        val ordered = preferred + listOf(mirrorSource, githubSource, UpdateSource("原地址", download.url))
+        return ordered
             .filter { it.url.startsWith("https://", ignoreCase = true) }
             .distinctBy { it.url }
     }
 
+    private fun rememberGoodSource(label: String, url: String) {
+        prefs.edit().putString(KEY_LAST_GOOD_SOURCE, url).putString(KEY_LAST_GOOD_LABEL, label).apply()
+    }
+
     private fun describeDownloadFailure(error: Throwable?): String {
-        val raw = error?.message ?: return "下载失败，请检查网络后重试"
+        val raw = error?.message?.takeIf { it.isNotBlank() } ?: return "下载失败，请检查网络后重试"
         return when (error) {
+            is UpdateSourcesException -> {
+                // 把每个来源的真实原因都列出来，用户才知道是哪一段网络坏了
+                "多个下载源都失败：" + error.failures.joinToString("；") { "${it.label}：${it.reason}" } +
+                    "。可以稍后重试，或改用浏览器下载。"
+            }
             is UpdateHttpException -> when (error.code) {
-                403 -> "下载被拒绝（403），已尝试备用源仍失败"
+                403 -> "下载被拒绝（403），可能被网络环境拦截；请改用浏览器下载"
                 404 -> "安装包不存在（404），请稍后再试或到浏览器下载"
                 429 -> "请求过于频繁（429），请稍后重试"
                 in 500..599 -> "服务器异常（${error.code}），请稍后重试"
                 else -> "下载失败（HTTP ${error.code}）"
             }
+            is javax.net.ssl.SSLException -> "HTTPS 证书校验失败，已中止下载（不会关闭证书校验）"
             is java.net.UnknownHostException -> "无法连接下载服务器（域名解析失败）"
             is java.net.SocketTimeoutException -> "下载超时，已保留进度，可点击重试续传"
             is java.io.IOException -> when {
@@ -454,10 +481,25 @@ class UpdateChecker(
         downloadState.value = UpdateDownloadState.Idle
     }
 
-    /** 失败后重试同一个版本；没有记录时什么也不做，由界面提示手动检查。 */
+    /**
+     * 失败后重试同一版本：只对失败/空闲状态生效，重复点击不会叠起两个下载。
+     * 进程重启后 activeInfo 为空时，先重新检查一次，再决定是否开始。
+     */
     fun retryDownload() {
-        val info = activeInfo ?: return
-        startDownload(info)
+        val info = activeInfo
+        if (info != null) {
+            if (downloadState.value is UpdateDownloadState.Running ||
+                downloadState.value is UpdateDownloadState.Verifying
+            ) {
+                return
+            }
+            startDownload(info)
+            return
+        }
+        appScope.launch {
+            val result = refresh(force = true)
+            if (result is UpdateCheckResult.Available) startDownload(result.info)
+        }
     }
 
     /** 安装器已经接管（或用户放弃）后清空状态，避免残留 Ready 反复拉起安装。 */
@@ -558,6 +600,8 @@ class UpdateChecker(
         const val KEY_PROMPTED_VERSION = "prompted_version"
         const val KEY_IGNORED_VERSION = "ignored_version"
         const val KEY_MIRROR_BASE = "mirror_base"
+        const val KEY_LAST_GOOD_SOURCE = "last_good_source"
+        const val KEY_LAST_GOOD_LABEL = "last_good_label"
 
     }
 }
