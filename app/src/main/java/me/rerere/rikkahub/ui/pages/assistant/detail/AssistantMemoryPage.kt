@@ -33,6 +33,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -73,7 +75,7 @@ import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.Settings03
+import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.MemoryConsolidationStatus
@@ -161,6 +163,7 @@ fun AssistantMemoryPage(id: String) {
     var result by remember { mutableStateOf<HistoryMemoryManager.BulkResult?>(null) }
     var editing by remember { mutableStateOf<HistoryMemoryCandidate?>(null) }
     var reextract by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     fun run(action: suspend () -> Unit) {
         if (busy) return
@@ -249,6 +252,31 @@ fun AssistantMemoryPage(id: String) {
                         ) {
                             Icon(HugeIcons.Add01, contentDescription = stringResource(R.string.add))
                         }
+                        // 使用记录和高级设置放顶栏菜单：不用滚到页面最底部才能找到
+                        Box {
+                            FilledTonalIconButton(
+                                onClick = { showMenu = true },
+                                shapes = IconButtonDefaults.shapes(),
+                            ) {
+                                Icon(HugeIcons.MoreVertical, contentDescription = "更多")
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("记忆使用记录") },
+                                    onClick = {
+                                        showMenu = false
+                                        section = MemorySection.USAGE
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("高级设置") },
+                                    onClick = {
+                                        showMenu = false
+                                        section = MemorySection.SETTINGS
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -293,8 +321,6 @@ fun AssistantMemoryPage(id: String) {
                         onOrganize = { startOrganize() },
                         onReextract = { reextract = true },
                         onOpenReview = { section = MemorySection.REVIEW },
-                        onOpenUsage = { section = MemorySection.USAGE },
-                        onOpenSettings = { section = MemorySection.SETTINGS },
                         onOpenMemory = { path -> navController.navigate(Screen.MemoryFile(memoryId, path)) },
                         onDelete = { vm.deleteMemory(it) },
                         onRestore = { vm.restoreMemory(it) },
@@ -443,8 +469,6 @@ private fun MemoryHome(
     onOrganize: () -> Unit,
     onReextract: () -> Unit,
     onOpenReview: () -> Unit,
-    onOpenUsage: () -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenMemory: (String) -> Unit,
     onDelete: (MemoryFile) -> Unit,
     onRestore: (MemoryFile) -> Unit,
@@ -637,21 +661,6 @@ private fun MemoryHome(
             }
         }
 
-        item(key = "advanced") {
-            CardGroup {
-                item(
-                    headlineContent = { Text("记忆使用记录") },
-                    supportingContent = { Text("看看每轮聊天实际带上了哪些记忆") },
-                    onClick = onOpenUsage,
-                )
-                item(
-                    headlineContent = { Text("高级设置") },
-                    supportingContent = { Text("共享范围、整理预算、后台维护、召回预算") },
-                    leadingContent = { Icon(HugeIcons.Settings03, contentDescription = null) },
-                    onClick = onOpenSettings,
-                )
-            }
-        }
     }
 
     RikkaConfirmDialog(
