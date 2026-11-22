@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.8.1**（2026-11-22，commit `ddc6b1b6`）
+> **最新正式版：v0.8.2**（2026-11-22，commit `0eed954e`）
 >
-> 安裝包：[Rikkahub-M-0.8.1.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.1/Rikkahub-M-0.8.1.apk) · 18.5 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-0.8.2.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.2/Rikkahub-M-0.8.2.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`b6df028f866462c833f97b9b0e6755179f6a2e0df8491850a7ad17ac1597b553`
+> SHA-256：`77169a0e616fee751cab21b79ccf97c54b5b42e7177ddbc0f49754fcc427ba6b`
 >
-> 本版摘要：误跳过的候选可以整批找回，记忆二级页面补上统一转场。
+> 本版摘要：更新下载给出真实原因并提速切换，记忆召回更准、更可解释。
 >
-> 完整說明見 [v0.8.1 更新日誌](docs/releases/0.8.1.md)。
+> 完整說明見 [v0.8.2 更新日誌](docs/releases/0.8.2.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
