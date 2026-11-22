@@ -179,7 +179,8 @@ class UpdateDownloadEngineTest {
     fun serverErrorsAreRetriedThenSucceed() {
         val calls = AtomicInteger(0)
         handler = { exchange ->
-            if (calls.incrementAndGet() < 3) {
+            // 每源最多两次：第一次 500，第二次成功
+            if (calls.incrementAndGet() < 2) {
                 exchange.sendResponseHeaders(500, -1)
                 exchange.close()
             } else {
@@ -189,7 +190,7 @@ class UpdateDownloadEngineTest {
 
         val file = runDownload()
 
-        assertEquals(3, calls.get())
+        assertEquals(2, calls.get())
         assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
     }
 
