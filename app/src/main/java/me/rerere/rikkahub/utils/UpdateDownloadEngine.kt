@@ -28,7 +28,6 @@ class UpdateSourcesException(val failures: List<UpdateSourceFailure>) : IOExcept
 /** 诊断用：把异常翻译成用户能看懂的一句话。 */
 fun describeDownloadError(error: Throwable?): String = when (error) {
     null -> "未知错误"
-    is UpdateSourceFailure -> error.reason
     is UpdateHttpException -> when (error.code) {
         403 -> "被服务器拒绝（HTTP 403）"
         404 -> "文件不存在（HTTP 404）"
