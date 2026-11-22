@@ -4,8 +4,11 @@ name: Sync README release block
 # 只处理 draft=false 且 prerelease=false 的发布；失败时保留上次正确内容。
 
 on:
-  release:
-    types: [published]
+  # Release 由 release.yml 用 GITHUB_TOKEN 创建，release 事件不会再触发工作流，
+  # 因此改用 workflow_run：正式发布工作流成功结束后自动同步 README。
+  workflow_run:
+    workflows: ["Rikkahub-M release"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -18,7 +21,7 @@ concurrency:
 jobs:
   sync:
     name: Update README blocks
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
