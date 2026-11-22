@@ -2,6 +2,15 @@ package me.rerere.rikkahub.data.ai
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import me.rerere.ai.provider.ModelAbility
+import me.rerere.rikkahub.data.ai.memory.recallExcerpts
+import me.rerere.rikkahub.data.ai.memory.recalledFiles
+import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
+import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,7 +32,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.ai.prompts.buildMemoryPrompt
+import me.rerere.rikkahub.data.ai.prompts.buildRecallPrompt
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
@@ -45,7 +54,6 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
-import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -70,7 +78,6 @@ class ChatTurnContext(
     val conversationId: Uuid,
     val conversationSystemPrompt: String?,
     val workspaceCwd: String?,
-    val memories: List<MemoryFile>,
     val tools: List<Tool>,
 )
 
@@ -81,6 +88,7 @@ class ChatRequestFactory(
     private val usageRecorder: UsageRecorder,
     private val chatToolFactory: ChatToolFactory,
     private val memoryRepository: MemoryRepository,
+    private val historyDatabase: AppDatabase,
     templateTransformer: TemplateTransformer,
     workspaceRepository: WorkspaceRepository,
 ) {
@@ -115,7 +123,6 @@ class ChatRequestFactory(
             conversationId = conversation.id,
             conversationSystemPrompt = conversation.customSystemPrompt,
             workspaceCwd = conversation.workspaceCwd,
-            memories = if (assistant.enableMemory) memoryRepository.getFiles(assistant.memoryId) else emptyList(),
             tools = chatToolFactory.createTools(
                 settings = settings,
                 assistant = assistant,
@@ -152,7 +159,7 @@ class ChatRequestFactory(
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
                 Log.i(TAG, "prepareStep: ${turn.model.id}")
-                return buildStep(turn, messages, processingStatus)
+                return buildStep(turn, messages, processingStatus, recordRecall = true)
             }
 
             override suspend fun previewStep(message: UIMessage, newPartsFrom: Int) =
@@ -228,9 +235,10 @@ class ChatRequestFactory(
         turn: ChatTurnContext,
         messages: List<UIMessage>,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
+        recordRecall: Boolean = false,
     ): StepRequest {
         val assistant = turn.assistant
-        val requestMessages = buildList {
+        val baseMessages = buildList {
             val system = buildString {
                 val effectiveSystemPrompt =
                     if (assistant.allowConversationSystemPrompt && !turn.conversationSystemPrompt.isNullOrBlank()) {
@@ -242,11 +250,6 @@ class ChatRequestFactory(
                     append(effectiveSystemPrompt)
                 }
 
-                // 记忆
-                if (assistant.enableMemory) {
-                    appendLine()
-                    append(buildMemoryPrompt(turn.memories))
-                }
                 // 工具prompt
                 turn.tools.forEach { tool ->
                     appendLine()
@@ -266,6 +269,44 @@ class ChatRequestFactory(
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
         ).expandNotices()
+        val latestUser = messages.lastOrNull { it.role == MessageRole.USER && !it.isNoticeOnly }
+        val requestMessages = if (assistant.enableMemory && latestUser != null) {
+            val clock = TimeSource.Monotonic.markNow()
+            val matches = memoryRepository.searchForRecall(assistant.memoryId, latestUser.toText())
+            val injected = recallExcerpts(matches)
+            val hasTools = ModelAbility.TOOL in turn.model.abilities
+            val prompt = buildRecallPrompt(injected, matches.map { it.path }, hasTools)
+            val first = baseMessages.firstOrNull()
+            if (recordRecall) {
+                val reads = baseMessages.dropWhile { it.id != latestUser.id }.flatMap { message ->
+                    message.getTools().flatMap { it.recalledFiles() }
+                }.distinctBy { it.path }
+                try {
+                    val database = historyDatabase
+                    database.withTransaction {
+                        val dao = database.historyMemoryDao()
+                        dao.recordRecall(MemoryRecallRecord(
+                            "${turn.conversationId}:${latestUser.id}", assistant.memoryId,
+                            turn.conversationId.toString(), System.currentTimeMillis(),
+                            Json.encodeToString(matches.map { it.path }), Json.encodeToString(injected),
+                            Json.encodeToString(reads.map { it.path }),
+                            (prompt.length + reads.sumOf { it.content.length } + 1) / 2,
+                            clock.elapsedNow().inWholeMilliseconds,
+                        ))
+                        dao.trimRecalls(assistant.memoryId)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    Log.w(TAG, "Unable to save local memory recall diagnostics")
+                }
+            }
+            if (first?.role == MessageRole.SYSTEM) {
+                listOf(first.copy(parts = first.parts + UIMessagePart.Text("\n\n" + prompt))) + baseMessages.drop(1)
+            } else {
+                listOf(UIMessage.system(prompt).copy(isSynthetic = true)) + baseMessages
+            }
+        } else baseMessages
         val params = TextGenerationParams(
             model = turn.model,
             temperature = assistant.temperature,

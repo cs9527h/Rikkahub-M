@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedTextField
+import me.rerere.rikkahub.data.ai.memory.memoryRelevance
+import me.rerere.rikkahub.data.ai.memory.recallTerms
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -79,6 +84,8 @@ private enum class MemoryTab(
     @param:StringRes private val labelRes: Int,
 ) : PagerTab {
     FILES(HugeIcons.Brain02, R.string.assistant_page_manage_memory_title),
+    HISTORY(HugeIcons.Add01, R.string.memory_history_tab),
+    RECALL(HugeIcons.ArrowTurnBackward, R.string.memory_recall_tab),
     SETTINGS(HugeIcons.Settings03, R.string.settings);
 
     override val label: String
@@ -156,6 +163,12 @@ fun AssistantMemoryPage(id: String) {
                             scope.launch { pagerState.animateScrollToPage(MemoryTab.SETTINGS.ordinal) }
                         },
                     )
+
+                    MemoryTab.HISTORY -> HistoryMemoryTab(assistant) { source ->
+                        navController.navigate(Screen.Chat(source))
+                    }
+
+                    MemoryTab.RECALL -> MemoryRecallTab(assistant)
 
                     MemoryTab.SETTINGS -> MemorySettingsTab(
                         assistant = assistant,
@@ -324,7 +337,14 @@ private fun MemoryFilesTab(
 ) {
     var pendingDeleteMemory by remember { mutableStateOf<MemoryFile?>(null) }
     var pendingPurgeMemory by remember { mutableStateOf<MemoryFile?>(null) }
-    val memoryGroups = remember(memories) { memories.groupByDirectory() }
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(memories, query) {
+        val terms = recallTerms(query)
+        if (query.isBlank()) memories else memories.filter {
+            it.title.contains(query, ignoreCase = true) || memoryRelevance(it, terms) > 0
+        }
+    }
+    val memoryGroups = remember(filtered) { filtered.groupByDirectory() }
 
     // 空列表不滚动，占位才能在剩余空间里居中
     if (memoryGroups.isEmpty() && deletedMemories.isEmpty()) {
@@ -359,21 +379,24 @@ private fun MemoryFilesTab(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (consolidation != null) {
-            MemoryConsolidationSection(
-                status = consolidation,
-                onOrganize = onOrganizeMemory,
-            )
+            item { MemoryConsolidationSection(status = consolidation, onOrganize = onOrganizeMemory) }
         }
+        if (memories.isNotEmpty()) {
+            item {
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.memory_search)) }, singleLine = true)
+            }
+        }
+        if (query.isNotBlank() && filtered.isEmpty()) item { Text(stringResource(R.string.memory_search_empty)) }
 
         if (deletedMemories.isNotEmpty()) {
+            item {
             CardGroup(title = { Text(stringResource(R.string.memory_recently_deleted)) }) {
                 deletedMemories.fastForEach { memory ->
                     item(
@@ -407,13 +430,15 @@ private fun MemoryFilesTab(
                     )
                 }
             }
+            }
         }
 
         memoryGroups.fastForEach { (directory, files) ->
-            CardGroup(
-                title = { Text(memorySectionTitle(directory)) },
-            ) {
-                files.fastForEach { memory ->
+            item(key = "group:$directory") {
+                Text(memorySectionTitle(directory), style = MaterialTheme.typography.titleSmall)
+            }
+            items(files, key = { it.path }) { memory ->
+                CardGroup {
                     item(
                         onClick = { onOpenMemory(memory.path) },
                         trailingContent = {

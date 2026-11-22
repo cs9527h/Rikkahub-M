@@ -138,6 +138,16 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET folder_id = '' WHERE folder_id = :folderId")
     suspend fun clearFolder(folderId: String)
 
+    @Query("""
+        SELECT id, title, create_at AS createdAt, update_at AS updatedAt
+        FROM conversationentity WHERE create_at >= :from AND create_at < :until
+        ORDER BY create_at DESC, id
+    """)
+    suspend fun historySources(from: Long, until: Long): List<HistoryConversationSource>
+
+    @Query("SELECT update_at FROM conversationentity WHERE id = :id")
+    suspend fun historyRevision(id: String): Long?
+
     @Query("SELECT COUNT(*) FROM conversationentity")
     suspend fun countAll(): Int
 
@@ -157,3 +167,5 @@ interface ConversationDAO {
 data class ConversationDayCount(val day: String, val count: Int)
 
 data class AssistantConversationCount(val assistantId: String, val count: Int)
+
+data class HistoryConversationSource(val id: String, val title: String, val createdAt: Long, val updatedAt: Long)

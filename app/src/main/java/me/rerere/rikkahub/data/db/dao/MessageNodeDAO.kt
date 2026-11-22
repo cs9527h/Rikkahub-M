@@ -26,6 +26,19 @@ interface MessageNodeDAO {
         offset: Int
     ): List<MessageNodeEntity>
 
+    @Query("""
+        SELECT * FROM message_node WHERE conversation_id = :conversationId
+          AND (node_index > :index OR (node_index = :index AND id > :id))
+        ORDER BY node_index, id LIMIT :limit
+    """)
+    suspend fun nextHistoryNodes(conversationId: String, index: Int, id: String, limit: Int): List<MessageNodeEntity>
+
+    @Query("SELECT * FROM message_node WHERE conversation_id = :conversationId AND id = :id")
+    suspend fun historyNode(conversationId: String, id: String): MessageNodeEntity?
+
+    @Query("SELECT COUNT(*) AS nodes, COALESCE(SUM(length(messages)), 0) AS characters FROM message_node WHERE conversation_id IN (:ids)")
+    suspend fun estimateHistory(ids: List<String>): HistorySize
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(nodes: List<MessageNodeEntity>)
 
@@ -45,3 +58,5 @@ interface MessageNodeDAO {
     @Query("SELECT COUNT(*) FROM message_node")
     suspend fun countAll(): Int
 }
+
+data class HistorySize(val nodes: Long, val characters: Long)

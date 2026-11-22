@@ -21,6 +21,9 @@ interface MemoryDAO {
     @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at = 0 ORDER BY path")
     suspend fun getFilesOfAssistant(assistantId: String): List<MemoryFileEntity>
 
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at = 0 AND path > :after ORDER BY path LIMIT 16")
+    suspend fun recallPage(assistantId: String, after: String): List<MemoryFileEntity>
+
     @Query(
         "SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at != 0 ORDER BY deleted_at DESC, path"
     )

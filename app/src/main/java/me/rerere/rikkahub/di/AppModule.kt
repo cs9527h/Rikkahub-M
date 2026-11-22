@@ -1,5 +1,11 @@
 package me.rerere.rikkahub.di
 
+import android.content.Context
+import me.rerere.ai.provider.ProviderManager
+import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
+import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import com.google.firebase.Firebase
 import com.google.firebase.analytics.analytics
 import com.google.firebase.crashlytics.crashlytics
@@ -130,12 +136,29 @@ val appModule = module {
     }
 
     single {
+        val context: Context = get()
+        val privateClient = get<OkHttpClient>().newBuilder().apply {
+            interceptors().removeAll { it is HttpLoggingInterceptor }
+            networkInterceptors().removeAll { it is me.rerere.rikkahub.data.ai.RequestLoggingInterceptor }
+            followRedirects(false)
+            followSslRedirects(false)
+            retryOnConnectionFailure(false)
+        }.build()
+        HistoryMemoryManager(
+            context, get(), get(),
+            ProviderManager(privateClient, context, get<ProviderAccountManager>()),
+            get(),
+        )
+    }
+
+    single {
         ChatRequestFactory(
             context = get(),
             providerManager = get(),
             usageRecorder = get(),
             chatToolFactory = get(),
             memoryRepository = get(),
+            historyDatabase = get(),
             templateTransformer = get(),
             workspaceRepository = get(),
         )

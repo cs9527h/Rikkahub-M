@@ -24,6 +24,9 @@ internal class FakeMemoryDAO : MemoryDAO {
     override suspend fun getFilesOfAssistant(assistantId: String): List<MemoryFileEntity> =
         files.value.filter { it.assistantId == assistantId && it.deletedAt == 0L }.sortedBy { it.path }
 
+    override suspend fun recallPage(assistantId: String, after: String): List<MemoryFileEntity> =
+        getFilesOfAssistant(assistantId).filter { it.path > after }.take(16)
+
     override fun getDeletedFilesOfAssistantFlow(assistantId: String): Flow<List<MemoryFileEntity>> =
         files.map { all ->
             all.filter { it.assistantId == assistantId && it.deletedAt != 0L }
