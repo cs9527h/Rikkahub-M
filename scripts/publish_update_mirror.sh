@@ -100,6 +100,8 @@ body = next((r.get("body", "") for r in data["releases"] if r.get("version") == 
 sys.stdout.write(body)
 PYNOTES
   scp "$OUT_DIR/Rikkahub-M-${VERSION}.apk" "$OUT_DIR/notes-$VERSION.md" "$HOST:/var/www/updates/"
+  # scp 落盘是 600，nginx worker 读不到会返回 403（0.8.0 首次上传就踩到了）
+  ssh "$HOST" "chmod 644 /var/www/updates/Rikkahub-M-${VERSION}.apk /var/www/updates/manifest.json"
   ssh "$HOST" "mv /var/www/updates/notes-$VERSION.md /var/www/updates/notes/$VERSION.md && python3 - <<'PYREMOTE'
 import datetime, hashlib, json, pathlib
 base = pathlib.Path('/var/www/updates')
