@@ -1,7 +1,15 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
+import android.provider.Settings as AndroidSettings
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,8 +22,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -45,6 +55,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -112,16 +123,34 @@ fun AssistantMemoryPage(id: String) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val history: HistoryMemoryManager = koinInject()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val memoryId = vm.memoryId
 
     var section by rememberSaveable { mutableStateOf(MemorySection.HOME) }
     BackHandler(enabled = section != MemorySection.HOME) { section = MemorySection.HOME }
 
     val job by remember(memoryId) { history.observe(memoryId) }.collectAsStateWithLifecycle(initialValue = null)
-    val jobId = job?.id.orEmpty()
-    val pending by remember(jobId) { history.candidates(jobId) }.collectAsStateWithLifecycle(initialValue = emptyList())
-    val savedCount by remember(jobId) { history.count(jobId, "saved") }.collectAsStateWithLifecycle(initialValue = 0)
+    // 候选按记忆库统计：任务被替换、取消后，旧候选仍然算在这里，避免“数据看起来消失了”。
+    val pendingCount by remember(memoryId) { history.countOf(memoryId, "pending") }
+        .collectAsStateWithLifecycle(initialValue = 0)
+    val skippedCount by remember(memoryId) { history.countOf(memoryId, "discarded") }
+        .collectAsStateWithLifecycle(initialValue = 0)
+    val savedCount by remember(memoryId) { history.countOf(memoryId, "saved") }
+        .collectAsStateWithLifecycle(initialValue = 0)
     val state by remember(memoryId) { history.state(memoryId) }.collectAsStateWithLifecycle(initialValue = null)
+
+    // 每个二级页保留自己的滚动位置：来回切换不会跳回顶部。
+    val homeListState = rememberLazyListState()
+    val reviewListState = rememberLazyListState()
+    val usageListState = rememberLazyListState()
+    val settingsScrollState = rememberScrollState()
+    val reduceMotion = remember {
+        AndroidSettings.Global.getFloat(
+            context.contentResolver,
+            AndroidSettings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
 
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -131,6 +160,7 @@ fun AssistantMemoryPage(id: String) {
     var autoJobId by rememberSaveable { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<HistoryMemoryManager.BulkResult?>(null) }
     var editing by remember { mutableStateOf<HistoryMemoryCandidate?>(null) }
+    var reextract by remember { mutableStateOf(false) }
 
     fun run(action: suspend () -> Unit) {
         if (busy) return
@@ -166,12 +196,13 @@ fun AssistantMemoryPage(id: String) {
         val current = job ?: return@LaunchedEffect
         if (current.id != autoJobId || current.status != "finished") return@LaunchedEffect
         autoJobId = null
+        // 自动保存只处理本轮任务新提取的候选，不碰上一轮还没审完的内容
         val keys = history.pendingKeys(current.id)
         if (keys.isEmpty()) return@LaunchedEffect
         busy = true
         try {
             result = if (autoSave) {
-                history.saveSelected(memoryId, current.id, keys.toSet(), HistoryMemoryManager.BulkMode.SAVE_NEW_ONLY)
+                history.saveSelected(memoryId, keys.toSet(), HistoryMemoryManager.BulkMode.SAVE_NEW_ONLY)
             } else {
                 // 用户关掉了自动保存：一条都不写，全部留在待确认
                 HistoryMemoryManager.BulkResult(pending = keys.size)
@@ -228,57 +259,72 @@ fun AssistantMemoryPage(id: String) {
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            when (section) {
-                MemorySection.HOME -> MemoryHome(
-                    assistant = assistant,
-                    memories = memories,
-                    deletedMemories = deletedMemories,
-                    consolidation = consolidation,
-                    job = job,
-                    pending = pending,
-                    savedCount = savedCount,
-                    lastOrganizedAt = state?.lastOrganizedAt ?: 0,
-                    lastResult = state?.lastResult.orEmpty(),
-                    busy = busy,
-                    notice = notice,
-                    onNoticeShown = { notice = null },
-                    onOrganize = { startOrganize() },
-                    onOpenReview = { section = MemorySection.REVIEW },
-                    onOpenUsage = { section = MemorySection.USAGE },
-                    onOpenSettings = { section = MemorySection.SETTINGS },
-                    onOpenMemory = { path -> navController.navigate(Screen.MemoryFile(memoryId, path)) },
-                    onDelete = { vm.deleteMemory(it) },
-                    onRestore = { vm.restoreMemory(it) },
-                    onPurge = { vm.purgeMemory(it) },
-                    onPause = { run { history.control(memoryId, "paused") } },
-                    onResume = { run { history.control(memoryId, "running") } },
-                    onCancel = { run { history.control(memoryId, "cancelled") } },
-                    previewRecall = { query -> vm.previewRecall(query) },
-                )
-
-                MemorySection.REVIEW -> {
-                    val current = job
-                    if (current == null) {
-                        MissingJob { section = MemorySection.HOME }
+            AnimatedContent(
+                targetState = section,
+                label = "memory-section",
+                transitionSpec = {
+                    if (reduceMotion) {
+                        fadeIn(tween(0)) togetherWith fadeOut(tween(0))
                     } else {
-                        MemoryReviewScreen(
-                            scope = memoryId,
-                            job = current,
-                            pending = pending,
-                            history = history,
-                            onResult = { result = it },
-                            onEdit = { editing = it },
-                        )
+                        // 前进：新页从右侧滑入、旧页向左退；返回时反向。和仓库里现有二级页保持一致。
+                        val forward = targetState.ordinal > initialState.ordinal
+                        val enter = if (forward) 1 else -1
+                        (slideInHorizontally(tween(320)) { width -> enter * width } + fadeIn(tween(220))) togetherWith
+                            (slideOutHorizontally(tween(320)) { width -> -enter * width } + fadeOut(tween(180)))
                     }
+                },
+            ) { current ->
+                when (current) {
+                    MemorySection.HOME -> MemoryHome(
+                        assistant = assistant,
+                        memories = memories,
+                        deletedMemories = deletedMemories,
+                        consolidation = consolidation,
+                        job = job,
+                        listState = homeListState,
+                        pendingCount = pendingCount,
+                        skippedCount = skippedCount,
+                        savedCount = savedCount,
+                        lastOrganizedAt = state?.lastOrganizedAt ?: 0,
+                        lastResult = state?.lastResult.orEmpty(),
+                        busy = busy,
+                        notice = notice,
+                        onNoticeShown = { notice = null },
+                        onOrganize = { startOrganize() },
+                        onReextract = { reextract = true },
+                        onOpenReview = { section = MemorySection.REVIEW },
+                        onOpenUsage = { section = MemorySection.USAGE },
+                        onOpenSettings = { section = MemorySection.SETTINGS },
+                        onOpenMemory = { path -> navController.navigate(Screen.MemoryFile(memoryId, path)) },
+                        onDelete = { vm.deleteMemory(it) },
+                        onRestore = { vm.restoreMemory(it) },
+                        onPurge = { vm.purgeMemory(it) },
+                        onPause = { run { history.control(memoryId, "paused") } },
+                        onResume = { run { history.control(memoryId, "running") } },
+                        onCancel = { run { history.control(memoryId, "cancelled") } },
+                        previewRecall = { query -> vm.previewRecall(query) },
+                    )
+
+                    MemorySection.REVIEW -> MemoryReviewScreen(
+                        scope = memoryId,
+                        history = history,
+                        listState = reviewListState,
+                        onResult = { result = it },
+                        onEdit = { editing = it },
+                    )
+
+                    MemorySection.USAGE -> MemoryUsageScreen(
+                        assistant = assistant,
+                        listState = usageListState,
+                    ) { navController.navigate(Screen.Chat(it)) }
+
+                    MemorySection.SETTINGS -> MemorySettingsScreen(
+                        assistant = assistant,
+                        scrollState = settingsScrollState,
+                        onUpdateAssistant = { vm.update(it) },
+                        onOpenModels = { navController.navigate(Screen.SettingModels) },
+                    )
                 }
-
-                MemorySection.USAGE -> MemoryUsageScreen(assistant) { navController.navigate(Screen.Chat(it)) }
-
-                MemorySection.SETTINGS -> MemorySettingsScreen(
-                    assistant = assistant,
-                    onUpdateAssistant = { vm.update(it) },
-                    onOpenModels = { navController.navigate(Screen.SettingModels) },
-                )
             }
 
             error?.let { message ->
@@ -293,6 +339,17 @@ fun AssistantMemoryPage(id: String) {
                 }
             }
         }
+    }
+
+    if (reextract) {
+        MemoryReextractPicker(
+            history = history,
+            onDismiss = { reextract = false },
+            onChoose = { sources ->
+                reextract = false
+                run { plan = history.prepare(memoryId, assistant, sources) }
+            },
+        )
     }
 
     plan?.let { proposed ->
@@ -331,10 +388,18 @@ fun AssistantMemoryPage(id: String) {
     result?.let { outcome ->
         BulkResultDialog(
             result = outcome,
+            skipped = skippedCount,
             onUndo = {
                 run {
                     result = history.undoLastBulk(memoryId) ?: outcome
                     notice = "已撤销上一次批量操作。"
+                }
+            },
+            onRestoreSkipped = {
+                run {
+                    val restored = history.restoreSkipped(memoryId)
+                    result = HistoryMemoryManager.BulkResult(pending = restored)
+                    notice = "已恢复 $restored 条被跳过的候选。"
                 }
             },
             onReview = {
@@ -360,25 +425,15 @@ private fun SectionBack(onClick: () -> Unit) {
 }
 
 @Composable
-private fun MissingJob(onBack: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("还没有需要确认的内容。")
-        TextButton(onClick = onBack) { Text("返回记忆") }
-    }
-}
-
-@Composable
 private fun MemoryHome(
     assistant: Assistant,
     memories: List<MemoryFile>,
     deletedMemories: List<MemoryFile>,
     consolidation: MemoryConsolidationStatus,
     job: HistoryMemoryJob?,
-    pending: List<HistoryMemoryCandidate>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    pendingCount: Int,
+    skippedCount: Int,
     savedCount: Int,
     lastOrganizedAt: Long,
     lastResult: String,
@@ -386,6 +441,7 @@ private fun MemoryHome(
     notice: String?,
     onNoticeShown: () -> Unit,
     onOrganize: () -> Unit,
+    onReextract: () -> Unit,
     onOpenReview: () -> Unit,
     onOpenUsage: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -423,6 +479,7 @@ private fun MemoryHome(
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -430,7 +487,7 @@ private fun MemoryHome(
         item(key = "overview") {
             OverviewCard(
                 count = memories.size,
-                pending = pending.size,
+                pending = pendingCount,
                 lastOrganizedAt = lastOrganizedAt,
                 lastResult = lastResult,
                 shared = assistant.useGlobalMemory,
@@ -443,12 +500,38 @@ private fun MemoryHome(
                 job = job,
                 busy = busy,
                 onOrganize = onOrganize,
+                onReextract = onReextract,
                 onPause = onPause,
                 onResume = onResume,
                 onCancel = onCancel,
             )
         }
-        if (pending.isNotEmpty()) {
+        if (skippedCount > 0) {
+            item(key = "skipped-recovery") {
+                Card(
+                    onClick = onOpenReview,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("有 $skippedCount 条候选被跳过", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "跳过的候选都还在，可以整批恢复，不需要重新提取。",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Text("去恢复", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+        if (pendingCount > 0) {
             item(key = "pending") {
                 Card(
                     onClick = onOpenReview,
@@ -464,7 +547,7 @@ private fun MemoryHome(
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("需要你确认", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "${pending.size} 条可能值得记住的事，可以一次全选处理。",
+                                "$pendingCount 条可能值得记住的事，可以一次全选处理。",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }
@@ -495,7 +578,7 @@ private fun MemoryHome(
             items(preview ?: emptyList(), key = { "search:${it.path}" }) { memory ->
                 MemoryRow(memory, onOpen = { onOpenMemory(memory.path) }, onDelete = { deleteTarget = memory })
             }
-        } else if (memories.isEmpty() && pending.isEmpty() && savedCount == 0) {
+        } else if (memories.isEmpty() && pendingCount == 0 && savedCount == 0) {
             item(key = "empty") {
                 ExtensionEmptyState(
                     message = "还没有记住什么",
@@ -649,6 +732,7 @@ private fun OrganizeCard(
     job: HistoryMemoryJob?,
     busy: Boolean,
     onOrganize: () -> Unit,
+    onReextract: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -691,6 +775,11 @@ private fun OrganizeCard(
                         }
                     }
                 }
+                TextButton(onClick = onReextract, enabled = !busy) { Text("从历史重新整理…") }
+                Text(
+                    "只在你明确选择范围时重新扫描旧聊天；相同内容不会重复计费。",
+                    style = MaterialTheme.typography.labelSmall,
+                )
                 if (consolidation.running) {
                     Text("后台正在整理最近的对话…", style = MaterialTheme.typography.labelSmall)
                 } else if (consolidation.pendingTurns > 0) {
@@ -812,17 +901,21 @@ private fun OrganizeDialog(
 @Composable
 private fun BulkResultDialog(
     result: HistoryMemoryManager.BulkResult,
+    skipped: Int,
     onUndo: () -> Unit,
+    onRestoreSkipped: () -> Unit,
     onReview: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // 任何一次批量操作都可能需要撤销，不能因为“没有新增记忆”就把撤销藏起来。
+    val undoable = result.changed > 0 || result.ignored > 0 || result.pending > 0 || result.restoredFiles > 0
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("整理完成") },
+        title = { Text("操作完成") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("新增 ${result.saved} 条 · 合并 ${result.merged} 条 · 更新 ${result.updated} 条")
-                Text("忽略 ${result.ignored} 条 · 重复 ${result.duplicate} 条 · 需要你确认 ${result.pending} 条")
+                Text("跳过 ${result.ignored} 条 · 重复 ${result.duplicate} 条 · 待确认 ${result.pending} 条")
                 if (result.failed > 0) {
                     Text("有 ${result.failed} 条没保存成功，内容还在候选里。", color = MaterialTheme.colorScheme.error)
                     result.failureReasons.forEach { Text("· $it", style = MaterialTheme.typography.labelSmall) }
@@ -830,12 +923,16 @@ private fun BulkResultDialog(
                 if (result.restoredFiles > 0 || result.skippedFiles > 0) {
                     Text("已恢复 ${result.restoredFiles} 条记忆，${result.skippedFiles} 条因为后来被修改而跳过。")
                 }
+                if (skipped > 0) {
+                    Text("还有 $skipped 条候选在“已跳过”里，可以整批恢复。")
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
         dismissButton = {
-            Row {
-                if (result.changed > 0) TextButton(onClick = onUndo) { Text("撤销") }
+            Column {
+                if (undoable) TextButton(onClick = onUndo) { Text("撤销这次操作") }
+                if (skipped > 0) TextButton(onClick = onRestoreSkipped) { Text("恢复全部跳过") }
                 if (result.pending > 0) TextButton(onClick = onReview) { Text("去确认") }
             }
         },

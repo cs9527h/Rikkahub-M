@@ -63,7 +63,14 @@ internal class HistoryMemoryManager(
     fun observe(scope: String) = dao.observe(scope)
     fun candidates(id: String) = dao.pendingAll(id)
     fun count(id: String, status: String) = dao.count(id, status)
+
+    /** 审核页按记忆库取候选：任务被替换后，上一轮没审完的候选仍然可见可恢复。 */
+    fun candidates(scope: String, status: String) = dao.candidatesOfStatus(scope, status)
+    fun countOf(scope: String, status: String) = dao.countOfStatus(scope, status)
     fun state(scope: String) = dao.observeState(scope)
+
+    /** 有可撤销记录时界面必须一直显示撤销入口，而不是只在“有新增”时才出现。 */
+    suspend fun undoAvailable(scope: String): Boolean = withContext(Dispatchers.IO) { dao.lastUndo(scope) != null }
     fun recalls(scope: String) = dao.recalls(scope)
     suspend fun clearRecalls(scope: String) = dao.clearRecalls(scope)
     suspend fun sources(from: Long, until: Long) = conversations.historySources(from, until)
@@ -165,10 +172,8 @@ internal class HistoryMemoryManager(
     internal suspend fun persistConfirmedPlan(plan: Plan): HistoryMemoryJob = database.withTransaction {
         val previous = dao.job(plan.scope)
         check(previous == null || previous.status in setOf("finished", "cancelled")) { "当前任务仍在运行或等待处理" }
-        previous?.let {
-            dao.clearCandidates(it.id)
-            dao.clearBatches(it.id)
-        }
+        // 不删除上一任务的候选与批次：候选属于用户的记忆数据，任务行会被替换但候选靠 scope 保留。
+        // 旧实现这里 clearCandidates，等于用户误操作或取消后数据直接消失。
         HistoryMemoryJob(
             plan.scope, Uuid.random().toString(), consentId, plan.modelId, plan.fingerprint,
             Json.encodeToString(plan.sources), plan.sources.size,
@@ -187,10 +192,7 @@ internal class HistoryMemoryManager(
                     else -> false
                 }
                 if (!allowed) return@withTransaction null
-                if (status == "cancelled") {
-                    dao.clearCandidates(current.id)
-                    dao.clearBatches(current.id)
-                }
+                // 取消只停止任务，不删除已经提取出来的候选：它们还能审核、保存或恢复。
                 current.copy(
                     status = status,
                     failure = null,
@@ -333,7 +335,7 @@ internal class HistoryMemoryManager(
         if (rememberDigest && digest != null) {
             dao.markSeen(HistoryMemorySeen(digest, System.currentTimeMillis()))
         }
-        if (facts.isNotEmpty()) dao.addCandidates(facts)
+        if (facts.isNotEmpty()) dao.addCandidates(facts.map { it.copy(scope = previous.scope) })
         dao.put(next)
         val existing = dao.state(next.scope) ?: MemoryScopeState(next.scope)
         val today = java.time.LocalDate.now().toString()
@@ -539,8 +541,8 @@ internal class HistoryMemoryManager(
     private data class UndoPayload(val files: List<UndoFile>, val keys: List<String>)
 
     /** 审核页需要一次拿到全部建议；不调用模型，纯本地计算。 */
-    suspend fun suggestions(scope: String, jobId: String): Map<String, MemoryTriage> = withContext(Dispatchers.Default) {
-        val pending = dao.pendingSnapshot(jobId, MAX_BULK)
+    suspend fun suggestions(scope: String): Map<String, MemoryTriage> = withContext(Dispatchers.Default) {
+        val pending = dao.snapshotOfStatus(scope, "pending", MAX_BULK)
         if (pending.isEmpty()) return@withContext emptyMap()
         val files = memories.getFiles(scope)
         pending.associate { it.key to MemoryTriageEngine.evaluate(it, files) }
@@ -554,12 +556,10 @@ internal class HistoryMemoryManager(
      */
     suspend fun saveSelected(
         scope: String,
-        jobId: String,
         keys: Set<String>,
         mode: BulkMode,
     ): BulkResult = controls.withLock {
-        val job = dao.job(scope)?.takeIf { it.id == jobId } ?: return@withLock BulkResult(failed = 1)
-        val pending = dao.pendingSnapshot(job.id, MAX_BULK).filter { it.key in keys }
+        val pending = dao.snapshotOfStatus(scope, "pending", MAX_BULK).filter { it.key in keys }
         if (pending.isEmpty()) return@withLock BulkResult()
         val files = memories.getFiles(scope)
         var saved = 0
@@ -582,7 +582,7 @@ internal class HistoryMemoryManager(
             }
             if (automatic && triage.suggestion == MemorySuggestion.IGNORE) {
                 val alreadyKnown = triage.targetPath != null
-                dao.setStatus(job.id, candidate.key, if (alreadyKnown) "duplicate" else "discarded")
+                dao.setStatus(candidate.jobId, candidate.key, if (alreadyKnown) "duplicate" else "discarded")
                 if (alreadyKnown) duplicate++ else ignored++
                 undoKeys += candidate.key
                 continue
@@ -594,14 +594,14 @@ internal class HistoryMemoryManager(
                 continue
             }
             val mergeTarget = if (mode == BulkMode.APPLY_SUGGESTIONS) triage.targetPath else null
-            when (val outcome = writeCandidate(scope, job.id, candidate, mergeTarget, triage.suggestion)) {
+            when (val outcome = writeCandidate(scope, candidate.jobId, candidate, mergeTarget, triage.suggestion)) {
                 is WriteOutcome.Saved -> {
                     when (outcome.kind) {
                         WriteKind.CREATED -> saved++
                         WriteKind.MERGED -> merged++
                         WriteKind.UPDATED -> updated++
                     }
-                    dao.setStatus(job.id, candidate.key, "saved")
+                    dao.setStatus(candidate.jobId, candidate.key, "saved")
                     undoKeys += candidate.key
                     if (undoChars < MAX_UNDO_CHARS) {
                         undoFiles += outcome.undo
@@ -609,7 +609,7 @@ internal class HistoryMemoryManager(
                     }
                 }
                 WriteOutcome.Duplicate -> {
-                    dao.setStatus(job.id, candidate.key, "duplicate")
+                    dao.setStatus(candidate.jobId, candidate.key, "duplicate")
                     duplicate++
                     undoKeys += candidate.key
                 }
@@ -624,7 +624,7 @@ internal class HistoryMemoryManager(
                 MemoryBulkUndo(
                     id = Uuid.random().toString(),
                     scope = scope,
-                    jobId = job.id,
+                    jobId = "",
                     createdAt = System.currentTimeMillis(),
                     summary = "新增 $saved 条 · 合并 $merged 条 · 更新 $updated 条 · 忽略 $ignored 条 · 需确认 $pendingCount 条",
                     payload = Json.encodeToString(UndoPayload(undoFiles, undoKeys)),
@@ -640,16 +640,34 @@ internal class HistoryMemoryManager(
         BulkResult(saved, merged, updated, duplicate, ignored, pendingCount, failed, reasons)
     }
 
-    suspend fun pendingKeys(jobId: String): List<String> = withContext(Dispatchers.IO) {
-        dao.pendingSnapshot(jobId, MAX_BULK).map { it.key }
+    suspend fun pendingKeys(scope: String): List<String> = withContext(Dispatchers.IO) {
+        dao.snapshotOfStatus(scope, "pending", MAX_BULK).map { it.key }
+    }
+
+    /** 已跳过的候选数量与内容，供“恢复误跳过”入口使用。 */
+    suspend fun skippedCount(scope: String): Int = withContext(Dispatchers.IO) {
+        dao.snapshotOfStatus(scope, "discarded", MAX_BULK).size
+    }
+
+    /**
+     * 把误跳过的候选恢复成待审核。只改状态，正文、证据、来源原样保留，不调用模型、不花钱。
+     * [keys] 为空时恢复该记忆库全部已跳过候选。
+     */
+    suspend fun restoreSkipped(scope: String, keys: Set<String> = emptySet()): Int = controls.withLock {
+        val skipped = dao.snapshotOfStatus(scope, "discarded", MAX_BULK)
+            .filter { keys.isEmpty() || it.key in keys }
+        if (skipped.isEmpty()) return@withLock 0
+        dao.setStatusesOfScope(scope, skipped.map { it.key }, "pending")
+        val state = dao.state(scope) ?: MemoryScopeState(scope)
+        dao.putState(state.copy(lastResult = "已恢复 ${skipped.size} 条被跳过的候选"))
+        skipped.size
     }
 
     /** 批量跳过：候选保留在库里，随时可以再看。 */
-    suspend fun skipSelected(scope: String, jobId: String, keys: Set<String>): Int = controls.withLock {
-        val job = dao.job(scope)?.takeIf { it.id == jobId } ?: return@withLock 0
-        val pending = dao.pendingSnapshot(job.id, MAX_BULK).filter { it.key in keys }
+    suspend fun skipSelected(scope: String, keys: Set<String>): Int = controls.withLock {
+        val pending = dao.snapshotOfStatus(scope, "pending", MAX_BULK).filter { it.key in keys }
         if (pending.isEmpty()) return@withLock 0
-        dao.setStatuses(job.id, pending.map { it.key }, "discarded")
+        dao.setStatusesOfScope(scope, pending.map { it.key }, "discarded")
         dao.addUndo(
             MemoryBulkUndo(
                 id = Uuid.random().toString(),
@@ -752,7 +770,7 @@ internal class HistoryMemoryManager(
             if (ok) restored++ else skipped++
         }
         if (payload.keys.isNotEmpty()) {
-            dao.setStatuses(record.jobId, payload.keys, "pending")
+            dao.setStatusesOfScope(scope, payload.keys, "pending")
         }
         dao.clearUndo(record.id)
         BulkResult(restoredFiles = restored, skippedFiles = skipped, pending = payload.keys.size)

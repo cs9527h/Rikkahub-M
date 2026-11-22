@@ -41,6 +41,24 @@ interface HistoryMemoryDAO {
     @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND status = 'pending' ORDER BY category, `key` LIMIT :limit")
     suspend fun pendingSnapshot(id: String, limit: Int): List<HistoryMemoryCandidate>
 
+    /** 按记忆库看某一种状态的候选：任务被替换后仍然能看到上一轮没处理完的内容。 */
+    @Query(
+        "SELECT * FROM history_memory_candidate WHERE scope = :scope AND status = :status " +
+            "ORDER BY category, `key` LIMIT :limit"
+    )
+    fun candidatesOfStatus(scope: String, status: String, limit: Int = 2_000): Flow<List<HistoryMemoryCandidate>>
+
+    @Query(
+        "SELECT * FROM history_memory_candidate WHERE scope = :scope AND status = :status ORDER BY category, `key`"
+    )
+    suspend fun snapshotOfStatus(scope: String, status: String, limit: Int = 2_000): List<HistoryMemoryCandidate>
+
+    @Query("SELECT COUNT(*) FROM history_memory_candidate WHERE scope = :scope AND status = :status")
+    fun countOfStatus(scope: String, status: String): Flow<Int>
+
+    @Query("UPDATE history_memory_candidate SET status = :status WHERE scope = :scope AND `key` IN (:keys)")
+    suspend fun setStatusesOfScope(scope: String, keys: List<String>, status: String)
+
     @Query("SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = :status")
     fun count(id: String, status: String): Flow<Int>
 

@@ -1,12 +1,12 @@
 {
-  "version": "0.8.0",
+  "version": "0.8.1",
   "measured": false,
   "source": "未采集（本版只有 CI 模拟器与自动化门禁，无真机数据）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
   "metrics": {},
-  "note": "0.8.0 重构记忆首页与批量审核，未采集真机指标；长列表使用 LazyColumn 分页数据与一次性分组，不声明未验证的提升百分比。",
+  "note": "0.8.1 修复候选恢复与二级页面转场，未采集真机指标；滚动位置按页面保持，不声明未验证的性能提升。",
   "ciEmulator": {
     "device": "Android SDK built for x86_64 (emu64x, API 35, 2 cores)",
     "buildType": "benchmarkRelease",

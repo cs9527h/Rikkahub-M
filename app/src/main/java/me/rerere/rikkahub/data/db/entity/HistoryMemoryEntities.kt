@@ -32,10 +32,20 @@ data class HistoryMemoryJob(
     val budgetAckTokens: Long = 0,
 )
 
-@Entity(tableName = "history_memory_candidate", primaryKeys = ["jobId", "key"], indices = [Index("jobId", "status")])
+@Entity(
+    tableName = "history_memory_candidate",
+    primaryKeys = ["jobId", "key"],
+    indices = [Index("jobId", "status"), Index("scope", "status")],
+)
 data class HistoryMemoryCandidate(
     val jobId: String,
     val key: String,
+    /**
+     * 候选属于哪个记忆库。任务行会被新任务替换，只有把 scope 冗余到候选上，
+     * 上一轮没审完的候选才不会跟着任务一起“消失”。
+     */
+    @ColumnInfo(defaultValue = "''")
+    val scope: String = "",
     val category: String,
     val subject: String,
     val fact: String,

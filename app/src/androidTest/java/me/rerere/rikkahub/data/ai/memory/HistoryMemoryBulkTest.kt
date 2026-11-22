@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import me.rerere.ai.provider.ProviderManager
@@ -75,6 +76,7 @@ class HistoryMemoryBulkTest {
                 HistoryMemoryCandidate(
                     jobId = jobId,
                     key = "bulk-$index",
+                    scope = scope,
                     category = "ongoing",
                     subject = "习惯 $index",
                     fact = fact,
@@ -88,19 +90,17 @@ class HistoryMemoryBulkTest {
 
             val result = history.saveSelected(
                 scope,
-                jobId,
                 candidates.map { it.key }.toSet(),
                 HistoryMemoryManager.BulkMode.SAVE_SELECTED,
             )
             assertEquals(200, result.saved)
             assertEquals(0, result.failed)
             assertEquals(200, memory.getFiles(scope).size)
-            assertEquals(0, history.pendingKeys(jobId).size)
+            assertEquals(0, history.pendingKeys(scope).size)
 
             // 再点一次不会写出重复记忆
             val repeated = history.saveSelected(
                 scope,
-                jobId,
                 candidates.map { it.key }.toSet(),
                 HistoryMemoryManager.BulkMode.SAVE_SELECTED,
             )
@@ -110,12 +110,13 @@ class HistoryMemoryBulkTest {
             val undo = history.undoLastBulk(scope)
             assertEquals(200, undo?.restoredFiles ?: -1)
             assertEquals(0, memory.getFiles(scope).size)
-            assertEquals(200, history.pendingKeys(jobId).size)
+            assertEquals(200, history.pendingKeys(scope).size)
 
             // 涉及人物关系的候选：按建议整理时不会自动落盘
             val uncertain = HistoryMemoryCandidate(
                 jobId = jobId,
                 key = "uncertain-people",
+                scope = scope,
                 category = "people",
                 subject = "妹妹",
                 fact = "我的妹妹今年在杭州读研究生，专业是建筑设计",
@@ -127,14 +128,45 @@ class HistoryMemoryBulkTest {
             db.historyMemoryDao().addCandidates(listOf(uncertain))
             val suggested = history.saveSelected(
                 scope,
-                jobId,
                 setOf(uncertain.key),
                 HistoryMemoryManager.BulkMode.APPLY_SUGGESTIONS,
             )
             assertEquals(0, suggested.saved)
             assertEquals(1, suggested.pending)
-            assertTrue(uncertain.key in history.pendingKeys(jobId))
+            assertTrue(uncertain.key in history.pendingKeys(scope))
             assertTrue(memory.getFiles(scope).isEmpty())
+
+            // 误触“全部跳过”后的恢复：200 条全部找回，正文/证据/来源不变
+            val skipped = history.skipSelected(scope, candidates.map { it.key }.toSet())
+            assertEquals(200, skipped)
+            assertEquals(1, history.pendingKeys(scope).size)
+            assertEquals(200, history.skippedCount(scope))
+            val restored = history.restoreSkipped(scope)
+            assertEquals(200, restored)
+            assertEquals(201, history.pendingKeys(scope).size)
+            assertEquals(0, history.skippedCount(scope))
+            val reopened = history.candidates(scope, "pending").first()
+            assertEquals(201, reopened.size)
+            val restoredFacts = reopened.filterNot { it.key == "uncertain-people" }
+            assertEquals(candidates.map { it.fact }.toSet(), restoredFacts.map { it.fact }.toSet())
+            assertTrue(restoredFacts.all { it.evidence.isNotBlank() && it.conversationId == conversation })
+
+            // 新任务替换任务行之后，旧候选仍然按记忆库归属可见、可恢复
+            val replacement = HistoryMemoryJob(
+                scope = scope,
+                id = "replacement-job",
+                deviceConsent = "device",
+                modelId = "model",
+                providerFingerprint = "fingerprint",
+                sources = "[]",
+                sourceCount = 0,
+                status = "finished",
+            )
+            db.historyMemoryDao().put(replacement)
+            history.skipSelected(scope, candidates.map { it.key }.toSet())
+            assertEquals(200, history.skippedCount(scope))
+            assertEquals(200, history.restoreSkipped(scope))
+            assertEquals(200, history.pendingKeys(scope).size)
         } finally {
             db.close()
             diskScope.coroutineContext[Job]?.cancelAndJoin()

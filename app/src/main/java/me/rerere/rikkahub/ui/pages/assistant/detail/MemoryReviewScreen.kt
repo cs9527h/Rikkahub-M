@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -25,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,50 +36,66 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.ai.memory.MemorySuggestion
 import me.rerere.rikkahub.data.ai.memory.MemoryTriage
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
-import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private enum class TriFilter(val label: String) {
-    ALL("全部"),
-    SAVE("可保存"),
-    MERGE("可合并"),
-    CONFIRM("需确认"),
-    IGNORE("可忽略"),
+private enum class CandidateTab(val label: String, val status: String) {
+    PENDING("待审核", "pending"),
+    SKIPPED("已跳过", "discarded"),
+    SAVED("已保存", "saved"),
+    DUPLICATE("重复", "duplicate"),
 }
 
 /**
- * 批量审核：默认全选“建议保存”，一次按钮解决几十上百条，需要确认的仍然一条条看。
+ * 批量审核：待审核可以一次处理，已跳过的可以整批找回。
+ *
+ * 误触“全部跳过”是真实事故：这里所有破坏性操作都要确认，并且任何一次批量操作之后
+ * 撤销入口一直可见，而不是只在“有新增”时才出现。
  */
 @Composable
 internal fun MemoryReviewScreen(
     scope: String,
-    job: HistoryMemoryJob,
-    pending: List<HistoryMemoryCandidate>,
     history: HistoryMemoryManager,
+    listState: LazyListState,
     onResult: (HistoryMemoryManager.BulkResult?) -> Unit,
     onEdit: (HistoryMemoryCandidate) -> Unit,
 ) {
-    var suggestions by remember(job.id) { mutableStateOf<Map<String, MemoryTriage>>(emptyMap()) }
-    var loading by remember(job.id) { mutableStateOf(true) }
-    var busy by remember(job.id) { mutableStateOf(false) }
-    var error by remember(job.id) { mutableStateOf<String?>(null) }
-    var filter by remember(job.id) { mutableStateOf(TriFilter.ALL) }
-    var selected by remember(job.id) { mutableStateOf(emptySet<String>()) }
-    var seeded by remember(job.id) { mutableStateOf(false) }
+    var tab by remember { mutableStateOf(CandidateTab.PENDING) }
+    var suggestions by remember { mutableStateOf<Map<String, MemoryTriage>>(emptyMap()) }
+    var loading by remember { mutableStateOf(true) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var filter by remember { mutableStateOf<TriFilter>(TriFilter.ALL) }
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var seeded by remember { mutableStateOf(false) }
+    var confirmSkip by remember { mutableStateOf(false) }
+    var undoAvailable by remember { mutableStateOf(false) }
     val coroutine = rememberCoroutineScope()
 
-    suspend fun refreshSuggestions() {
+    fun tabFlow(status: String) = history.candidates(scope, status)
+    val pending by remember(scope) { tabFlow("pending") }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val skipped by remember(scope) { tabFlow("discarded") }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val saved by remember(scope) { tabFlow("saved") }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val duplicates by remember(scope) { tabFlow("duplicate") }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val visible = when (tab) {
+        CandidateTab.PENDING -> pending
+        CandidateTab.SKIPPED -> skipped
+        CandidateTab.SAVED -> saved
+        CandidateTab.DUPLICATE -> duplicates
+    }
+
+    suspend fun refreshMeta() {
         loading = true
         suggestions = try {
-            history.suggestions(scope, job.id)
+            history.suggestions(scope)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -85,6 +104,7 @@ internal fun MemoryReviewScreen(
         } finally {
             loading = false
         }
+        undoAvailable = history.undoAvailable(scope)
     }
 
     fun run(action: suspend () -> HistoryMemoryManager.BulkResult?) {
@@ -94,6 +114,9 @@ internal fun MemoryReviewScreen(
         coroutine.launch {
             try {
                 onResult(action())
+                // 操作结束后重新读建议和撤销状态：界面状态不能靠猜测
+                refreshMeta()
+                selected = emptySet()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -104,9 +127,8 @@ internal fun MemoryReviewScreen(
         }
     }
 
-    LaunchedEffect(job.id, pending.size) {
-        refreshSuggestions()
-        // 第一次分析完成后，默认把“建议保存”的勾上：最省事的做法才是默认做法
+    LaunchedEffect(scope, pending.size) {
+        refreshMeta()
         if (!seeded && pending.isNotEmpty()) {
             selected = pending.filter { suggestions[it.key]?.suggestion == MemorySuggestion.SAVE }
                 .map { it.key }.toSet()
@@ -114,8 +136,8 @@ internal fun MemoryReviewScreen(
         }
     }
 
-    val visible = remember(pending, filter, suggestions) {
-        pending.filter { candidate ->
+    val filtered = remember(visible, filter, suggestions) {
+        if (tab != CandidateTab.PENDING) visible else visible.filter { candidate ->
             when (filter) {
                 TriFilter.ALL -> true
                 TriFilter.SAVE -> suggestions[candidate.key]?.suggestion == MemorySuggestion.SAVE
@@ -127,34 +149,58 @@ internal fun MemoryReviewScreen(
             }
         }
     }
-    val confirmed = remember(pending, suggestions) {
-        pending.count { suggestions[it.key]?.suggestion == MemorySuggestion.CONFIRM }
-    }
+    val confirmed = pending.count { suggestions[it.key]?.suggestion == MemorySuggestion.CONFIRM }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(key = "summary") {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("我整理出 ${pending.size} 条可能值得记住的事", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "建议保存 ${pending.count { suggestions[it.key]?.suggestion == MemorySuggestion.SAVE }} 条 · " +
-                            "可合并 ${pending.count { suggestions[it.key]?.suggestion.let { s -> s == MemorySuggestion.MERGE || s == MemorySuggestion.UPDATE } }} 条 · " +
-                            "需要你确认 $confirmed 条",
+                        when (tab) {
+                            CandidateTab.PENDING -> "我整理出 ${pending.size} 条可能值得记住的事"
+                            CandidateTab.SKIPPED -> "有 ${skipped.size} 条候选被跳过，可以随时找回"
+                            CandidateTab.SAVED -> "已经保存 ${saved.size} 条候选"
+                            CandidateTab.DUPLICATE -> "有 ${duplicates.size} 条内容已经记过"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "待审核 ${pending.size} · 已跳过 ${skipped.size} · 已保存 ${saved.size}" +
+                            (if (confirmed > 0) " · 其中 $confirmed 条建议你确认" else ""),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text(
-                        "建议只是字面比对的结果，不代表事实一定成立。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
                 }
             }
-            if (loading) {
+            item(key = "tabs") {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CandidateTab.entries.forEach { item ->
+                        FilterChip(
+                            selected = tab == item,
+                            onClick = {
+                                tab = item
+                                selected = emptySet()
+                            },
+                            label = {
+                                Text(
+                                    when (item) {
+                                        CandidateTab.PENDING -> "待审核 ${pending.size}"
+                                        CandidateTab.SKIPPED -> "已跳过 ${skipped.size}"
+                                        CandidateTab.SAVED -> "已保存 ${saved.size}"
+                                        CandidateTab.DUPLICATE -> "重复 ${duplicates.size}"
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            if (loading && tab == CandidateTab.PENDING) {
                 item(key = "loading") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ContainedLoadingIndicator(modifier = Modifier.size(24.dp))
@@ -163,45 +209,92 @@ internal fun MemoryReviewScreen(
                     }
                 }
             }
-            item(key = "tools") {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(
-                            selected = selected.size == visible.size && visible.isNotEmpty(),
+            if (tab == CandidateTab.PENDING) {
+                item(key = "tools") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = selected.size == filtered.size && filtered.isNotEmpty(),
+                                onClick = {
+                                    val keys = filtered.map { it.key }.toSet()
+                                    selected = if (selected.containsAll(keys) && keys.isNotEmpty()) {
+                                        selected - keys
+                                    } else {
+                                        selected + keys
+                                    }
+                                },
+                                label = { Text(if (selected.size == filtered.size && filtered.isNotEmpty()) "取消全选" else "全选") },
+                            )
+                            TextButton(onClick = {
+                                val keys = filtered.map { it.key }.toSet()
+                                selected = (keys - selected) + (selected - keys)
+                            }) { Text("反选") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TriFilter.entries.forEach { item ->
+                                FilterChip(
+                                    selected = filter == item,
+                                    onClick = { filter = item },
+                                    label = { Text(item.label) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (tab == CandidateTab.SKIPPED && skipped.isNotEmpty()) {
+                item(key = "restore-all") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FilledTonalButton(
+                            enabled = !busy,
                             onClick = {
-                                selected = if (selected.size == visible.size) {
-                                    selected - visible.map { it.key }.toSet()
-                                } else {
-                                    selected + visible.map { it.key }
+                                run {
+                                    val restored = history.restoreSkipped(scope)
+                                    HistoryMemoryManager.BulkResult(pending = restored)
                                 }
                             },
-                            label = { Text(if (selected.size == visible.size && visible.isNotEmpty()) "取消全选" else "全选") },
-                        )
-                        TextButton(onClick = {
-                            val all = visible.map { it.key }.toSet()
-                            selected = (all - selected) + (selected - all)
-                        }) { Text("反选") }
+                        ) { Text("恢复全部跳过（${skipped.size}）") }
+                        if (selected.isNotEmpty()) {
+                            TextButton(
+                                enabled = !busy,
+                                onClick = {
+                                    run {
+                                        val restored = history.restoreSkipped(scope, selected)
+                                        HistoryMemoryManager.BulkResult(pending = restored)
+                                    }
+                                },
+                            ) { Text("恢复选中的 ${selected.size} 条") }
+                        }
                     }
-                    LazyRowOfFilters(filter) { filter = it }
                 }
             }
             error?.let { message ->
                 item(key = "error") { Text(message, color = MaterialTheme.colorScheme.error) }
             }
-            if (visible.isEmpty() && !loading) {
+            if (filtered.isEmpty() && !loading) {
                 item(key = "empty") {
-                    Text("这里暂时没有需要你处理的记忆。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        when (tab) {
+                            CandidateTab.PENDING -> "这里暂时没有待审核的候选。"
+                            CandidateTab.SKIPPED -> "没有已跳过的候选。"
+                            CandidateTab.SAVED -> "还没有保存过的候选。"
+                            CandidateTab.DUPLICATE -> "没有判定为重复的候选。"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-            items(visible, key = { it.key }) { candidate ->
+            items(filtered, key = { "${tab.name}:${it.jobId}:${it.key}" }) { candidate ->
                 CandidateRow(
                     candidate = candidate,
-                    triage = suggestions[candidate.key],
-                    checked = candidate.key in selected,
+                    triage = suggestions[candidate.key].takeIf { tab == CandidateTab.PENDING },
+                    statusLabel = if (tab == CandidateTab.PENDING) null else tab.label,
+                    checked = candidate.key in selected && tab != CandidateTab.SAVED && tab != CandidateTab.DUPLICATE,
+                    selectable = tab == CandidateTab.PENDING || tab == CandidateTab.SKIPPED,
                     onToggle = {
                         selected = if (candidate.key in selected) selected - candidate.key else selected + candidate.key
                     },
-                    onClick = { onEdit(candidate) },
+                    onClick = { if (tab == CandidateTab.PENDING) onEdit(candidate) },
                 )
             }
             item(key = "spacer") { Spacer(Modifier.height(72.dp)) }
@@ -209,53 +302,106 @@ internal fun MemoryReviewScreen(
         Surface(tonalElevation = 3.dp) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                 HorizontalDivider(Modifier.padding(bottom = 10.dp))
-                FilledTonalButton(
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !busy && selected.isNotEmpty(),
-                    onClick = {
-                        run { history.saveSelected(scope, job.id, selected, HistoryMemoryManager.BulkMode.SAVE_SELECTED) }
-                    },
-                ) { Text("保存选中的 ${selected.size} 条") }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        enabled = !busy && pending.isNotEmpty(),
-                        onClick = {
-                            run { history.saveSelected(scope, job.id, pending.map { it.key }.toSet(), HistoryMemoryManager.BulkMode.APPLY_SUGGESTIONS) }
-                        },
-                    ) { Text("按建议整理") }
-                    TextButton(
-                        enabled = !busy && pending.isNotEmpty(),
-                        onClick = { run { HistoryMemoryManager.BulkResult(ignored = history.skipSelected(scope, job.id, pending.map { it.key }.toSet())) } },
-                    ) { Text("全部跳过") }
+                when (tab) {
+                    CandidateTab.PENDING -> {
+                        FilledTonalButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !busy && selected.isNotEmpty(),
+                            onClick = {
+                                run { history.saveSelected(scope, selected, HistoryMemoryManager.BulkMode.SAVE_SELECTED) }
+                            },
+                        ) { Text("保存选中的 ${selected.size} 条") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(
+                                enabled = !busy && pending.isNotEmpty(),
+                                onClick = {
+                                    run {
+                                        history.saveSelected(
+                                            scope,
+                                            pending.map { it.key }.toSet(),
+                                            HistoryMemoryManager.BulkMode.APPLY_SUGGESTIONS,
+                                        )
+                                    }
+                                },
+                            ) { Text("按建议整理") }
+                            TextButton(
+                                enabled = !busy && pending.isNotEmpty(),
+                                onClick = { confirmSkip = true },
+                            ) { Text("全部跳过") }
+                        }
+                    }
+
+                    CandidateTab.SKIPPED -> {
+                        Text(
+                            "找回不会重新提取、不消耗 Token；候选正文、证据和来源都按原样恢复。",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (undoAvailable) {
+                            TextButton(
+                                enabled = !busy,
+                                onClick = { run { history.undoLastBulk(scope) } },
+                            ) { Text("撤销上一次批量操作") }
+                        }
+                    }
+
+                    else -> Text(
+                        "这里只展示历史结果，不会改动任何内容。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
-                Text("按建议整理会直接合并或更新已有记忆，可以撤销。", style = MaterialTheme.typography.labelSmall)
+                if (undoAvailable && tab != CandidateTab.SKIPPED) {
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { run { history.undoLastBulk(scope) } },
+                    ) { Text("撤销上一次批量操作") }
+                }
             }
         }
     }
+
+    if (confirmSkip) {
+        AlertDialog(
+            onDismissRequest = { confirmSkip = false },
+            title = { Text("跳过全部 ${pending.size} 条候选？") },
+            text = {
+                Text(
+                    "跳过后它们仍然保留在“已跳过”里，可以整批恢复，不会重新调用模型；" +
+                        "但为了避免误操作，请确认数量是否正确。",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmSkip = false
+                    run {
+                        val skippedCount = history.skipSelected(scope, pending.map { it.key }.toSet())
+                        HistoryMemoryManager.BulkResult(ignored = skippedCount)
+                    }
+                }) { Text("确认跳过 ${pending.size} 条") }
+            },
+            dismissButton = { TextButton(onClick = { confirmSkip = false }) { Text("取消") } },
+        )
+    }
 }
 
-@Composable
-private fun LazyRowOfFilters(current: TriFilter, onSelect: (TriFilter) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        TriFilter.entries.forEach { item ->
-            FilterChip(
-                selected = current == item,
-                onClick = { onSelect(item) },
-                label = { Text(item.label) },
-            )
-        }
-    }
+private enum class TriFilter(val label: String) {
+    ALL("全部"),
+    SAVE("可保存"),
+    MERGE("可合并"),
+    CONFIRM("需确认"),
+    IGNORE("可忽略"),
 }
 
 @Composable
 private fun CandidateRow(
     candidate: HistoryMemoryCandidate,
     triage: MemoryTriage?,
+    statusLabel: String?,
     checked: Boolean,
+    selectable: Boolean,
     onToggle: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -266,7 +412,11 @@ private fun CandidateRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        if (selectable) {
+            Checkbox(checked = checked, onCheckedChange = { onToggle() })
+        } else {
+            Spacer(Modifier.size(12.dp))
+        }
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -278,9 +428,13 @@ private fun CandidateRow(
                 )
                 Spacer(Modifier.size(6.dp))
                 Text(
-                    text = suggestionLabel(triage),
+                    text = statusLabel ?: suggestionLabel(triage),
                     style = MaterialTheme.typography.labelSmall,
-                    color = suggestionColor(triage),
+                    color = if (statusLabel != null) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        suggestionColor(triage)
+                    },
                 )
             }
             Text(candidate.fact, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -333,4 +487,3 @@ internal fun localDate(value: String): String = runCatching {
 
 internal fun dateOf(millis: Long, pattern: String = "yyyy-MM-dd"): String =
     DateTimeFormatter.ofPattern(pattern).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(millis))
-

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -40,7 +41,11 @@ import java.time.format.DateTimeFormatter
  * 不假装知道模型最后有没有采用。
  */
 @Composable
-internal fun MemoryUsageScreen(assistant: Assistant, openChat: (String) -> Unit) {
+internal fun MemoryUsageScreen(
+    assistant: Assistant,
+    listState: LazyListState,
+    openChat: (String) -> Unit,
+) {
     val history: HistoryMemoryManager = koinInject()
     val records by remember(assistant.memoryId) { history.recalls(assistant.memoryId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -48,6 +53,7 @@ internal fun MemoryUsageScreen(assistant: Assistant, openChat: (String) -> Unit)
     var detail by remember(assistant.memoryId) { mutableStateOf<MemoryRecallRecord?>(null) }
     var clear by remember(assistant.memoryId) { mutableStateOf(false) }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
