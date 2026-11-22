@@ -24,17 +24,34 @@ internal class FakeMemoryDAO : MemoryDAO {
     override suspend fun getFilesOfAssistant(assistantId: String): List<MemoryFileEntity> =
         files.value.filter { it.assistantId == assistantId && it.deletedAt == 0L }.sortedBy { it.path }
 
+    override suspend fun recallPage(assistantId: String, after: String): List<MemoryFileEntity> =
+        getFilesOfAssistant(assistantId).filter { it.path > after }.take(16)
+
     override fun getDeletedFilesOfAssistantFlow(assistantId: String): Flow<List<MemoryFileEntity>> =
         files.map { all ->
             all.filter { it.assistantId == assistantId && it.deletedAt != 0L }
                 .sortedWith(compareByDescending<MemoryFileEntity> { it.deletedAt }.thenBy { it.path })
         }
 
+    override fun observeFile(scope: String, path: String): Flow<MemoryFileEntity?> =
+        files.map { all -> all.find { it.assistantId == scope && it.path == path && it.deletedAt == 0L } }
+
     override suspend fun getFile(assistantId: String, path: String): MemoryFileEntity? =
         files.value.find { it.assistantId == assistantId && it.path == path && it.deletedAt == 0L }
 
     override suspend fun getFileIncludingDeleted(assistantId: String, path: String): MemoryFileEntity? =
         files.value.find { it.assistantId == assistantId && it.path == path }
+
+    override suspend fun listByPrefix(scope: String, prefix: String, limit: Int): List<MemoryFileEntity> =
+        getFilesOfAssistant(scope).filter { it.path.startsWith(prefix) }.take(limit)
+
+    override suspend fun findImportedFact(scope: String, key: String): MemoryFileEntity? =
+        files.value.filter { it.assistantId == scope && it.path.endsWith("/history-$key.md") }
+            .minWithOrNull(compareBy({ it.deletedAt }, { it.path }))
+
+    override suspend fun exactTextCandidates(scope: String, fact: String): List<MemoryFileEntity> =
+        files.value.filter { it.assistantId == scope && it.content.contains(fact, ignoreCase = true) }
+            .sortedWith(compareBy({ it.deletedAt }, { it.path })).take(24)
 
     override suspend fun upsertFile(file: MemoryFileEntity) = upsertFiles(listOf(file))
 

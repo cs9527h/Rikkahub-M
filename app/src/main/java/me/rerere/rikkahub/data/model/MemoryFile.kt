@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.model
 
 import me.rerere.rikkahub.data.skills.SkillFrontmatterParser
 import java.security.MessageDigest
+import kotlin.uuid.Uuid
 
 /**
  * 记忆库里的一个 Markdown 文件。
@@ -26,11 +27,53 @@ data class MemoryFile(
 
     val aliases: List<String> get() = frontmatter.getList("aliases")
 
+    val isOutdated: Boolean get() = frontmatter.toMap()["outdated"]?.toString()?.equals("true", ignoreCase = true) == true
+
+    fun contentWithOutdated(outdated: Boolean): String {
+        val attributes = frontmatter.toMap().toMutableMap()
+        if (outdated) attributes["outdated"] = "true" else attributes.remove("outdated")
+        return SkillFrontmatterParser.compose(attributes, editableBody)
+    }
+
+    internal val importance: Int get() = frontmatter.toMap()["importance"]?.toString()?.toIntOrNull()?.coerceIn(0, 5) ?: 0
+
     /** 去掉 frontmatter 后的正文 */
     val body: String get() = SkillFrontmatterParser.extractBody(content)
 
     /** 给用户看的正文：`[stated]` 是写给模型的标记，界面上不显示 */
-    val displayBody: String get() = body.replace(statedMarkerRegex, "$1")
+    val displayBody: String get() = recallBody.replace(statedMarkerRegex, "$1")
+
+    internal val recallBody: String get() = withoutSources(body)
+    internal val recallContent: String get() = withoutSources(content)
+
+    private fun withoutSources(text: String): String =
+        if ("<!-- history-source " in text) {
+            text.lineSequence().filterNot { it.startsWith("<!-- history-source ") }.joinToString("\n").trimEnd()
+        } else text
+
+    internal fun appendedHistoryFact(fact: String, source: String): String {
+        val sources = editableBody.lineSequence().filter { it.startsWith("<!-- history-source ") }.toList()
+        val updatedBody = buildString {
+            appendLine(withoutSources(editableBody).trimEnd())
+            appendLine()
+            appendLine("- [stated] $fact")
+            appendLine()
+            sources.forEach { appendLine(it) }
+            appendLine(source)
+        }
+        return if (frontmatter.toMap().isEmpty()) updatedBody else {
+            SkillFrontmatterParser.compose(frontmatter.toMap(), updatedBody)
+        }
+    }
+
+    val historySource: MemoryHistorySource? get() {
+        val line = body.lineSequence().lastOrNull { it.startsWith("<!-- history-source ") } ?: return null
+        val fields = line.removePrefix("<!-- history-source ").removeSuffix(" -->").split(' ')
+        if (fields.size < 3) return null
+        val conversation = runCatching { Uuid.parse(fields[0]) }.getOrNull() ?: return null
+        val message = runCatching { Uuid.parse(fields[1]) }.getOrNull() ?: return null
+        return MemoryHistorySource(conversation, message, fields[2])
+    }
 
     /**
      * 编辑页里的正文。frontmatter 读不出来时（比如某个值里有没加引号的冒号）整段原文都算正文：
@@ -71,6 +114,8 @@ data class MemoryFile(
     }
 }
 
+data class MemoryHistorySource(val conversationId: Uuid, val messageId: Uuid, val time: String)
+
 // 编辑页有对应输入框的键，加上跟着路径走的 name
 private val editableKeys = setOf("name", "title", "description", "aliases")
 
@@ -80,7 +125,7 @@ private fun String.toSingleLine(): String = replace(Regex("\\s+"), " ").trim()
 // 列表项开头的 [stated] 标记，保留前面的列表符号
 private val statedMarkerRegex = Regex("""(?m)^(\s*[-*+]\s+)\[stated\]\s*""", RegexOption.IGNORE_CASE)
 
-// 每次都全文注入的两个文件排在最前，其余目录按记忆格式约定的顺序
+// 记忆管理中个人资料和偏好排在最前
 private val pinnedPathOrder = listOf(MemoryFile.PROFILE_PATH, MemoryFile.PREFERENCES_PATH)
 private val directoryOrder = listOf("/", "/topics", "/areas", "/people")
 

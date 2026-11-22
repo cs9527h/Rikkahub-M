@@ -21,16 +21,31 @@ interface MemoryDAO {
     @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at = 0 ORDER BY path")
     suspend fun getFilesOfAssistant(assistantId: String): List<MemoryFileEntity>
 
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at = 0 AND path > :after ORDER BY path LIMIT 16")
+    suspend fun recallPage(assistantId: String, after: String): List<MemoryFileEntity>
+
     @Query(
         "SELECT * FROM memory_file WHERE assistant_id = :assistantId AND deleted_at != 0 ORDER BY deleted_at DESC, path"
     )
     fun getDeletedFilesOfAssistantFlow(assistantId: String): Flow<List<MemoryFileEntity>>
+
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND path = :path AND deleted_at = 0")
+    fun observeFile(scope: String, path: String): Flow<MemoryFileEntity?>
 
     @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND path = :path AND deleted_at = 0")
     suspend fun getFile(assistantId: String, path: String): MemoryFileEntity?
 
     @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND path = :path")
     suspend fun getFileIncludingDeleted(assistantId: String, path: String): MemoryFileEntity?
+
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND deleted_at = 0 AND instr(path, :prefix) = 1 ORDER BY path LIMIT :limit")
+    suspend fun listByPrefix(scope: String, prefix: String, limit: Int): List<MemoryFileEntity>
+
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND path LIKE '%/history-' || :key || '.md' ORDER BY deleted_at, path LIMIT 1")
+    suspend fun findImportedFact(scope: String, key: String): MemoryFileEntity?
+
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND instr(lower(content), lower(:fact)) > 0 ORDER BY deleted_at, path LIMIT 24")
+    suspend fun exactTextCandidates(scope: String, fact: String): List<MemoryFileEntity>
 
     @Upsert
     suspend fun upsertFile(file: MemoryFileEntity)

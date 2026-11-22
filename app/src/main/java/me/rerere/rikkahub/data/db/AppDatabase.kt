@@ -13,6 +13,7 @@ import me.rerere.rikkahub.data.db.dao.GenMediaDAO
 import me.rerere.rikkahub.data.db.dao.ManagedFileDAO
 import me.rerere.rikkahub.data.db.dao.MediaCreationDAO
 import me.rerere.rikkahub.data.db.dao.MemoryConsolidationDAO
+import me.rerere.rikkahub.data.db.dao.HistoryMemoryDAO
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.dao.TranslationHistoryDAO
@@ -27,6 +28,10 @@ import me.rerere.rikkahub.data.db.entity.MediaCreationNodeEntity
 import me.rerere.rikkahub.data.db.entity.MediaCreationRecordEntity
 import me.rerere.rikkahub.data.db.entity.MediaCreationSessionEntity
 import me.rerere.rikkahub.data.db.entity.MemoryConsolidationEntity
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
+import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.db.entity.TranslationHistoryEntity
@@ -42,6 +47,10 @@ import me.rerere.rikkahub.utils.JsonInstant
     entities = [
         ConversationEntity::class,
         MemoryFileEntity::class,
+        MemoryRecallRecord::class,
+        HistoryMemoryBatch::class,
+        HistoryMemoryCandidate::class,
+        HistoryMemoryJob::class,
         MemoryConsolidationEntity::class,
         GenMediaEntity::class,
         MessageNodeEntity::class,
@@ -55,7 +64,7 @@ import me.rerere.rikkahub.utils.JsonInstant
         TranslationHistoryEntity::class,
         UsageRecordEntity::class,
     ],
-    version = 35,
+    version = 36,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -89,6 +98,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDAO
 
     abstract fun memoryDao(): MemoryDAO
+
+    abstract fun historyMemoryDao(): HistoryMemoryDAO
 
     abstract fun memoryConsolidationDao(): MemoryConsolidationDAO
 

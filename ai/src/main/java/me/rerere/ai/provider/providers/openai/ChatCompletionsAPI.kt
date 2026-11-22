@@ -103,7 +103,7 @@ class ChatCompletionsAPI(
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -159,7 +159,7 @@ class ChatCompletionsAPI(
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
 
         // just for debugging response body
         // println(client.newCall(request).await().body?.string())

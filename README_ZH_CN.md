@@ -19,3 +19,5 @@
 - [版本下载](https://github.com/cs9527h/Rikkahub-M/releases)
 - [更新日志](CHANGELOG_MATE.md)
 - [历史 0.4.0 构建风险说明](docs/releases/0.4.0.md)
+
+[历史提取与长期记忆](docs/HISTORY_MEMORY.md)

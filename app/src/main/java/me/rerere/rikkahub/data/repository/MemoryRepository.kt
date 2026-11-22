@@ -1,9 +1,13 @@
 package me.rerere.rikkahub.data.repository
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import me.rerere.rikkahub.data.ai.memory.memoryRelevance
+import me.rerere.rikkahub.data.ai.memory.recallTerms
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.model.Assistant
@@ -37,12 +41,49 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     fun getFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
         memoryDAO.getFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
 
+    fun observeFile(scope: String, path: String): Flow<MemoryFile?> =
+        memoryDAO.observeFile(scope, path).map { it?.toMemoryFile() }
+
     /** 最近删除的文件；只在界面里展示，不参与检索、提示词或整理。 */
     fun getDeletedFilesFlow(assistantId: String): Flow<List<MemoryFile>> =
         memoryDAO.getDeletedFilesOfAssistantFlow(assistantId).map { entities -> entities.map { it.toMemoryFile() } }
 
     suspend fun getFiles(assistantId: String): List<MemoryFile> =
         memoryDAO.getFilesOfAssistant(assistantId).map { it.toMemoryFile() }
+
+    internal suspend fun listForChat(scope: String, prefix: String, limit: Int): List<MemoryFile> =
+        memoryDAO.listByPrefix(scope, prefix, limit).map { it.toMemoryFile() }
+
+    internal suspend fun findImportedFact(scope: String, key: String): MemoryFile? =
+        memoryDAO.findImportedFact(scope, key)?.toMemoryFile()
+
+    internal suspend fun exactTextCandidates(scope: String, fact: String): List<MemoryFile> =
+        memoryDAO.exactTextCandidates(scope, fact).map { it.toMemoryFile() }
+
+    /** Uses the existing (assistant_id, path) index, and keeps only the highest-ranked matches in memory. */
+    suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> = withContext(Dispatchers.Default) {
+        val terms = recallTerms(query)
+        if (terms.isEmpty()) return@withContext emptyList()
+        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second + it.first.importance }
+            .thenByDescending { it.first.updatedAt }
+            .thenBy { it.first.path }
+        val matches = mutableListOf<Pair<MemoryFile, Int>>()
+        var after = ""
+        while (true) {
+            val page = memoryDAO.recallPage(assistantId, after)
+            if (page.isEmpty()) break
+            for (entity in page) {
+                val file = entity.toMemoryFile()
+                if (file.isOutdated) continue
+                val score = memoryRelevance(file, terms)
+                if (score > 0) matches += file to score
+            }
+            matches.sortWith(ordering)
+            if (matches.size > 12) matches.subList(12, matches.size).clear()
+            after = page.last().path
+        }
+        matches.map { it.first }
+    }
 
     suspend fun getFile(assistantId: String, path: String): MemoryFile? {
         val normalized = MemoryFile.normalizePath(path) ?: return null

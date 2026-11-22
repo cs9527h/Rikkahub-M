@@ -306,7 +306,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -357,7 +357,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
 
         // 整个请求体那一行会被 logcat 截断，再逐条打印一遍消息
         requestBody["messages"]!!.jsonArray.forEach { message ->

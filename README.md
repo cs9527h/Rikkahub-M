@@ -22,6 +22,7 @@
   <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>下载安装包</strong></a>　·　
   <a href="CHANGELOG_MATE.md">更新日志</a>　·　
   <a href="docs/MATE_USER_GUIDE.md">使用指南</a>　·　
+  <a href="docs/HISTORY_MEMORY.md">历史记忆</a>　·　
   <a href="docs/RM_VS_RB.md">与上游的差异</a>　·　
   <a href="https://github.com/cs9527h/Rikkahub-M/issues">反馈问题</a>
 </p>

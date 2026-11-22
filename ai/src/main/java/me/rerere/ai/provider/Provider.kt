@@ -75,6 +75,7 @@ data class TextGenerationParams(
     val customBody: List<CustomBody> = emptyList(),
     val sessionId: String? = Uuid.random().toString(),
     val currentUserMessageId: String? = null,
+    @kotlinx.serialization.Transient val privateRequest: Boolean = false,
 )
 
 @Serializable

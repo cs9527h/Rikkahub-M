@@ -64,6 +64,35 @@ internal object DatabaseBackup {
         removeSidecars(databaseFile)
     }
 
+    /** Pending candidates and recall excerpts are device-local and should not enter a backup archive. */
+    fun stripLocalMemoryWork(context: Context, snapshot: File) {
+        val config = SQLiteConfiguration.configure(
+            context, SQLiteDatabaseConfiguration(snapshot.absolutePath, SQLiteDatabase.OPEN_READWRITE),
+        )
+        SQLiteDatabase.openDatabase(config, null) { error("Could not open staged memory backup") }.use { db ->
+            stripLocalMemoryWork(db)
+            checkpoint(db)
+        }
+        removeSidecars(snapshot)
+    }
+
+    fun stripLocalMemoryWork(db: SupportSQLiteDatabase) {
+        val localTables = listOf("history_memory_job", "history_memory_candidate", "history_memory_batch", "memory_recall")
+        val existing = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use {
+            buildSet { while (it.moveToNext()) add(it.getString(0)) }
+        }
+        if (localTables.none { it in existing }) return
+        // requery 驱动只允许通过 query/rawQuery 执行 PRAGMA；execSQL 会抛 "Queries can be performed ..." 
+        db.query("PRAGMA secure_delete = ON").use { it.moveToFirst() }
+        db.beginTransaction()
+        try {
+            localTables.filter { it in existing }.forEach { db.execSQL("DELETE FROM `$it`") }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun checkpoint(database: SupportSQLiteDatabase) {
         database.query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
             check(cursor.moveToFirst() && cursor.getInt(0) == 0) {

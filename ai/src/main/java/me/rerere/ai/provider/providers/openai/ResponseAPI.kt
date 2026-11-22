@@ -135,7 +135,7 @@ class ResponseAPI(
             .addHeader("Content-Type", "application/json")
             .build()
 
-        logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "generateText") { json.encodeToString(requestBody) }
 
         // await() waits for the response headers; reading the body can still block.
         client.newCall(request).await().use { response ->
@@ -146,7 +146,6 @@ class ResponseAPI(
             }
 
             val bodyStr = response.body.string()
-            Log.i(TAG, "generateText: $bodyStr")
             val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
             parseResponseOutput(bodyJson)
         }
@@ -169,7 +168,7 @@ class ResponseAPI(
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .build()
 
-        logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
 
         val decoder = ResponseApiStreamDecoder()
 
@@ -188,7 +187,7 @@ class ResponseAPI(
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: $id/$type $data")
+                if (!params.privateRequest) Log.d(TAG, "onEvent: $id/$type $data")
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
@@ -202,19 +201,19 @@ class ResponseAPI(
                 var exception = t
 
                 t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
+                if (!params.privateRequest) println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
 
                 val bodyRaw = response?.body?.stringSafe()
                 try {
                     rateLimitEntitlementMessage(response?.code ?: 0, bodyRaw)?.let { throw HttpException(it) }
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        println(bodyElement)
+                        if (!params.privateRequest) println(bodyElement)
                         exception = bodyElement.parseErrorDetail()
-                        Log.i(TAG, "onFailure: $exception")
+                        if (!params.privateRequest) Log.i(TAG, "onFailure: $exception")
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
+                    if (!params.privateRequest) Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
                     e.printStackTrace()
                 } finally {
                     close(exception)
@@ -587,7 +586,6 @@ class ResponseAPI(
     }
 
     internal fun parseResponseOutput(jsonObject: JsonObject): TextGenerationResult {
-        println(jsonObject)
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
 

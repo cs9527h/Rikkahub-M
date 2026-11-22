@@ -45,13 +45,20 @@ private const val IF_VERSION_DESCRIPTION =
 fun buildMemoryTools(
     repository: MemoryRepository,
     assistantId: String,
+    maxReadChars: Int = Int.MAX_VALUE,
+    maxListedFiles: Int = Int.MAX_VALUE,
 ): List<Tool> = listOf(
     Tool(
         name = MemoryToolNames.READ,
-        description = "Read one or more memory files. Returns each file's content and version.",
+        description = "Read one or more memory files. Returns content and version. " +
+            "If a result has next_offset, request that offset for the same path to read more.",
         parameters = {
             InputSchema.Obj(
                 properties = buildJsonObject {
+                    put("offset", buildJsonObject {
+                        put("type", "integer")
+                        put("description", "Optional character offset for a single path.")
+                    })
                     put("path", buildJsonObject {
                         put("type", "array")
                         put("items", buildJsonObject { put("type", "string") })
@@ -71,14 +78,22 @@ fun buildMemoryTools(
             }.take(MAX_READ_PATHS)
             if (paths.isEmpty()) error("path is required")
 
-            val files = paths.associateWith { repository.getFile(assistantId, it) }
+            val files = paths.associateWith { repository.getFile(assistantId, it)?.takeUnless { file -> file.isOutdated } }
+            val requestedOffset = (args.jsonObject["offset"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                ?.takeIf { paths.size == 1 }?.coerceAtLeast(0) ?: 0
+            var remaining = maxReadChars
             toolOutput {
                 put("files", buildJsonArray {
                     files.values.filterNotNull().forEach { file ->
+                        val content = file.recallContent
+                        val offset = requestedOffset.coerceAtMost(content.length)
+                        val text = content.drop(offset).take(remaining).trimEnd { it.isHighSurrogate() }
+                        remaining -= text.length
                         add(buildJsonObject {
                             put("path", file.path)
                             put("version", file.version)
-                            put("content", file.content)
+                            put("content", text)
+                            if (offset + text.length < content.length) put("next_offset", offset + text.length)
                         })
                     }
                 })
@@ -190,10 +205,14 @@ fun buildMemoryTools(
         },
         execute = { args ->
             val prefix = (args.jsonObject["path_prefix"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-            val files = repository.getFiles(assistantId).filter { it.path.startsWith(prefix) }
+            val files = if (maxListedFiles == Int.MAX_VALUE) {
+                repository.getFiles(assistantId).filter { it.path.startsWith(prefix) }
+            } else {
+                repository.listForChat(assistantId, prefix, maxListedFiles)
+            }
             toolOutput {
                 put("files", buildJsonArray {
-                    files.forEach { file ->
+                    files.filterNot { it.isOutdated }.forEach { file ->
                         add(buildJsonObject {
                             put("path", file.path)
                             put("size", file.content.toByteArray().size)

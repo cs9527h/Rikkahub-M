@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedTextField
+import me.rerere.rikkahub.data.ai.memory.memoryRelevance
+import me.rerere.rikkahub.data.ai.memory.recallTerms
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,7 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
@@ -79,6 +87,8 @@ private enum class MemoryTab(
     @param:StringRes private val labelRes: Int,
 ) : PagerTab {
     FILES(HugeIcons.Brain02, R.string.assistant_page_manage_memory_title),
+    HISTORY(HugeIcons.Add01, R.string.memory_history_tab),
+    RECALL(HugeIcons.ArrowTurnBackward, R.string.memory_recall_tab),
     SETTINGS(HugeIcons.Settings03, R.string.settings);
 
     override val label: String
@@ -157,9 +167,18 @@ fun AssistantMemoryPage(id: String) {
                         },
                     )
 
+                    MemoryTab.HISTORY -> HistoryMemoryTab(
+                        assistant = assistant,
+                        openSource = { navController.navigate(Screen.Chat(it)) },
+                        openMemory = { target, path -> navController.navigate(Screen.MemoryFile(target, path)) },
+                    )
+
+                    MemoryTab.RECALL -> MemoryRecallTab(assistant) { navController.navigate(Screen.Chat(it)) }
+
                     MemoryTab.SETTINGS -> MemorySettingsTab(
                         assistant = assistant,
                         onUpdateAssistant = { vm.update(it) },
+                        onOpenModels = { navController.navigate(Screen.SettingModels) },
                     )
                 }
             }
@@ -171,6 +190,7 @@ fun AssistantMemoryPage(id: String) {
 private fun MemorySettingsTab(
     assistant: Assistant,
     onUpdateAssistant: (Assistant) -> Unit,
+    onOpenModels: () -> Unit,
 ) {
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
     var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
@@ -229,7 +249,7 @@ private fun MemorySettingsTab(
                         )
                     )
                 },
-                supportingContent = { Text(stringResource(R.string.assistant_page_memory_desc)) },
+                supportingContent = { Text("开启后，新聊天可以召回已保存的记忆。日常做梦建议使用支持工具调用的模型。") },
                 headlineContent = { Text(stringResource(R.string.assistant_page_memory)) },
             )
             switchItem(
@@ -257,6 +277,28 @@ private fun MemorySettingsTab(
                 enabled = assistant.enableMemory,
                 supportingContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream_desc)) },
                 headlineContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream)) },
+            )
+            val budgets = listOf(500, 1_000, 2_000, 4_000)
+            val budget = assistant.memoryRecallTokenBudget.coerceIn(500, 4_000)
+            item(
+                headlineContent = { Text("召回预算 · 约 $budget Token") },
+                supportingContent = { Text("点击更换。预算用于每次注入的正文片段或单次工具读取。") },
+                onClick = {
+                    val next = budgets[(budgets.indexOf(budget) + 1) % budgets.size]
+                    onUpdateAssistant(assistant.copy(memoryRecallTokenBudget = next))
+                },
+            )
+            switchItem(
+                checked = assistant.recordMemoryUsage,
+                onCheckedChange = { onUpdateAssistant(assistant.copy(recordMemoryUsage = it)) },
+                enabled = assistant.enableMemory,
+                headlineContent = { Text("保存记忆使用记录") },
+                supportingContent = { Text("在本机保留最近 50 轮的命中和注入片段。") },
+            )
+            item(
+                headlineContent = { Text("记忆整理模型") },
+                supportingContent = { Text("历史提取优先使用记忆整理模型，未配置时尝试快速模型或聊天模型。") },
+                onClick = onOpenModels,
             )
             switchItem(
                 checked = assistant.enableRecentChatsReference,
@@ -324,7 +366,14 @@ private fun MemoryFilesTab(
 ) {
     var pendingDeleteMemory by remember { mutableStateOf<MemoryFile?>(null) }
     var pendingPurgeMemory by remember { mutableStateOf<MemoryFile?>(null) }
-    val memoryGroups = remember(memories) { memories.groupByDirectory() }
+    var query by remember { mutableStateOf("") }
+    val filtered by produceState(memories, memories, query) {
+        value = if (query.isBlank()) memories else withContext(Dispatchers.Default) {
+            val terms = recallTerms(query)
+            memories.filter { it.title.contains(query, ignoreCase = true) || memoryRelevance(it, terms) > 0 }
+        }
+    }
+    val memoryGroups = remember(filtered) { filtered.groupByDirectory() }
 
     // 空列表不滚动，占位才能在剩余空间里居中
     if (memoryGroups.isEmpty() && deletedMemories.isEmpty()) {
@@ -359,23 +408,28 @@ private fun MemoryFilesTab(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (consolidation != null) {
-            MemoryConsolidationSection(
-                status = consolidation,
-                onOrganize = onOrganizeMemory,
-            )
+            item { MemoryConsolidationSection(status = consolidation, onOrganize = onOrganizeMemory) }
         }
+        if (memories.isNotEmpty()) {
+            item {
+                OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.memory_search)) }, singleLine = true)
+            }
+        }
+        if (query.isNotBlank() && filtered.isEmpty()) item { Text(stringResource(R.string.memory_search_empty)) }
 
         if (deletedMemories.isNotEmpty()) {
-            CardGroup(title = { Text(stringResource(R.string.memory_recently_deleted)) }) {
-                deletedMemories.fastForEach { memory ->
+            item(key = "memory-trash-heading") {
+                Text(stringResource(R.string.memory_recently_deleted), style = MaterialTheme.typography.titleSmall)
+            }
+            items(deletedMemories, key = { "trash:${it.path}" }) { memory ->
+                CardGroup {
                     item(
                         trailingContent = {
                             ItemActionMenu(
@@ -410,10 +464,11 @@ private fun MemoryFilesTab(
         }
 
         memoryGroups.fastForEach { (directory, files) ->
-            CardGroup(
-                title = { Text(memorySectionTitle(directory)) },
-            ) {
-                files.fastForEach { memory ->
+            item(key = "group:$directory") {
+                Text(memorySectionTitle(directory), style = MaterialTheme.typography.titleSmall)
+            }
+            items(files, key = { it.path }) { memory ->
+                CardGroup {
                     item(
                         onClick = { onOpenMemory(memory.path) },
                         trailingContent = {
@@ -430,7 +485,7 @@ private fun MemoryFilesTab(
                         },
                         headlineContent = {
                             Text(
-                                text = memory.title,
+                                text = if (memory.isOutdated) "已过时 · ${memory.title}" else memory.title,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )

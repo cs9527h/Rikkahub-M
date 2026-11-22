@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="memory_history_tab" translatable="false">历史提取</string>
+    <string name="memory_recall_tab" translatable="false">使用记录</string>
+    <string name="memory_search" translatable="false">搜索记忆</string>
+    <string name="memory_search_empty" translatable="false">没有匹配的记忆</string>
+</resources>
