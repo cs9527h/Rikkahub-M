@@ -95,7 +95,7 @@ class UpdateDownloadService : Service(), KoinComponent {
         stopSelf()
     }
 
-    private fun buildNotification(state: UpdateDownloadState): NotificationCompat.Builder {
+    private fun buildNotification(state: UpdateDownloadState): android.app.Notification {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
             .setContentTitle(titleFor(state))
@@ -128,10 +128,10 @@ class UpdateDownloadService : Service(), KoinComponent {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             ),
         )
-        return builder
+        return builder.build()
     }
 
-    private fun buildFinishedNotification(): NotificationCompat.Builder =
+    private fun buildFinishedNotification(): android.app.Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rikkahub)
             .setContentTitle("更新包已就绪")
@@ -139,6 +139,7 @@ class UpdateDownloadService : Service(), KoinComponent {
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setContentIntent(launchIntent())
+            .build()
 
     private fun titleFor(state: UpdateDownloadState): String = when (state) {
         is UpdateDownloadState.Preparing -> "正在准备更新包"

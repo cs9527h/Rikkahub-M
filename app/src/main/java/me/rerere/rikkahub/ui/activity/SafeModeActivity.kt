@@ -71,7 +71,12 @@ import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.utils.CrashHandler
 import org.koin.android.ext.android.inject
+import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.uuid.Uuid
+
+private const val TAG = "SafeModeActivity"
 
 // 盘上单个字段超过这么多字符才算「超大」：正常使用到不了这个量级，到了就可能在读写设置时撑爆内存
 private const val LARGE_FIELD_MIN_CHARS = 5_000_000
