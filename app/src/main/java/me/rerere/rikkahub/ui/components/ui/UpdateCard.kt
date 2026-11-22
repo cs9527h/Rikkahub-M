@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
@@ -104,12 +105,19 @@ fun UpdateCard(vm: ChatVM) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 明确跳过：这个版本之后不再出现卡片，仍可在「关于」页手动查看
                         Text(
                             text = stringResource(R.string.update_card_new_version_found, info.version),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f)
                         )
+                        TextButton(onClick = {
+                            dismissed = true
+                            vm.updateChecker.ignoreVersion(info.version)
+                        }) {
+                            Text("跳过此版本", style = MaterialTheme.typography.labelMedium)
+                        }
                         IconButton(onClick = {
                             dismissed = true
                             vm.updateChecker.markPrompted(info.version)
