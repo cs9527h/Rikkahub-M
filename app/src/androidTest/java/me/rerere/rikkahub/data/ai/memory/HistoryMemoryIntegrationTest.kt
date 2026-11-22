@@ -154,8 +154,9 @@ class HistoryMemoryIntegrationTest {
             try {
                 checkNotNull(staged.memoryDao().getFile(scope, saved.path))
                 assertEquals(1000, staged.conversationDao().countAll())
-                assertEquals(null, staged.historyMemoryDao().job(scope))
-                assertTrue(staged.historyMemoryDao().pending(repeated.id).first().isEmpty())
+                // 备份必须保住任务状态和未保存候选：换机后还能继续审核，也不会重复付费
+                assertEquals(repeated.id, staged.historyMemoryDao().job(scope)?.id)
+                assertEquals(1, staged.historyMemoryDao().pending(repeated.id).first().size)
             } finally {
                 staged.close()
             }

@@ -28,6 +28,9 @@ import me.rerere.rikkahub.data.db.dao.HistoryConversationSource
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
+import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
+import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
+import me.rerere.rikkahub.data.db.entity.MemoryScopeState
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -58,8 +61,9 @@ internal class HistoryMemoryManager(
     }
 
     fun observe(scope: String) = dao.observe(scope)
-    fun candidates(id: String) = dao.pending(id)
+    fun candidates(id: String) = dao.pendingAll(id)
     fun count(id: String, status: String) = dao.count(id, status)
+    fun state(scope: String) = dao.observeState(scope)
     fun recalls(scope: String) = dao.recalls(scope)
     suspend fun clearRecalls(scope: String) = dao.clearRecalls(scope)
     suspend fun sources(from: Long, until: Long) = conversations.historySources(from, until)
@@ -73,6 +77,25 @@ internal class HistoryMemoryManager(
         val nodes: Long,
         val serializedChars: Long,
     )
+
+    /**
+     * 日常“整理我的记忆”：只看上次整理之后有改动的聊天，没有就不必再花钱。
+     * 返回 null 表示没有任何新内容。
+     */
+    suspend fun prepareIncremental(scope: String, assistant: Assistant): Plan? = withContext(Dispatchers.IO) {
+        val since = dao.state(scope)?.lastOrganizedAt ?: 0L
+        val sources = if (since <= 0L) {
+            conversations.historySources(Long.MIN_VALUE, Long.MAX_VALUE)
+        } else {
+            conversations.historySourcesUpdatedSince(since)
+        }
+        if (sources.isEmpty()) return@withContext null
+        prepare(scope, assistant, sources)
+    }
+
+    suspend fun lastOrganizedAt(scope: String): Long = withContext(Dispatchers.IO) {
+        dao.state(scope)?.lastOrganizedAt ?: 0L
+    }
 
     suspend fun prepare(scope: String, assistant: Assistant, sources: List<HistoryConversationSource>): Plan {
         require(sources.isNotEmpty())
@@ -115,16 +138,27 @@ internal class HistoryMemoryManager(
     suspend fun resumePending() = withContext(Dispatchers.IO) {
         controls.withLock {
             dao.running().forEach { job ->
-                HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.KEEP).result.get()
+                if (job.deviceConsent != consentId) {
+                    // 从备份恢复的任务不属于这台设备：停下并说明，而不是拿旧授权继续发聊天记录
+                    dao.put(
+                        job.copy(
+                            status = "paused",
+                            failure = "这份整理任务来自其他设备的备份，需要重新确认整理范围后继续。",
+                            generation = job.generation + 1,
+                        )
+                    )
+                } else {
+                    HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.KEEP).result.get()
+                }
             }
         }
     }
 
-    suspend fun start(plan: Plan) = withContext(Dispatchers.IO) {
+    suspend fun start(plan: Plan): String = withContext(Dispatchers.IO) {
         controls.withLock {
             val job = persistConfirmedPlan(plan)
             HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
-            Unit
+            job.id
         }
     }
 
@@ -138,6 +172,7 @@ internal class HistoryMemoryManager(
         HistoryMemoryJob(
             plan.scope, Uuid.random().toString(), consentId, plan.modelId, plan.fingerprint,
             Json.encodeToString(plan.sources), plan.sources.size,
+            createdAt = System.currentTimeMillis(),
         ).also { dao.put(it) }
     }
 
@@ -156,7 +191,17 @@ internal class HistoryMemoryManager(
                     dao.clearCandidates(current.id)
                     dao.clearBatches(current.id)
                 }
-                current.copy(status = status, failure = null, generation = current.generation + 1).also { dao.put(it) }
+                current.copy(
+                    status = status,
+                    failure = null,
+                    generation = current.generation + 1,
+                    // 用户明确继续时重新计算单次预算，避免一点“继续”就又被预算拦住
+                    budgetAckTokens = if (status == "running" && current.status == "paused") {
+                        current.estimatedTokens
+                    } else {
+                        current.budgetAckTokens
+                    },
+                ).also { dao.put(it) }
             } ?: return@withContext
             if (status == "running") HistoryMemoryWorker.enqueue(context, scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
             else HistoryMemoryWorker.cancel(context, scope).result.get()
@@ -188,7 +233,7 @@ internal class HistoryMemoryManager(
                     ?: return@withContext false
                 val source = sources.getOrNull(job.sourceIndex)
                 if (source == null) {
-                    checkpoint(job, job.copy(status = "finished"))
+                    checkpoint(job, job.copy(status = "finished", finishedAt = System.currentTimeMillis()))
                     return@withContext false
                 }
                 if (job.deviceConsent != consentId) throw ExtractionFailure("本机授权已失效，请重新确认提取范围")
@@ -216,10 +261,16 @@ internal class HistoryMemoryManager(
                     throw ExtractionFailure("来源会话已修改，请重新选择提取范围")
                 }
                 if (dao.job(scope) != job) return@withContext false
+                // 预算在真正花钱之前检查：超了就暂停，等用户下次明确继续。
+                budgetStop(scope, job, settings)?.let { reason ->
+                    dao.put(job.copy(status = "paused", failure = reason))
+                    return@withContext false
+                }
                 val payload = Json.encodeToString(excerpts.map { it.text })
                 val digest = historyDigest(payload)
-                if (dao.processed(id, digest)) {
-                    checkpoint(job, cursor)
+                // 同一个任务内按批次去重；跨任务再按全局指纹去重，同一段聊天永远不会第二次计费。
+                if (dao.processed(id, digest) || dao.seen(digest)) {
+                    checkpoint(job, cursor, digest = digest)
                     continue
                 }
                 val result = withTimeout(2.minutes) {
@@ -243,6 +294,7 @@ internal class HistoryMemoryManager(
                     ),
                     digest,
                     facts,
+                    rememberDigest = true,
                 )
             }
             true
@@ -274,11 +326,53 @@ internal class HistoryMemoryManager(
         next: HistoryMemoryJob,
         digest: String? = null,
         facts: List<HistoryMemoryCandidate> = emptyList(),
+        rememberDigest: Boolean = false,
     ) = database.withTransaction {
         if (dao.job(previous.scope) != previous) return@withTransaction
         if (digest != null) dao.markProcessed(HistoryMemoryBatch(previous.id, digest))
+        if (rememberDigest && digest != null) {
+            dao.markSeen(HistoryMemorySeen(digest, System.currentTimeMillis()))
+        }
         if (facts.isNotEmpty()) dao.addCandidates(facts)
         dao.put(next)
+        val existing = dao.state(next.scope) ?: MemoryScopeState(next.scope)
+        val today = java.time.LocalDate.now().toString()
+        val usedToday = (if (existing.dailyDay == today) existing.dailyTokens else 0L) +
+            (next.estimatedTokens - previous.estimatedTokens).coerceAtLeast(0)
+        var state = existing.copy(dailyDay = today, dailyTokens = usedToday)
+        // 任务完成时记下水位，下一轮只处理这之后有改动的聊天；首页也用它显示“最近整理”。
+        if (next.status == "finished" && previous.status != "finished") {
+            val saved = dao.countNow(next.id, "saved")
+            val pending = dao.countNow(next.id, "pending")
+            val ignored = dao.countNow(next.id, "discarded") + dao.countNow(next.id, "duplicate")
+            state = state.copy(
+                lastOrganizedAt = next.finishedAt.takeIf { it > 0 } ?: System.currentTimeMillis(),
+                lastResult = "新增 $saved 条 · 需要确认 $pending 条 · 忽略 $ignored 条",
+            )
+        }
+        dao.putState(state)
+    }
+
+    /** 达到单次/每日预算时返回给用户看的原因，否则 null。 */
+    private suspend fun budgetStop(
+        scope: String,
+        job: HistoryMemoryJob,
+        settings: Settings,
+    ): String? {
+        val runBudget = settings.memoryRunTokenBudget
+        if (runBudget > 0 && job.estimatedTokens - job.budgetAckTokens >= runBudget) {
+            return "已达到单次整理上限（约 $runBudget Token），已暂停。确认后可以继续。"
+        }
+        val dailyBudget = settings.memoryDailyTokenBudget
+        if (dailyBudget > 0) {
+            val state = dao.state(scope)
+            val today = java.time.LocalDate.now().toString()
+            val used = if (state?.dailyDay == today) state.dailyTokens else 0L
+            if (used >= dailyBudget) {
+                return "今天的整理预算（约 $dailyBudget Token）已经用完，明天会自动恢复。"
+            }
+        }
+        return null
     }
 
     private suspend fun readBatch(job: HistoryMemoryJob, conversationId: String): Pair<HistoryMemoryJob, List<HistoryExcerpt>> {
@@ -319,7 +413,7 @@ internal class HistoryMemoryManager(
         val candidate = dao.candidate(id, key) ?: return@withLock
         check(dao.job(scope)?.id == id)
         if (corrected == null) {
-            dao.resolve(id, key, "discarded")
+            dao.setStatus(id, key, "discarded")
             return@withLock
         }
         val fact = corrected.cleanFact()
@@ -331,12 +425,12 @@ internal class HistoryMemoryManager(
             check(!mergeInto.isOutdated) { "请先在记忆管理中恢复该记忆的召回" }
             val current = memories.getFile(scope, mergeInto.path)
             if (current?.containsFact(normalizedKey) == true) {
-                dao.resolve(id, key, if (source in current.body) "saved" else "duplicate")
+                dao.setStatus(id, key, if (source in current.body) "saved" else "duplicate")
                 return@withLock
             }
             check(current?.version == mergeInto.version) { "旧记忆已变更，请重新打开候选检查" }
             when (val result = memories.writeFile(scope, mergeInto.path, mergeInto.appendedHistoryFact(fact, source), mergeInto.version)) {
-                is MemoryWriteResult.Success -> dao.resolve(id, key, "saved")
+                is MemoryWriteResult.Success -> dao.setStatus(id, key, "saved")
                 is MemoryWriteResult.Conflict -> error("旧记忆已变更，请重新打开候选检查")
                 is MemoryWriteResult.Rejected -> error(result.reason)
             }
@@ -350,7 +444,7 @@ internal class HistoryMemoryManager(
             check(existing.containsFact(normalizedKey)) {
                 "已有记忆内容不同，请在记忆管理中检查"
             }
-            dao.resolve(id, key, "duplicate")
+            dao.setStatus(id, key, "duplicate")
             return@withLock
         }
         val result = if (existing?.isDeleted == false) MemoryWriteResult.Conflict(existing) else {
@@ -364,20 +458,310 @@ internal class HistoryMemoryManager(
             memories.writeFile(scope, path, content, MemoryRepository.NEW_FILE_VERSION)
         }
         when (result) {
-            is MemoryWriteResult.Success -> dao.resolve(id, key, "saved")
+            is MemoryWriteResult.Success -> dao.setStatus(id, key, "saved")
             is MemoryWriteResult.Conflict -> {
                 check(result.current?.containsFact(normalizedKey) == true) { "已有记忆内容不同，请在记忆管理中检查" }
                 val recoveredWrite = result.current?.body?.lineSequence()?.any {
                     it.startsWith("<!-- history-source ") && it.endsWith(" ${candidate.jobId} -->")
                 } == true
-                dao.resolve(id, key, if (recoveredWrite) "saved" else "duplicate")
+                dao.setStatus(id, key, if (recoveredWrite) "saved" else "duplicate")
             }
             is MemoryWriteResult.Rejected -> error(result.reason)
         }
     }
 
+    /**
+     * 关联旧记忆：只推荐和候选在字面上明显同主题的记忆。
+     * 旧实现按关键词检索，一个共同词就会推荐一堆无关记忆，用户在审核时根本判断不了。
+     */
     suspend fun related(scope: String, candidate: HistoryMemoryCandidate): List<MemoryFile> =
-        memories.searchForRecall(scope, "${candidate.subject} ${candidate.fact}").take(4)
+        withContext(Dispatchers.Default) {
+            val grams = MemoryTriageEngine.gramsOf(candidate.subject + " " + candidate.fact)
+            if (grams.isEmpty()) return@withContext emptyList()
+            memories.getFiles(scope)
+                .asSequence()
+                .filter { !it.isDeleted && !it.isOutdated }
+                .map { file ->
+                    val target = MemoryTriageEngine.gramsOf(
+                        file.title + " " + file.description + " " + file.recallBody
+                    )
+                    file to MemoryTriageEngine.containment(grams, target)
+                }
+                .filter { it.second >= 0.3 }
+                .sortedByDescending { it.second }
+                .take(3)
+                .map { it.first }
+                .toList()
+        }
+
+
+    // ---- 批量审核：221 条候选不该逐条点 ----
+
+    /** 批量保存的行为，界面上只有“更保守”和“按建议”两种可选。 */
+    enum class BulkMode {
+        /** 只保存明确的新事实，合并/更新/确认一律留给用户 */
+        SAVE_NEW_ONLY,
+
+        /** 按本地建议执行：新事实直接存，重复的合并或更新，需要确认的不动 */
+        APPLY_SUGGESTIONS,
+
+        /** 用户明确勾选的条目直接保存 */
+        SAVE_SELECTED,
+    }
+
+    data class BulkResult(
+        val saved: Int = 0,
+        val merged: Int = 0,
+        val updated: Int = 0,
+        val duplicate: Int = 0,
+        val ignored: Int = 0,
+        val pending: Int = 0,
+        val failed: Int = 0,
+        val failureReasons: List<String> = emptyList(),
+        /** 撤销时恢复了几条记忆文件 */
+        val restoredFiles: Int = 0,
+        /** 撤销时因为内容已被改动而跳过的文件数 */
+        val skippedFiles: Int = 0,
+    ) {
+        val changed: Int get() = saved + merged + updated
+    }
+
+    @kotlinx.serialization.Serializable
+    private data class UndoFile(
+        val path: String,
+        /** null 表示这条记忆是本次新建的，撤销时删除 */
+        val before: String?,
+        val afterHash: String,
+        val updatedAt: Long,
+    )
+
+    @kotlinx.serialization.Serializable
+    private data class UndoPayload(val files: List<UndoFile>, val keys: List<String>)
+
+    /** 审核页需要一次拿到全部建议；不调用模型，纯本地计算。 */
+    suspend fun suggestions(scope: String, jobId: String): Map<String, MemoryTriage> = withContext(Dispatchers.Default) {
+        val pending = dao.pendingSnapshot(jobId, MAX_BULK)
+        if (pending.isEmpty()) return@withContext emptyMap()
+        val files = memories.getFiles(scope)
+        pending.associate { it.key to MemoryTriageEngine.evaluate(it, files) }
+    }
+
+    /**
+     * 批量保存选中项。
+     *
+     * [applySuggestions] 为 true 时遵循本地建议：需要确认的继续留在待审核（不落盘），
+     * 建议忽略的标记为忽略；为 false 时按用户选择全部保存，只有完全重复的会被跳过。
+     */
+    suspend fun saveSelected(
+        scope: String,
+        jobId: String,
+        keys: Set<String>,
+        mode: BulkMode,
+    ): BulkResult = controls.withLock {
+        val job = dao.job(scope)?.takeIf { it.id == jobId } ?: return@withLock BulkResult(failed = 1)
+        val pending = dao.pendingSnapshot(job.id, MAX_BULK).filter { it.key in keys }
+        if (pending.isEmpty()) return@withLock BulkResult()
+        val files = memories.getFiles(scope)
+        var saved = 0
+        var merged = 0
+        var updated = 0
+        var duplicate = 0
+        var ignored = 0
+        var pendingCount = 0
+        var failed = 0
+        val reasons = mutableListOf<String>()
+        val undoFiles = mutableListOf<UndoFile>()
+        val undoKeys = mutableListOf<String>()
+        var undoChars = 0L
+        for (candidate in pending) {
+            val triage = MemoryTriageEngine.evaluate(candidate, files)
+            val automatic = mode != BulkMode.SAVE_SELECTED
+            if (automatic && triage.suggestion == MemorySuggestion.CONFIRM) {
+                pendingCount++
+                continue
+            }
+            if (automatic && triage.suggestion == MemorySuggestion.IGNORE) {
+                val alreadyKnown = triage.targetPath != null
+                dao.setStatus(job.id, candidate.key, if (alreadyKnown) "duplicate" else "discarded")
+                if (alreadyKnown) duplicate++ else ignored++
+                undoKeys += candidate.key
+                continue
+            }
+            if (mode == BulkMode.SAVE_NEW_ONLY &&
+                (triage.suggestion == MemorySuggestion.MERGE || triage.suggestion == MemorySuggestion.UPDATE)
+            ) {
+                pendingCount++
+                continue
+            }
+            val mergeTarget = if (mode == BulkMode.APPLY_SUGGESTIONS) triage.targetPath else null
+            when (val outcome = writeCandidate(scope, job.id, candidate, mergeTarget, triage.suggestion)) {
+                is WriteOutcome.Saved -> {
+                    when (outcome.kind) {
+                        WriteKind.CREATED -> saved++
+                        WriteKind.MERGED -> merged++
+                        WriteKind.UPDATED -> updated++
+                    }
+                    dao.setStatus(job.id, candidate.key, "saved")
+                    undoKeys += candidate.key
+                    if (undoChars < MAX_UNDO_CHARS) {
+                        undoFiles += outcome.undo
+                        undoChars += (outcome.undo.before?.length ?: 0) + outcome.undo.afterHash.length + 96L
+                    }
+                }
+                WriteOutcome.Duplicate -> {
+                    dao.setStatus(job.id, candidate.key, "duplicate")
+                    duplicate++
+                    undoKeys += candidate.key
+                }
+                is WriteOutcome.Failed -> {
+                    failed++
+                    if (reasons.size < 5) reasons += "${candidate.subject}：${outcome.reason}"
+                }
+            }
+        }
+        if (undoKeys.isNotEmpty()) {
+            dao.addUndo(
+                MemoryBulkUndo(
+                    id = Uuid.random().toString(),
+                    scope = scope,
+                    jobId = job.id,
+                    createdAt = System.currentTimeMillis(),
+                    summary = "新增 $saved 条 · 合并 $merged 条 · 更新 $updated 条 · 忽略 $ignored 条 · 需确认 $pendingCount 条",
+                    payload = Json.encodeToString(UndoPayload(undoFiles, undoKeys)),
+                )
+            )
+            dao.trimUndo(scope)
+            dao.putState(
+                (dao.state(scope) ?: MemoryScopeState(scope)).copy(
+                    lastResult = "新增 $saved 条 · 合并 $merged 条 · 更新 $updated 条 · 忽略 $ignored 条 · 需确认 $pendingCount 条",
+                )
+            )
+        }
+        BulkResult(saved, merged, updated, duplicate, ignored, pendingCount, failed, reasons)
+    }
+
+    suspend fun pendingKeys(jobId: String): List<String> = withContext(Dispatchers.IO) {
+        dao.pendingSnapshot(jobId, MAX_BULK).map { it.key }
+    }
+
+    /** 批量跳过：候选保留在库里，随时可以再看。 */
+    suspend fun skipSelected(scope: String, jobId: String, keys: Set<String>): Int = controls.withLock {
+        val job = dao.job(scope)?.takeIf { it.id == jobId } ?: return@withLock 0
+        val pending = dao.pendingSnapshot(job.id, MAX_BULK).filter { it.key in keys }
+        if (pending.isEmpty()) return@withLock 0
+        dao.setStatuses(job.id, pending.map { it.key }, "discarded")
+        dao.addUndo(
+            MemoryBulkUndo(
+                id = Uuid.random().toString(),
+                scope = scope,
+                jobId = job.id,
+                createdAt = System.currentTimeMillis(),
+                summary = "跳过 ${pending.size} 条",
+                payload = Json.encodeToString(UndoPayload(emptyList(), pending.map { it.key })),
+            )
+        )
+        dao.trimUndo(scope)
+        pending.size
+    }
+
+    private sealed interface WriteOutcome {
+        data class Saved(val kind: WriteKind, val undo: UndoFile) : WriteOutcome
+        data object Duplicate : WriteOutcome
+        data class Failed(val reason: String) : WriteOutcome
+    }
+
+    private enum class WriteKind { CREATED, MERGED, UPDATED }
+
+    private suspend fun writeCandidate(
+        scope: String,
+        jobId: String,
+        candidate: HistoryMemoryCandidate,
+        targetPath: String?,
+        suggestion: MemorySuggestion,
+    ): WriteOutcome {
+        val fact = candidate.fact.cleanFact()
+        if (fact.length !in 4..600 || fact.count { it.isLetterOrDigit() } < 4) {
+            return WriteOutcome.Failed("内容为空或包含非法字符")
+        }
+        val key = factKey(fact)
+        val source = "<!-- history-source ${candidate.conversationId} ${candidate.messageId} ${candidate.sourceTime} $jobId -->"
+        val target = targetPath?.let { memories.getFileIncludingDeleted(scope, it) }
+        if (target != null && target.containsFact(key)) return WriteOutcome.Duplicate
+        return if (target != null && !target.isDeleted) {
+            val merged = target.appendedHistoryFact(fact, source)
+            when (val result = memories.writeFile(scope, target.path, merged, target.version)) {
+                is MemoryWriteResult.Success -> WriteOutcome.Saved(
+                    if (suggestion == MemorySuggestion.UPDATE) WriteKind.UPDATED else WriteKind.MERGED,
+                    UndoFile(target.path, target.content, historyDigest(merged), target.updatedAt),
+                )
+                is MemoryWriteResult.Conflict -> WriteOutcome.Failed("记忆已变更，请重试")
+                is MemoryWriteResult.Rejected -> WriteOutcome.Failed(result.reason)
+            }
+        } else {
+            val path = historyPath(candidate)
+            val existing = memories.getFile(scope, path)
+            if (existing != null) {
+                if (existing.containsFact(key)) return WriteOutcome.Duplicate
+                val merged = existing.appendedHistoryFact(fact, source)
+                when (val result = memories.writeFile(scope, path, merged, existing.version)) {
+                    is MemoryWriteResult.Success -> WriteOutcome.Saved(
+                        WriteKind.MERGED,
+                        UndoFile(path, existing.content, historyDigest(merged), existing.updatedAt),
+                    )
+                    is MemoryWriteResult.Conflict -> WriteOutcome.Failed("记忆已变更，请重试")
+                    is MemoryWriteResult.Rejected -> WriteOutcome.Failed(result.reason)
+                }
+            } else {
+                val file = MemoryFile(path, "", 0)
+                val content = file.contentWith(
+                    title = candidate.subject,
+                    description = candidate.subject,
+                    aliases = emptyList(),
+                    body = "- [stated] $fact\n\n$source",
+                )
+                when (val result = memories.writeFile(scope, path, content, MemoryRepository.NEW_FILE_VERSION)) {
+                    is MemoryWriteResult.Success -> WriteOutcome.Saved(
+                        WriteKind.CREATED,
+                        UndoFile(path, null, historyDigest(content), 0),
+                    )
+                    is MemoryWriteResult.Conflict -> WriteOutcome.Failed("路径已被占用，请重试")
+                    is MemoryWriteResult.Rejected -> WriteOutcome.Failed(result.reason)
+                }
+            }
+        }
+    }
+
+    /** 撤销上一次批量操作：内容没被改过的文件原样恢复，候选回到待审核。 */
+    suspend fun undoLastBulk(scope: String): BulkResult? = controls.withLock {
+        val record = dao.lastUndo(scope) ?: return@withLock null
+        val payload = runCatching { Json.decodeFromString<UndoPayload>(record.payload) }.getOrNull()
+            ?: return@withLock null
+        var restored = 0
+        var skipped = 0
+        for (file in payload.files) {
+            val current = memories.getFileIncludingDeleted(scope, file.path)
+            if (current == null || historyDigest(current.content) != file.afterHash) {
+                skipped++
+                continue
+            }
+            val ok = if (file.before == null) {
+                memories.purgeIfContentMatches(scope, file.path, current.content)
+            } else {
+                memories.restoreSnapshot(scope, file.path, file.before, file.updatedAt)
+            }
+            if (ok) restored++ else skipped++
+        }
+        if (payload.keys.isNotEmpty()) {
+            dao.setStatuses(record.jobId, payload.keys, "pending")
+        }
+        dao.clearUndo(record.id)
+        BulkResult(restoredFiles = restored, skippedFiles = skipped, pending = payload.keys.size)
+    }
+
+    private companion object {
+        const val MAX_BULK = 2_000
+        const val MAX_UNDO_CHARS = 3_000_000L
+    }
 
     private fun MemoryFile.containsFact(key: String): Boolean = body.lineSequence().any {
         it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == key

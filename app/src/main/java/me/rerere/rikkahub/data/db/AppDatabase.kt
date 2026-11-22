@@ -32,6 +32,9 @@ import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
 import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
+import me.rerere.rikkahub.data.db.entity.MemoryScopeState
+import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
+import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.db.entity.TranslationHistoryEntity
@@ -51,6 +54,9 @@ import me.rerere.rikkahub.utils.JsonInstant
         HistoryMemoryBatch::class,
         HistoryMemoryCandidate::class,
         HistoryMemoryJob::class,
+        HistoryMemorySeen::class,
+        MemoryScopeState::class,
+        MemoryBulkUndo::class,
         MemoryConsolidationEntity::class,
         GenMediaEntity::class,
         MessageNodeEntity::class,
@@ -64,7 +70,7 @@ import me.rerere.rikkahub.utils.JsonInstant
         TranslationHistoryEntity::class,
         UsageRecordEntity::class,
     ],
-    version = 36,
+    version = 37,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),

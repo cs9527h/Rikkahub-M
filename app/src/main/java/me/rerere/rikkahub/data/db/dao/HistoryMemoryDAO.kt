@@ -9,7 +9,10 @@ import kotlinx.coroutines.flow.Flow
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
+import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
+import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
 import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
+import me.rerere.rikkahub.data.db.entity.MemoryScopeState
 
 @Dao
 interface HistoryMemoryDAO {
@@ -28,14 +31,37 @@ interface HistoryMemoryDAO {
     @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND status = 'pending' ORDER BY key LIMIT 50")
     fun pending(id: String): Flow<List<HistoryMemoryCandidate>>
 
+    /** 审核页需要一次看到全部待处理候选，不能像旧界面那样只给前 50 条。 */
+    @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND status = 'pending' ORDER BY category, `key`")
+    fun pendingAll(id: String): Flow<List<HistoryMemoryCandidate>>
+
+    @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id ORDER BY category, `key`")
+    fun candidatesOf(id: String): Flow<List<HistoryMemoryCandidate>>
+
+    @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND status = 'pending' ORDER BY category, `key` LIMIT :limit")
+    suspend fun pendingSnapshot(id: String, limit: Int): List<HistoryMemoryCandidate>
+
     @Query("SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = :status")
     fun count(id: String, status: String): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = :status")
+    suspend fun countNow(id: String, status: String): Int
 
     @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND `key` = :key AND status = 'pending'")
     suspend fun candidate(id: String, key: String): HistoryMemoryCandidate?
 
     @Query("UPDATE history_memory_candidate SET status = :status, evidence = '', fact = '' WHERE jobId = :id AND `key` = :key")
     suspend fun resolve(id: String, key: String, status: String)
+
+    /**
+     * 只改状态，保留正文和证据：撤销批量操作、回看已处理的候选都要靠这些内容。
+     * 旧实现会把 fact/evidence 清空，导致保存后无法复原，这里刻意改掉。
+     */
+    @Query("UPDATE history_memory_candidate SET status = :status WHERE jobId = :id AND `key` = :key")
+    suspend fun setStatus(id: String, key: String, status: String)
+
+    @Query("UPDATE history_memory_candidate SET status = :status WHERE jobId = :id AND `key` IN (:keys)")
+    suspend fun setStatuses(id: String, keys: List<String>, status: String)
 
     @Query("DELETE FROM history_memory_candidate WHERE jobId = :id")
     suspend fun clearCandidates(id: String)
@@ -51,6 +77,37 @@ interface HistoryMemoryDAO {
 
     @Query("DELETE FROM history_memory_batch WHERE jobId = :id")
     suspend fun clearBatches(id: String)
+
+    /** 跨任务批次指纹：内容相同的一批聊天永远不会第二次计费。 */
+    @Query("SELECT EXISTS(SELECT 1 FROM history_memory_seen WHERE digest = :digest)")
+    suspend fun seen(digest: String): Boolean
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun markSeen(seen: HistoryMemorySeen)
+
+    @Query("SELECT * FROM memory_scope_state WHERE scope = :scope")
+    fun observeState(scope: String): Flow<MemoryScopeState?>
+
+    @Query("SELECT * FROM memory_scope_state WHERE scope = :scope")
+    suspend fun state(scope: String): MemoryScopeState?
+
+    @Upsert
+    suspend fun putState(state: MemoryScopeState)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun addUndo(undo: MemoryBulkUndo)
+
+    @Query("SELECT * FROM memory_bulk_undo WHERE scope = :scope ORDER BY createdAt DESC LIMIT 1")
+    suspend fun lastUndo(scope: String): MemoryBulkUndo?
+
+    @Query("DELETE FROM memory_bulk_undo WHERE id = :id")
+    suspend fun clearUndo(id: String)
+
+    @Query(
+        "DELETE FROM memory_bulk_undo WHERE scope = :scope AND id NOT IN " +
+            "(SELECT id FROM memory_bulk_undo WHERE scope = :scope ORDER BY createdAt DESC LIMIT 10)"
+    )
+    suspend fun trimUndo(scope: String)
 
     @Upsert
     suspend fun recordRecall(record: MemoryRecallRecord)

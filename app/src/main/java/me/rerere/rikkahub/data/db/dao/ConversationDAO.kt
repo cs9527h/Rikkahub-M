@@ -145,6 +145,14 @@ interface ConversationDAO {
     """)
     suspend fun historySources(from: Long, until: Long): List<HistoryConversationSource>
 
+    /** 增量整理：只取上次整理之后有改动的会话（新建或继续聊过）。 */
+    @Query("""
+        SELECT id, title, create_at AS createdAt, update_at AS updatedAt
+        FROM conversationentity WHERE update_at > :since
+        ORDER BY update_at DESC, id
+    """)
+    suspend fun historySourcesUpdatedSince(since: Long): List<HistoryConversationSource>
+
     @Query("SELECT update_at FROM conversationentity WHERE id = :id")
     suspend fun historyRevision(id: String): Long?
 

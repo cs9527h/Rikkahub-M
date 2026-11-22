@@ -474,7 +474,17 @@ fun SettingAboutPage() {
                             }
 
                             is UpdateDownloadState.Ready ->
-                                TextButton(onClick = {}, enabled = false) { Text("正在安装") }
+                                // 系统安装器被取消后还能再点一次，不会因为状态被清空而只能重新下载
+                                TextButton(onClick = {
+                                    val ready = downloadState as? UpdateDownloadState.Ready ?: return@TextButton
+                                    val result = runCatching { UpdateInstaller.startSystemInstall(context, ready.apk) }
+                                    val error = result.exceptionOrNull()
+                                    if (error is InstallPermissionRequiredException) {
+                                        needsInstallPermission = error.apk
+                                    } else if (error != null) {
+                                        installFailure = error.message ?: "无法打开系统安装器"
+                                    }
+                                }) { Text("安装") }
 
                             UpdateDownloadState.Idle ->
                                 TextButton(onClick = {
@@ -512,7 +522,6 @@ fun SettingAboutPage() {
                         installFailure = error.message ?: "未知错误"
                     }
                 }
-                updateChecker.clearDownload()
             }
         }
     }

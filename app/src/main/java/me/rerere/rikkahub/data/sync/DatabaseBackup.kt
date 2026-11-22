@@ -64,7 +64,11 @@ internal object DatabaseBackup {
         removeSidecars(databaseFile)
     }
 
-    /** Pending candidates and recall excerpts are device-local and should not enter a backup archive. */
+    /**
+     * 备份只清理“记忆使用记录”：它带召回片段、只对本机有意义。
+     * 待审核候选、整理任务与批次指纹必须保留，否则换机/重装后用户会丢掉还没保存的记忆，
+     * 而且已经付费提取过的内容会再花一次钱。恢复后设备授权指纹不匹配，不会被重新上传。
+     */
     fun stripLocalMemoryWork(context: Context, snapshot: File) {
         val config = SQLiteConfiguration.configure(
             context, SQLiteDatabaseConfiguration(snapshot.absolutePath, SQLiteDatabase.OPEN_READWRITE),
@@ -77,7 +81,7 @@ internal object DatabaseBackup {
     }
 
     fun stripLocalMemoryWork(db: SupportSQLiteDatabase) {
-        val localTables = listOf("history_memory_job", "history_memory_candidate", "history_memory_batch", "memory_recall")
+        val localTables = listOf("memory_recall")
         val existing = db.query("SELECT name FROM sqlite_master WHERE type = 'table'").use {
             buildSet { while (it.moveToNext()) add(it.getString(0)) }
         }

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import me.rerere.rikkahub.data.ai.memory.memoryRelevance
+import me.rerere.rikkahub.data.ai.memory.memoryMatch
 import me.rerere.rikkahub.data.ai.memory.recallTerms
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
@@ -64,10 +64,11 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> = withContext(Dispatchers.Default) {
         val terms = recallTerms(query)
         if (terms.isEmpty()) return@withContext emptyList()
-        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second + it.first.importance }
+        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second + it.first.importance * 3 }
             .thenByDescending { it.first.updatedAt }
             .thenBy { it.first.path }
         val matches = mutableListOf<Pair<MemoryFile, Int>>()
+        val seenTitles = mutableSetOf<String>()
         var after = ""
         while (true) {
             val page = memoryDAO.recallPage(assistantId, after)
@@ -75,11 +76,14 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
             for (entity in page) {
                 val file = entity.toMemoryFile()
                 if (file.isOutdated) continue
-                val score = memoryRelevance(file, terms)
-                if (score > 0) matches += file to score
+                val match = memoryMatch(file, terms, query)
+                if (!match.relevant) continue
+                // 同标题的多份记忆只保留最相关的一份，避免一次注入三条“阅读偏好”
+                if (!seenTitles.add(file.title.lowercase())) continue
+                matches += file to match.score
             }
             matches.sortWith(ordering)
-            if (matches.size > 12) matches.subList(12, matches.size).clear()
+            if (matches.size > 10) matches.subList(10, matches.size).clear()
             after = page.last().path
         }
         matches.map { it.first }
@@ -162,6 +166,39 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
         // 只恢复删除标记；不裁剪旧正文，也不改变原更新时间。
         memoryDAO.markRestored(assistantId, normalized)
         MemoryWriteResult.Success(current.copy(deletedAt = 0))
+    }
+
+    /** 撤销批量操作时需要连“最近删除”里的旧内容一起看。 */
+    suspend fun getFileIncludingDeleted(assistantId: String, path: String): MemoryFile? {
+        val normalized = MemoryFile.normalizePath(path) ?: return null
+        return memoryDAO.getFileIncludingDeleted(assistantId, normalized)?.toMemoryFile()
+    }
+
+    /** 原样写回一份历史内容（撤销用），不经过用户编辑校验。 */
+    suspend fun restoreSnapshot(assistantId: String, path: String, content: String, updatedAt: Long): Boolean {
+        val normalized = MemoryFile.normalizePath(path) ?: return false
+        if (content.toByteArray().size > MemoryFile.MAX_BYTES) return false
+        return writeLock.withLock {
+            memoryDAO.upsertFile(
+                MemoryFileEntity(
+                    assistantId = assistantId,
+                    path = normalized,
+                    content = content,
+                    updatedAt = updatedAt,
+                    deletedAt = 0,
+                )
+            )
+            true
+        }
+    }
+
+    /** 撤销“新建”时删除文件，但如果用户已经改过内容就保持不动。 */
+    suspend fun purgeIfContentMatches(assistantId: String, path: String, content: String): Boolean = writeLock.withLock {
+        val normalized = MemoryFile.normalizePath(path) ?: return@withLock false
+        val current = memoryDAO.getFileIncludingDeleted(assistantId, normalized) ?: return@withLock true
+        if (current.content != content) return@withLock false
+        memoryDAO.deleteFile(assistantId, normalized)
+        true
     }
 
     suspend fun purgeDeletedFiles(assistantId: String) {
