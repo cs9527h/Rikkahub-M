@@ -177,7 +177,10 @@ internal fun MemoryReviewScreen(
                             },
                             label = { Text(if (selected.size == visible.size && visible.isNotEmpty()) "取消全选" else "全选") },
                         )
-                        TextButton(onClick = { selected = visible.map { it.key }.toSet() }) { Text("反选") }
+                        TextButton(onClick = {
+                            val all = visible.map { it.key }.toSet()
+                            selected = (all - selected) + (selected - all)
+                        }) { Text("反选") }
                     }
                     LazyRowOfFilters(filter) { filter = it }
                 }
@@ -206,17 +209,18 @@ internal fun MemoryReviewScreen(
         Surface(tonalElevation = 3.dp) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                 HorizontalDivider(Modifier.padding(bottom = 10.dp))
+                FilledTonalButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !busy && selected.isNotEmpty(),
+                    onClick = {
+                        run { history.saveSelected(scope, job.id, selected, HistoryMemoryManager.BulkMode.SAVE_SELECTED) }
+                    },
+                ) { Text("保存选中的 ${selected.size} 条") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FilledTonalButton(
-                        enabled = !busy && selected.isNotEmpty(),
-                        onClick = {
-                            run { history.saveSelected(scope, job.id, selected, HistoryMemoryManager.BulkMode.SAVE_SELECTED) }
-                        },
-                    ) { Text("保存选中的 ${selected.size} 条") }
                     TextButton(
                         enabled = !busy && pending.isNotEmpty(),
                         onClick = {
