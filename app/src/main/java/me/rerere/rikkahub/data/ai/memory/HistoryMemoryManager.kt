@@ -644,6 +644,11 @@ internal class HistoryMemoryManager(
         dao.snapshotOfStatus(scope, "pending", MAX_BULK).map { it.key }
     }
 
+    /** 某一轮任务自己产生的待审核候选，用于“整理完成后自动保存”，不碰其他轮次。 */
+    suspend fun pendingKeysOfJob(jobId: String): List<String> = withContext(Dispatchers.IO) {
+        dao.pendingSnapshot(jobId, MAX_BULK).map { it.key }
+    }
+
     /** 已跳过的候选数量与内容，供“恢复误跳过”入口使用。 */
     suspend fun skippedCount(scope: String): Int = withContext(Dispatchers.IO) {
         dao.snapshotOfStatus(scope, "discarded", MAX_BULK).size
@@ -672,7 +677,7 @@ internal class HistoryMemoryManager(
             MemoryBulkUndo(
                 id = Uuid.random().toString(),
                 scope = scope,
-                jobId = job.id,
+                jobId = "",
                 createdAt = System.currentTimeMillis(),
                 summary = "跳过 ${pending.size} 条",
                 payload = Json.encodeToString(UndoPayload(emptyList(), pending.map { it.key })),

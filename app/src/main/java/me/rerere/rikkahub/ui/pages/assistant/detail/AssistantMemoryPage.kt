@@ -197,7 +197,7 @@ fun AssistantMemoryPage(id: String) {
         if (current.id != autoJobId || current.status != "finished") return@LaunchedEffect
         autoJobId = null
         // 自动保存只处理本轮任务新提取的候选，不碰上一轮还没审完的内容
-        val keys = history.pendingKeys(current.id)
+        val keys = history.pendingKeysOfJob(current.id)
         if (keys.isEmpty()) return@LaunchedEffect
         busy = true
         try {

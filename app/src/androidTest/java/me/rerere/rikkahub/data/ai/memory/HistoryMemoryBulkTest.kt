@@ -22,6 +22,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -151,18 +152,20 @@ class HistoryMemoryBulkTest {
             assertEquals(candidates.map { it.fact }.toSet(), restoredFacts.map { it.fact }.toSet())
             assertTrue(restoredFacts.all { it.evidence.isNotBlank() && it.conversationId == conversation })
 
-            // 新任务替换任务行之后，旧候选仍然按记忆库归属可见、可恢复
-            val replacement = HistoryMemoryJob(
-                scope = scope,
-                id = "replacement-job",
-                deviceConsent = "device",
-                modelId = "model",
-                providerFingerprint = "fingerprint",
-                sources = "[]",
-                sourceCount = 0,
-                status = "finished",
+            // 新建整理任务不得删除上一轮候选；任务行被替换后候选仍按记忆库归属可见、可恢复
+            val replacement = history.persistConfirmedPlan(
+                HistoryMemoryManager.Plan(
+                    scope = scope,
+                    sources = emptyList(),
+                    modelId = "model",
+                    fingerprint = "fingerprint",
+                    destination = "fixture",
+                    nodes = 0,
+                    serializedChars = 0,
+                )
             )
-            db.historyMemoryDao().put(replacement)
+            assertNotEquals(jobId, replacement.id)
+            assertEquals(201, history.pendingKeys(scope).size)
             history.skipSelected(scope, candidates.map { it.key }.toSet())
             assertEquals(200, history.skippedCount(scope))
             assertEquals(200, history.restoreSkipped(scope))
