@@ -82,7 +82,8 @@ internal object DatabaseBackup {
             buildSet { while (it.moveToNext()) add(it.getString(0)) }
         }
         if (localTables.none { it in existing }) return
-        db.execSQL("PRAGMA secure_delete = ON")
+        // requery 驱动只允许通过 query/rawQuery 执行 PRAGMA；execSQL 会抛 "Queries can be performed ..." 
+        db.query("PRAGMA secure_delete = ON").use { it.moveToFirst() }
         db.beginTransaction()
         try {
             localTables.filter { it in existing }.forEach { db.execSQL("DELETE FROM `$it`") }
