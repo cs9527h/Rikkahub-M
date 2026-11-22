@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -178,7 +180,10 @@ internal fun MemoryReviewScreen(
                 }
             }
             item(key = "tabs") {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     CandidateTab.entries.forEach { item ->
                         FilterChip(
                             selected = tab == item,
@@ -230,7 +235,10 @@ internal fun MemoryReviewScreen(
                                 selected = (keys - selected) + (selected - keys)
                             }) { Text("反选") }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             TriFilter.entries.forEach { item ->
                                 FilterChip(
                                     selected = filter == item,

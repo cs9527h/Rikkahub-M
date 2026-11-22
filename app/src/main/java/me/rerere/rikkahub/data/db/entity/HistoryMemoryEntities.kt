@@ -103,4 +103,19 @@ data class MemoryRecallRecord(
     val toolReads: String,
     val tokens: Int,
     val elapsedMillis: Long,
+    /** 触发本轮召回的用户问题（截断保存），用于解释“为什么这条记忆被找到”。*/
+    @ColumnInfo(defaultValue = "''")
+    val query: String = "",
+    /** 扫描过多少条记忆 */
+    @ColumnInfo(defaultValue = "0")
+    val considered: Int = 0,
+    /** 被过滤掉多少条 */
+    @ColumnInfo(defaultValue = "0")
+    val filtered: Int = 0,
+    /** 是否是宽泛问题（“你记得我以前问过什么吗”） */
+    @ColumnInfo(defaultValue = "0")
+    val broad: Boolean = false,
+    /** 过滤原因计数，JSON 对象 */
+    @ColumnInfo(defaultValue = "'{}'")
+    val filterReasons: String = "{}",
 )

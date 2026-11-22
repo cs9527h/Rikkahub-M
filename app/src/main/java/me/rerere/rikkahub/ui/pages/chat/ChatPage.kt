@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -357,6 +358,16 @@ private fun ChatPageContent(
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
             topBar = {
+                // 顶栏本身是透明胶囊：加一层向下淡出的底色，滚动文字经过时不会和标题按钮糊在一起
+                Box(
+                    modifier = Modifier.background(
+                        Brush.verticalGradient(
+                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
+                            0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                            1f to Color.Transparent,
+                        ),
+                    ),
+                ) {
                 TopBar(
                     settings = setting,
                     assistant = assistant,
@@ -385,6 +396,7 @@ private fun ChatPageContent(
                         vm.updateTitle(it)
                     }
                 )
+                }
             },
             bottomBar = {
                 val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()

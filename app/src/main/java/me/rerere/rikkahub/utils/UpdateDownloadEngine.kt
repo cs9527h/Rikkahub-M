@@ -17,9 +17,41 @@ import java.util.concurrent.TimeUnit
 /** 续传条件不满足，文件已重置：同一来源从头重下一次是可恢复的。 */
 class UpdateRestartException(message: String) : IOException(message)
 
+/** 一个下载源为什么失败，直接展示给用户，避免“下载失败”这种笼统提示。 */
+data class UpdateSourceFailure(val label: String, val reason: String)
+
+/** 所有来源都失败：把每个来源的真实原因带回去，界面据此给出可执行建议。 */
+class UpdateSourcesException(val failures: List<UpdateSourceFailure>) : IOException(
+    failures.joinToString("；") { "${it.label}：${it.reason}" }
+)
+
+/** 诊断用：把异常翻译成用户能看懂的一句话。 */
+fun describeDownloadError(error: Throwable?): String = when (error) {
+    null -> "未知错误"
+    is UpdateSourceFailure -> error.reason
+    is UpdateHttpException -> when (error.code) {
+        403 -> "被服务器拒绝（HTTP 403）"
+        404 -> "文件不存在（HTTP 404）"
+        429 -> "请求过于频繁（HTTP 429）"
+        in 500..599 -> "服务器异常（HTTP ${error.code}）"
+        else -> "HTTP ${error.code}"
+    }
+    is javax.net.ssl.SSLException -> "HTTPS 证书校验失败，已按安全策略中止"
+    is java.net.UnknownHostException -> "域名解析失败"
+    is java.net.SocketTimeoutException -> "连接或读取超时"
+    is java.net.ConnectException -> "连接被拒绝或网络不可达"
+    is UpdateCheckException -> error.message ?: "文件校验失败"
+    is java.io.IOException -> when {
+        error.message?.contains("ENOSPC", true) == true ||
+            error.message?.contains("No space left", true) == true -> "手机存储空间不足"
+        else -> error.message?.take(120) ?: "网络中断"
+    }
+    else -> error.message?.take(120) ?: error.javaClass.simpleName
+}
+
 object UpdateDownloadEngine {
 
-    private const val MAX_TRIES_PER_SOURCE = 3
+    private const val MAX_TRIES_PER_SOURCE = 2
     private const val META_FILE_SUFFIX = ".meta"
 
     @Volatile
@@ -29,8 +61,9 @@ object UpdateDownloadEngine {
     fun clientFor(base: OkHttpClient): OkHttpClient =
         downloadClient ?: base.newBuilder()
             .callTimeout(0, TimeUnit.MILLISECONDS)
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            // 连接超时压短：主源被墙时要尽快切到备用源，而不是让用户干等一分多钟
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
             .also { downloadClient = it }
@@ -41,6 +74,7 @@ object UpdateDownloadEngine {
         target: File,
         expectedSha256: String?,
         expectedSize: Long? = null,
+        version: String? = null,
         onProgress: (read: Long, total: Long, source: String) -> Unit = { _, _, _ -> },
         onVerifying: (source: String) -> Unit = {},
         isCancelled: () -> Boolean = { false },
@@ -49,7 +83,7 @@ object UpdateDownloadEngine {
         require(sources.isNotEmpty()) { "没有可用的下载地址" }
         target.parentFile?.mkdirs()
         val metaFile = File(target.path + META_FILE_SUFFIX)
-        var lastError: Throwable? = null
+        val failures = mutableListOf<UpdateSourceFailure>()
 
         for ((index, source) in sources.withIndex()) {
             val result = attemptSource(
@@ -59,6 +93,7 @@ object UpdateDownloadEngine {
                 source = source,
                 expectedSha256 = expectedSha256,
                 expectedSize = expectedSize,
+                version = version,
                 onProgress = onProgress,
                 onVerifying = onVerifying,
                 isCancelled = isCancelled,
@@ -68,12 +103,12 @@ object UpdateDownloadEngine {
                 onSuccess = { return it },
                 onFailure = { error ->
                     if (error is UpdateCancelledException) throw error
-                    lastError = error
+                    failures += UpdateSourceFailure(source.label, describeDownloadError(error))
                 },
             )
-            if (index < sources.lastIndex) onProgress(0, 0, "切换 ${sources[index + 1].label}")
+            if (index < sources.lastIndex) onProgress(0, 0, "切换到 ${sources[index + 1].label}")
         }
-        throw lastError ?: UpdateCheckException("下载失败")
+        throw UpdateSourcesException(failures)
     }
 
     private suspend fun attemptSource(
@@ -83,6 +118,7 @@ object UpdateDownloadEngine {
         source: UpdateSource,
         expectedSha256: String?,
         expectedSize: Long?,
+        version: String?,
         onProgress: (Long, Long, String) -> Unit,
         onVerifying: (String) -> Unit,
         isCancelled: () -> Boolean,
@@ -99,6 +135,7 @@ object UpdateDownloadEngine {
                     source = source,
                     expectedSha256 = expectedSha256,
                     expectedSize = expectedSize,
+                    version = version,
                     onProgress = onProgress,
                     isCancelled = isCancelled,
                 )
@@ -139,11 +176,14 @@ object UpdateDownloadEngine {
         source: UpdateSource,
         expectedSha256: String?,
         expectedSize: Long?,
+        version: String?,
         onProgress: (Long, Long, String) -> Unit,
         isCancelled: () -> Boolean,
     ) {
         val meta = readMeta(metaFile)
-        val resumable = meta?.url == source.url
+        // 只有来源与版本都对得上才续传：否则拼出来的文件不是这个版本的安装包
+        val resumable = meta?.url == source.url &&
+            (version.isNullOrBlank() || meta.version.isNullOrBlank() || meta.version == version)
         var resumeFrom = if (resumable) target.length() else 0L
         if (!resumable) deleteQuietly(target, metaFile)
         if (resumeFrom > 0 && !target.exists()) resumeFrom = 0
@@ -190,7 +230,10 @@ object UpdateDownloadEngine {
             }
 
             // 续传元数据必须在写正文之前落盘：第一次下载就被中断时，下次才知道能从哪儿接着下。
-            writeMeta(metaFile, DownloadMeta(source.url, response.header("ETag"), response.header("Last-Modified")))
+            writeMeta(
+                metaFile,
+                DownloadMeta(source.url, response.header("ETag"), response.header("Last-Modified"), version.orEmpty()),
+            )
             FileOutputStream(target, append).use { output ->
                 response.body.byteStream().use { input ->
                     var read = resumeFrom
@@ -216,7 +259,13 @@ object UpdateDownloadEngine {
         }
     }
 
-    internal data class DownloadMeta(val url: String, val etag: String?, val lastModified: String?)
+    internal data class DownloadMeta(
+        val url: String,
+        val etag: String?,
+        val lastModified: String?,
+        /** 这份半截文件属于哪个版本：版本变了（例如切到更新的版本）就不能续传。 */
+        val version: String? = null,
+    )
 
     internal fun readMeta(file: File): DownloadMeta? = runCatching {
         if (!file.isFile) return null
@@ -226,12 +275,16 @@ object UpdateDownloadEngine {
             url = lines[0],
             etag = lines.getOrNull(1)?.takeIf { it.isNotBlank() },
             lastModified = lines.getOrNull(2)?.takeIf { it.isNotBlank() },
+            version = lines.getOrNull(3)?.takeIf { it.isNotBlank() },
         )
     }.getOrNull()
 
     private fun writeMeta(file: File, meta: DownloadMeta) {
         runCatching {
-            file.writeText(listOf(meta.url, meta.etag.orEmpty(), meta.lastModified.orEmpty()).joinToString("\n"))
+            file.writeText(
+                listOf(meta.url, meta.etag.orEmpty(), meta.lastModified.orEmpty(), meta.version.orEmpty())
+                    .joinToString("\n"),
+            )
         }
     }
 
@@ -264,11 +317,11 @@ object UpdateDownloadEngine {
         files.forEach { runCatching { if (it.exists()) it.delete() } }
     }
 
-    /** 下载中断后用于界面恢复：返回已下载字节数与对应来源。 */
-    fun partialState(target: File): Pair<Long, String?> {
-        if (!target.isFile) return 0L to null
-        val source = readMeta(File(target.path + META_FILE_SUFFIX))?.url
-        return target.length() to source
+    /** 下载中断后用于界面恢复：返回已下载字节数、来源与版本。 */
+    fun partialState(target: File): Triple<Long, String?, String?> {
+        if (!target.isFile) return Triple(0L, null, null)
+        val meta = readMeta(File(target.path + META_FILE_SUFFIX))
+        return Triple(target.length(), meta?.url, meta?.version)
     }
 
     fun isRetryableTransport(error: Throwable): Boolean = error is IOException && error !is UpdateCheckException

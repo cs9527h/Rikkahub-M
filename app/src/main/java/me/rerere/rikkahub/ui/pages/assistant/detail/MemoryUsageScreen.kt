@@ -77,7 +77,12 @@ internal fun MemoryUsageScreen(
             val injected = remember(record.injected) { runCatching { Json.decodeFromString<List<RecallExcerpt>>(record.injected) }.getOrDefault(emptyList()) }
             ListItem(
                 modifier = Modifier.clickable { detail = record },
-                headlineContent = { Text(usageHeadline(matches.size, injected.size)) },
+                headlineContent = {
+                    Text(
+                        usageHeadline(matches.size, injected.size) +
+                            (if (record.considered > 0) "（扫描 ${record.considered} 条，过滤 ${record.filtered} 条）" else ""),
+                    )
+                },
                 supportingContent = {
                     Text(
                         "${localDateTime(record.recordedAt)} · ${record.elapsedMillis} ms",
@@ -96,6 +101,24 @@ internal fun MemoryUsageScreen(
             title = { Text(usageHeadline(matched.size, injected.size)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("本轮问题", style = MaterialTheme.typography.titleSmall)
+                    Text(record.query.ifBlank { "（旧记录未保存问题）" })
+                    Text(
+                        "记忆库：${if (record.scope == "__global__") "所有助手共享" else "仅当前助手"}" +
+                            " · 扫描 ${record.considered} 条 · 过滤 ${record.filtered} 条" +
+                            if (record.broad) " · 宽泛问题" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    val reasons = remember(record.filterReasons) {
+                        runCatching { Json.decodeFromString<Map<String, Int>>(record.filterReasons) }
+                            .getOrDefault(emptyMap())
+                    }
+                    if (reasons.isNotEmpty()) {
+                        Text("过滤原因", style = MaterialTheme.typography.titleSmall)
+                        reasons.entries.sortedByDescending { it.value }.forEach { (reason, count) ->
+                            Text("· $reason：$count 条", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     Text("找到的相关记忆", style = MaterialTheme.typography.titleSmall)
                     Text(matched.joinToString("\n").ifEmpty { "无" })
                     Text("放进本轮请求的内容", style = MaterialTheme.typography.titleSmall)

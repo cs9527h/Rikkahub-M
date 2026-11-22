@@ -90,6 +90,11 @@ internal data class TurnRecall(
     val matches: List<String>,
     val excerpts: List<RecallExcerpt>,
     val elapsedMillis: Long,
+    val query: String = "",
+    val considered: Int = 0,
+    val filtered: Int = 0,
+    val broad: Boolean = false,
+    val filterReasons: Map<String, Int> = emptyMap(),
 )
 
 /** 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里 */
@@ -284,15 +289,25 @@ class ChatRequestFactory(
         val requestMessages = if (assistant.enableMemory && latestUser != null) {
             val recall = turn.recall?.takeIf { it.userId == latestUser.id } ?: run {
                 val clock = TimeSource.Monotonic.markNow()
-                val matches = memoryRepository.searchForRecall(assistant.memoryId, latestUser.toText())
+                val recallResult = memoryRepository.searchRecallWithDiagnostics(assistant.memoryId, latestUser.toText())
+                val matches = recallResult.files
                 val preferences = memoryRepository.getFile(assistant.memoryId, MemoryFile.PREFERENCES_PATH)
                     ?.takeUnless { it.isOutdated }
                 val excerpts = recallExcerpts(
                     listOfNotNull(preferences) + matches.filter { it.path != preferences?.path },
                     maxChars = 2 * assistant.memoryRecallTokenBudget.coerceIn(500, 4_000),
                 )
-                TurnRecall(latestUser.id, matches.map { it.path }, excerpts, clock.elapsedNow().inWholeMilliseconds)
-                    .also { turn.recall = it }
+                TurnRecall(
+                    userId = latestUser.id,
+                    matches = matches.map { it.path },
+                    excerpts = excerpts,
+                    elapsedMillis = clock.elapsedNow().inWholeMilliseconds,
+                    query = recallResult.query.take(200),
+                    considered = recallResult.considered,
+                    filtered = recallResult.filtered,
+                    broad = recallResult.broad,
+                    filterReasons = recallResult.filterReasons,
+                ).also { turn.recall = it }
             }
             val hasTools = ModelAbility.TOOL in turn.model.abilities
             val prompt = buildRecallPrompt(recall.excerpts, recall.matches, hasTools)
@@ -312,6 +327,11 @@ class ChatRequestFactory(
                             Json.encodeToString(reads.map { it.path }),
                             (prompt.length + reads.sumOf { it.content.length } + 1) / 2,
                             recall.elapsedMillis,
+                            query = recall.query,
+                            considered = recall.considered,
+                            filtered = recall.filtered,
+                            broad = recall.broad,
+                            filterReasons = Json.encodeToString(recall.filterReasons),
                         ))
                         dao.trimRecalls(assistant.memoryId)
                     }

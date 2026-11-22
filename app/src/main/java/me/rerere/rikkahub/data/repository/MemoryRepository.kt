@@ -6,7 +6,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import me.rerere.rikkahub.data.ai.memory.memoryMatch
+import me.rerere.rikkahub.data.ai.memory.MemoryRecallEngine
+import me.rerere.rikkahub.data.ai.memory.RecallCandidate
+import me.rerere.rikkahub.data.ai.memory.RecallResult
+import me.rerere.rikkahub.data.ai.memory.filteringReason
 import me.rerere.rikkahub.data.ai.memory.recallTerms
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
@@ -60,34 +63,90 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     internal suspend fun exactTextCandidates(scope: String, fact: String): List<MemoryFile> =
         memoryDAO.exactTextCandidates(scope, fact).map { it.toMemoryFile() }
 
-    /** Uses the existing (assistant_id, path) index, and keeps only the highest-ranked matches in memory. */
-    suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> = withContext(Dispatchers.Default) {
-        val terms = recallTerms(query)
-        if (terms.isEmpty()) return@withContext emptyList()
-        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second + it.first.importance * 3 }
-            .thenByDescending { it.first.updatedAt }
-            .thenBy { it.first.path }
-        val matches = mutableListOf<Pair<MemoryFile, Int>>()
-        val seenTitles = mutableSetOf<String>()
-        var after = ""
-        while (true) {
-            val page = memoryDAO.recallPage(assistantId, after)
-            if (page.isEmpty()) break
-            for (entity in page) {
-                val file = entity.toMemoryFile()
-                if (file.isOutdated) continue
-                val match = memoryMatch(file, terms, query)
-                if (!match.relevant) continue
-                // 同标题的多份记忆只保留最相关的一份，避免一次注入三条“阅读偏好”
-                if (!seenTitles.add(file.title.lowercase())) continue
-                matches += file to match.score
+    /** 兼容旧调用：只要命中的文件。 */
+    suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> =
+        searchRecallWithDiagnostics(assistantId, query).files
+
+    /**
+     * 多阶段召回 + 诊断：每轮聊天既要知道“命中了什么”，也要知道“为什么只命中这些”。
+     *
+     * 仍然只读现有 (assistant_id, path) 索引分页扫描，不引入 Embedding API，
+     * 也不需要额外数据库或网络。
+     */
+    internal suspend fun searchRecallWithDiagnostics(assistantId: String, query: String): RecallResult =
+        withContext(Dispatchers.Default) {
+            val recallQuery = MemoryRecallEngine.analyze(query)
+            if (recallQuery.terms.isEmpty() && recallQuery.phrases.isEmpty() && !recallQuery.broad) {
+                return@withContext RecallResult(emptyList(), 0, 0, query, false, emptyMap())
             }
-            matches.sortWith(ordering)
-            if (matches.size > 10) matches.subList(10, matches.size).clear()
-            after = page.last().path
+            val candidates = mutableListOf<RecallCandidate>()
+            val fallback = mutableListOf<MemoryFile>()
+            val reasons = mutableMapOf<String, Int>()
+            fun countReason(reason: String) {
+                reasons[reason] = (reasons[reason] ?: 0) + 1
+            }
+            var considered = 0
+            var filtered = 0
+            var after = ""
+            while (true) {
+                val page = memoryDAO.recallPage(assistantId, after)
+                if (page.isEmpty()) break
+                for (entity in page) {
+                    val file = entity.toMemoryFile()
+                    considered++
+                    file.filteringReason(recallQuery)?.let {
+                        countReason(it)
+                        filtered++
+                        continue
+                    }
+                    if (recallQuery.broad && file.importance >= 2) fallback += file
+                    val candidate = MemoryRecallEngine.score(file, recallQuery)
+                    if (candidate == null) {
+                        countReason("内容不相关")
+                        filtered++
+                    } else {
+                        candidates += candidate
+                    }
+                }
+                candidates.sortWith(
+                    compareByDescending<RecallCandidate> { it.score }
+                        .thenByDescending { it.file.updatedAt },
+                )
+                if (candidates.size > 24) candidates.subList(24, candidates.size).clear()
+                after = page.last().path
+            }
+            // 宽泛问题（“你记得我以前问过什么吗”）命中太少时，用重要且较新的记忆兜底
+            if (recallQuery.broad && candidates.size < 4) {
+                fallback.asSequence()
+                    .sortedWith(compareByDescending<MemoryFile> { it.importance }.thenByDescending { it.updatedAt })
+                    .take(4 - candidates.size)
+                    .forEach { file ->
+                        if (candidates.none { it.file.path == file.path }) {
+                            candidates += RecallCandidate(
+                                file = file,
+                                score = 6,
+                                stage = 4,
+                                reasons = listOf("宽泛问题：补充重要记忆"),
+                            )
+                            countReason("宽泛兜底命中")
+                        }
+                    }
+            }
+            RecallResult(
+                files = candidates
+                    .sortedWith(
+                        compareByDescending<RecallCandidate> { it.score }
+                            .thenByDescending { it.file.importance * 3 + MemoryRecallEngine.recencyBonus(it.file.updatedAt) },
+                    )
+                    .take(10)
+                    .map { it.file },
+                considered = considered,
+                filtered = filtered,
+                query = query,
+                broad = recallQuery.broad,
+                filterReasons = reasons,
+            )
         }
-        matches.map { it.first }
-    }
 
     suspend fun getFile(assistantId: String, path: String): MemoryFile? {
         val normalized = MemoryFile.normalizePath(path) ?: return null
