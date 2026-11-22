@@ -11,7 +11,7 @@ val Migration_35_36 = object : Migration(35, 36) {
                 modelId TEXT NOT NULL, providerFingerprint TEXT NOT NULL, sources TEXT NOT NULL,
                 sourceCount INTEGER NOT NULL, sourceIndex INTEGER NOT NULL, nodeIndex INTEGER NOT NULL,
                 nodeId TEXT NOT NULL, textOffset INTEGER NOT NULL, batches INTEGER NOT NULL,
-                estimatedTokens INTEGER NOT NULL, status TEXT NOT NULL, failure TEXT
+                estimatedTokens INTEGER NOT NULL, status TEXT NOT NULL, failure TEXT, generation INTEGER NOT NULL
             )
         """.trimIndent())
         db.execSQL("""

@@ -26,6 +26,8 @@ data class MemoryFile(
 
     val aliases: List<String> get() = frontmatter.getList("aliases")
 
+    internal val importance: Int get() = frontmatter["importance"]?.toIntOrNull()?.coerceIn(0, 5) ?: 0
+
     /** 去掉 frontmatter 后的正文 */
     val body: String get() = SkillFrontmatterParser.extractBody(content)
 
@@ -80,7 +82,7 @@ private fun String.toSingleLine(): String = replace(Regex("\\s+"), " ").trim()
 // 列表项开头的 [stated] 标记，保留前面的列表符号
 private val statedMarkerRegex = Regex("""(?m)^(\s*[-*+]\s+)\[stated\]\s*""", RegexOption.IGNORE_CASE)
 
-// 每次都全文注入的两个文件排在最前，其余目录按记忆格式约定的顺序
+// 记忆管理中个人资料和偏好排在最前
 private val pinnedPathOrder = listOf(MemoryFile.PROFILE_PATH, MemoryFile.PREFERENCES_PATH)
 private val directoryOrder = listOf("/", "/topics", "/areas", "/people")
 

@@ -48,11 +48,17 @@ class MemoryRepository(private val memoryDAO: MemoryDAO) {
     suspend fun getFiles(assistantId: String): List<MemoryFile> =
         memoryDAO.getFilesOfAssistant(assistantId).map { it.toMemoryFile() }
 
+    internal suspend fun listForChat(scope: String, prefix: String, limit: Int): List<MemoryFile> =
+        memoryDAO.listByPrefix(scope, prefix, limit).map { it.toMemoryFile() }
+
+    internal suspend fun findImportedFact(scope: String, key: String): MemoryFile? =
+        memoryDAO.findImportedFact(scope, key)?.toMemoryFile()
+
     /** Uses the existing (assistant_id, path) index, and keeps only the highest-ranked matches in memory. */
     suspend fun searchForRecall(assistantId: String, query: String): List<MemoryFile> = withContext(Dispatchers.Default) {
         val terms = recallTerms(query)
         if (terms.isEmpty()) return@withContext emptyList()
-        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second }
+        val ordering = compareByDescending<Pair<MemoryFile, Int>> { it.second + it.first.importance }
             .thenByDescending { it.first.updatedAt }
             .thenBy { it.first.path }
         val matches = mutableListOf<Pair<MemoryFile, Int>>()

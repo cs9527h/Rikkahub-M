@@ -98,7 +98,7 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          script: ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.rikkahub.data.db.migrations.HistoryMemoryMigrationTest --stacktrace --no-daemon
+          script: ./gradlew :app:connectedGithubDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=me.rerere.rikkahub.data.db.migrations.HistoryMemoryMigrationTest,me.rerere.rikkahub.data.ai.HistoryMemoryIntegrationTest --stacktrace --no-daemon
       - uses: actions/upload-artifact@v4
         if: always()
         with:

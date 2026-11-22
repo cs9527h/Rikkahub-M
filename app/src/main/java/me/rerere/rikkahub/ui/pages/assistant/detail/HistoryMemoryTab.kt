@@ -299,7 +299,7 @@ private fun HistoryConsentDialog(
                 OutlinedTextField(outputPrice, { outputPrice = it }, label = { Text("每百万输出 Token 价格（选填）") }, singleLine = true)
                 if (inputRate != null && outputRate != null) {
                     val cost = (inputRate * inputTokens + outputRate * outputTokens) / 1_000_000
-                    Text("估算费用 ${String.format(Locale.getDefault(), "%.4f", cost)}（按你填写的币种）")
+                    Text("估算费用 ${String.format(Locale.ROOT, "%.4f", cost)}（按你填写的币种）")
                 }
             }
         },

@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.ai.memory
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import me.rerere.rikkahub.data.ai.tools.findForbiddenMemoryContent
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import java.security.MessageDigest
 import java.util.Locale
@@ -66,7 +67,8 @@ internal fun parseHistoryCandidates(
         val fact = item.fact.cleanFact()
         val subject = item.subject.cleanFact()
         if (item.category !in historyCategories || evidence.length !in 4..HISTORY_FRAGMENT_CHARS ||
-            evidence !in excerpt.text || fact.length !in 4..600 || subject.length !in 2..80
+            evidence !in excerpt.text || fact.length !in 4..600 || subject.length !in 2..80 ||
+            findForbiddenMemoryContent(fact) != null || findForbiddenMemoryContent(evidence) != null
         ) return@mapNotNull null
         HistoryMemoryCandidate(
             jobId, factKey(fact), item.category, subject, fact, evidence,

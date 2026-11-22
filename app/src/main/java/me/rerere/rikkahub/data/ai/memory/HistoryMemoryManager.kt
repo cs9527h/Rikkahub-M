@@ -2,18 +2,23 @@ package me.rerere.rikkahub.data.ai.memory
 
 import android.content.Context
 import androidx.room.withTransaction
+import androidx.work.ExistingWorkPolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.data.ai.tools.findForbiddenMemoryContent
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -30,6 +35,7 @@ import me.rerere.rikkahub.data.repository.MemoryWriteResult
 import me.rerere.rikkahub.utils.JsonInstant
 import java.io.File
 import java.io.IOException
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
@@ -44,6 +50,7 @@ internal class HistoryMemoryManager(
     private val dao = database.historyMemoryDao()
     private val conversations = database.conversationDao()
     private val nodes = database.messageNodeDao()
+    private val controls = Mutex()
     // A restored database must never authorize a new device to transmit old conversations.
     private val consentId: String by lazy {
         val file = File(context.noBackupFilesDir, "history-memory-device")
@@ -72,11 +79,16 @@ internal class HistoryMemoryManager(
         val settings = settingsStore.awaitLoaded()
         val model = sequenceOf(settings.memoryModelId, settings.fastModelId, assistant.chatModelId ?: settings.chatModelId)
             .mapNotNull { settings.findModelById(it) }
-            .firstOrNull { it.findProvider(settings.providers)?.enabled == true }
+            .firstOrNull { it.type == ModelType.CHAT && it.findProvider(settings.providers)?.enabled == true }
             ?: error("请先配置可用的记忆整理模型")
         val provider = model.findProvider(settings.providers) ?: error("请先配置提供商")
-        val transport = (provider as? ProviderSetting.ApiKey)?.baseUrl
-        require(transport == null || transport.startsWith("https://")) { "历史提取需要使用 HTTPS 模型服务" }
+        val transport = (provider as? ProviderSetting.ApiKey)?.let {
+            val url = it.baseUrl.toHttpUrlOrNull()
+            require(url != null && url.isHttps && url.username.isEmpty() && url.password.isEmpty()) {
+                "历史提取需要使用 HTTPS 模型服务"
+            }
+            "https://${url.host}:${url.port}"
+        }
         val sizes = sources.map { it.id }.chunked(300).map { nodes.estimateHistory(it) }
         return Plan(
             scope, sources.map { HistorySource(it.id, it.updatedAt) }, model.id.toString(),
@@ -86,58 +98,79 @@ internal class HistoryMemoryManager(
         )
     }
 
-    suspend fun start(plan: Plan) = withContext(Dispatchers.IO) {
-        val id = Uuid.random().toString()
-        database.withTransaction {
-            val previous = dao.job(plan.scope)
-            check(previous == null || previous.status in setOf("finished", "cancelled")) { "当前任务仍在运行或等待处理" }
-            previous?.let {
-                dao.clearCandidates(it.id)
-                dao.clearBatches(it.id)
+    suspend fun resumePending() = withContext(Dispatchers.IO) {
+        controls.withLock {
+            dao.running().forEach { job ->
+                HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.KEEP).result.get()
             }
-            dao.put(HistoryMemoryJob(
-                plan.scope, id, consentId, plan.modelId, plan.fingerprint,
-                Json.encodeToString(plan.sources), plan.sources.size,
-            ))
         }
-        HistoryMemoryWorker.enqueue(context, plan.scope, id).result.get()
+    }
+
+    suspend fun start(plan: Plan) = withContext(Dispatchers.IO) {
+        controls.withLock {
+            val job = persistConfirmedPlan(plan)
+            HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
+            Unit
+        }
+    }
+
+    internal suspend fun persistConfirmedPlan(plan: Plan): HistoryMemoryJob = database.withTransaction {
+        val previous = dao.job(plan.scope)
+        check(previous == null || previous.status in setOf("finished", "cancelled")) { "当前任务仍在运行或等待处理" }
+        previous?.let {
+            dao.clearCandidates(it.id)
+            dao.clearBatches(it.id)
+        }
+        HistoryMemoryJob(
+            plan.scope, Uuid.random().toString(), consentId, plan.modelId, plan.fingerprint,
+            Json.encodeToString(plan.sources), plan.sources.size,
+        ).also { dao.put(it) }
     }
 
     suspend fun control(scope: String, status: String) = withContext(Dispatchers.IO) {
-        val job = database.withTransaction {
-            val current = dao.job(scope) ?: return@withTransaction null
-            val allowed = when (status) {
-                "running" -> current.status in setOf("paused", "failed", "running")
-                "paused" -> current.status == "running"
-                "cancelled" -> current.status != "cancelled"
-                else -> false
-            }
-            if (!allowed) return@withTransaction null
-            if (status == "cancelled") {
-                dao.clearCandidates(current.id)
-                dao.clearBatches(current.id)
-            }
-            current.copy(status = status, failure = null).also { dao.put(it) }
-        } ?: return@withContext
-        if (status == "running") HistoryMemoryWorker.enqueue(context, scope, job.id).result.get()
-        else HistoryMemoryWorker.cancel(context, scope).result.get()
-        Unit
+        controls.withLock {
+            val job = database.withTransaction {
+                val current = dao.job(scope) ?: return@withTransaction null
+                val allowed = when (status) {
+                    "running" -> current.status in setOf("paused", "failed", "running")
+                    "paused" -> current.status == "running"
+                    "cancelled" -> current.status != "cancelled"
+                    else -> false
+                }
+                if (!allowed) return@withTransaction null
+                if (status == "cancelled") {
+                    dao.clearCandidates(current.id)
+                    dao.clearBatches(current.id)
+                }
+                current.copy(status = status, failure = null, generation = current.generation + 1).also { dao.put(it) }
+            } ?: return@withContext
+            if (status == "running") HistoryMemoryWorker.enqueue(context, scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
+            else HistoryMemoryWorker.cancel(context, scope).result.get()
+            Unit
+        }
     }
 
     private fun fingerprint(settings: Settings, provider: ProviderSetting, model: Model): String =
-        historyDigest(JsonInstant.encodeToString(provider.copyProvider(models = emptyList())) +
-            JsonInstant.encodeToString(model) + settings.networkSetting.toString())
+        historyDigest(JsonInstant.encodeToString(provider.consentConfiguration()) +
+            JsonInstant.encodeToString(model.copy(providerOverwrite = null)) +
+            (provider as? ProviderSetting.Account)?.credential?.accountId.orEmpty() +
+            JsonInstant.encodeToString(settings.networkSetting))
+
+    private fun ProviderSetting.consentConfiguration(): ProviderSetting {
+        val config = if (this is ProviderSetting.Account) withCredential(null) else this
+        return config.copyProvider(models = emptyList())
+    }
 
     private class ExtractionFailure(val reason: String) : IllegalStateException()
 
     /** Return true when this work unit used its time slice and should resume at its durable cursor. */
-    suspend fun run(scope: String, id: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun run(scope: String, id: String, generation: Long): Boolean = withContext(Dispatchers.IO) {
         val start = TimeSource.Monotonic.markNow()
-        val sources = dao.job(scope)?.takeIf { it.id == id && it.status == "running" }
+        val sources = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
             ?.let { Json.decodeFromString<List<HistorySource>>(it.sources) } ?: return@withContext false
         try {
             while (start.elapsedNow() < 6.minutes) {
-                val job = dao.job(scope)?.takeIf { it.id == id && it.status == "running" }
+                val job = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
                     ?: return@withContext false
                 val source = sources.getOrNull(job.sourceIndex)
                 if (source == null) {
@@ -168,6 +201,7 @@ internal class HistoryMemoryManager(
                 if (conversations.historyRevision(source.id) != source.revision) {
                     throw ExtractionFailure("来源会话已修改，请重新选择提取范围")
                 }
+                if (dao.job(scope) != job) return@withContext false
                 val payload = Json.encodeToString(excerpts.map { it.text })
                 val digest = historyDigest(payload)
                 if (dao.processed(id, digest)) {
@@ -199,22 +233,22 @@ internal class HistoryMemoryManager(
             }
             true
         } catch (_: TimeoutCancellationException) {
-            fail(scope, id, "模型请求超时，可重试当前批次")
+            fail(scope, id, generation, "模型请求超时，可重试当前批次")
         } catch (e: CancellationException) {
             throw e
         } catch (e: ExtractionFailure) {
-            fail(scope, id, e.reason)
+            fail(scope, id, generation, e.reason)
         } catch (_: IOException) {
-            fail(scope, id, "网络或模型请求失败，可重试当前批次")
+            fail(scope, id, generation, "网络或模型请求失败，可重试当前批次")
         } catch (_: Exception) {
-            fail(scope, id, "读取历史或调用模型失败，可重试当前批次")
+            fail(scope, id, generation, "读取历史或调用模型失败，可重试当前批次")
         }
     }
 
-    private suspend fun fail(scope: String, id: String, reason: String): Boolean {
+    private suspend fun fail(scope: String, id: String, generation: Long, reason: String): Boolean {
         database.withTransaction {
             val current = dao.job(scope)
-            if (current?.id == id && current.status == "running") {
+            if (current?.id == id && current.generation == generation && current.status == "running") {
                 dao.put(current.copy(status = "failed", failure = reason))
             }
         }
@@ -265,32 +299,46 @@ internal class HistoryMemoryManager(
         return cursor to excerpts
     }
 
-    suspend fun resolve(scope: String, id: String, key: String, corrected: String?) {
-        val candidate = dao.candidate(id, key) ?: return
+    suspend fun resolve(scope: String, id: String, key: String, corrected: String?) = controls.withLock {
+        val candidate = dao.candidate(id, key) ?: return@withLock
         check(dao.job(scope)?.id == id)
         if (corrected == null) {
             dao.resolve(id, key, "discarded")
-            return
+            return@withLock
         }
         val fact = corrected.cleanFact()
         require(fact.length in 4..600)
+        require(findForbiddenMemoryContent(fact) == null) { "记忆正文包含证件号或卡号" }
+        val normalizedKey = factKey(fact)
         val path = historyPath(candidate.copy(fact = fact))
-        val existing = memories.getFile(scope, path)
-        val result = if (existing != null) MemoryWriteResult.Conflict(existing) else {
+        val existing = memories.findImportedFact(scope, normalizedKey.take(32))
+        if (existing != null && existing.path != path) {
+            check(existing.body.lineSequence().any { it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == normalizedKey }) {
+                "已有记忆内容不同，请在记忆管理中检查"
+            }
+            dao.resolve(id, key, "duplicate")
+            return@withLock
+        }
+        val result = if (existing?.isDeleted == false) MemoryWriteResult.Conflict(existing) else {
             val file = MemoryFile(path, "", 0)
             val content = file.contentWith(
                 title = candidate.subject,
                 description = candidate.subject,
                 aliases = emptyList(),
-                body = "- [stated] $fact\n\n<!-- history-source ${candidate.conversationId} ${candidate.messageId} ${candidate.sourceTime} -->",
+                body = "- [stated] $fact\n\n<!-- history-source ${candidate.conversationId} ${candidate.messageId} ${candidate.sourceTime} ${candidate.jobId} -->",
             )
             memories.writeFile(scope, path, content, MemoryRepository.NEW_FILE_VERSION)
         }
         when (result) {
             is MemoryWriteResult.Success -> dao.resolve(id, key, "saved")
             is MemoryWriteResult.Conflict -> {
-                check(result.current?.body?.contains("- [stated] $fact\n") == true) { "已有记忆内容不同，请在记忆管理中检查" }
-                dao.resolve(id, key, "duplicate")
+                check(result.current?.body?.lineSequence()?.any {
+                    it.startsWith("- [stated] ") && factKey(it.removePrefix("- [stated] ")) == normalizedKey
+                } == true) { "已有记忆内容不同，请在记忆管理中检查" }
+                val recoveredWrite = result.current?.body?.lineSequence()?.any {
+                    it.startsWith("<!-- history-source ") && it.endsWith(" ${candidate.jobId} -->")
+                } == true
+                dao.resolve(id, key, if (recoveredWrite) "saved" else "duplicate")
             }
             is MemoryWriteResult.Rejected -> error(result.reason)
         }

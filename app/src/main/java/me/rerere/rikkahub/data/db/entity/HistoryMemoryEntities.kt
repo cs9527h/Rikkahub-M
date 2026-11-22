@@ -21,6 +21,7 @@ data class HistoryMemoryJob(
     val estimatedTokens: Long = 0,
     val status: String = "running",
     val failure: String? = null,
+    val generation: Long = 0,
 )
 
 @Entity(tableName = "history_memory_candidate", primaryKeys = ["jobId", "key"], indices = [Index("jobId", "status")])

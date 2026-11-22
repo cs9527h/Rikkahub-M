@@ -48,7 +48,9 @@ internal fun recallExcerpts(files: List<MemoryFile>, maxChars: Int = 4_000): Lis
         if (remaining < 60) return@mapNotNull null
         val source = file.body.substringBefore("<!-- history-source ").trim()
         if (source.isBlank()) return@mapNotNull null
-        val text = source.take(minOf(1_250, remaining - file.path.length - 20)).trimEnd()
+        val allowance = minOf(1_250, remaining - file.path.length - 20)
+        if (allowance <= 0) return@mapNotNull null
+        val text = source.take(allowance).trimEnd().trimEnd { it.isHighSurrogate() }
         if (text.isBlank()) return@mapNotNull null
         remaining -= text.length + file.path.length + 20
         RecallExcerpt(file.path, text)

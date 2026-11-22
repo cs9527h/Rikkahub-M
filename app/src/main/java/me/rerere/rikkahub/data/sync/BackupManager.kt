@@ -106,6 +106,7 @@ class BackupManager(
                     if (backupDatabase) {
                         val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
                         createDatabaseSnapshot(snapshot)
+                        DatabaseBackup.stripLocalMemoryWork(context, snapshot)
                         entries += addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
                     }
                     if (backupSettings && !includeFiles) {
@@ -290,7 +291,9 @@ class BackupManager(
                             // Reject unsupported schemas before publishing; run supported old migrations on the copy.
                             val room = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
                             try {
-                                DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
+                                val staged = room.openHelper.writableDatabase
+                                DatabaseBackup.stripLocalMemoryWork(staged)
+                                DatabaseBackup.checkpoint(staged)
                             } finally {
                                 room.close()
                             }

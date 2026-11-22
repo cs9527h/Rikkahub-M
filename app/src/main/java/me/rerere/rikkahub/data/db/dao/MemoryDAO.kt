@@ -35,6 +35,12 @@ interface MemoryDAO {
     @Query("SELECT * FROM memory_file WHERE assistant_id = :assistantId AND path = :path")
     suspend fun getFileIncludingDeleted(assistantId: String, path: String): MemoryFileEntity?
 
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND deleted_at = 0 AND instr(path, :prefix) = 1 ORDER BY path LIMIT :limit")
+    suspend fun listByPrefix(scope: String, prefix: String, limit: Int): List<MemoryFileEntity>
+
+    @Query("SELECT * FROM memory_file WHERE assistant_id = :scope AND path LIKE '%/history-' || :key || '.md' ORDER BY deleted_at, path LIMIT 1")
+    suspend fun findImportedFact(scope: String, key: String): MemoryFileEntity?
+
     @Upsert
     suspend fun upsertFile(file: MemoryFileEntity)
 

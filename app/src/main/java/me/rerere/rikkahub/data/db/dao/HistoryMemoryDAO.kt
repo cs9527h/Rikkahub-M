@@ -19,6 +19,9 @@ interface HistoryMemoryDAO {
     @Query("SELECT * FROM history_memory_job WHERE scope = :scope")
     suspend fun job(scope: String): HistoryMemoryJob?
 
+    @Query("SELECT * FROM history_memory_job WHERE status = 'running'")
+    suspend fun running(): List<HistoryMemoryJob>
+
     @Upsert
     suspend fun put(job: HistoryMemoryJob)
 
@@ -31,7 +34,7 @@ interface HistoryMemoryDAO {
     @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND `key` = :key AND status = 'pending'")
     suspend fun candidate(id: String, key: String): HistoryMemoryCandidate?
 
-    @Query("UPDATE history_memory_candidate SET status = :status, evidence = '' WHERE jobId = :id AND `key` = :key")
+    @Query("UPDATE history_memory_candidate SET status = :status, evidence = '', fact = '' WHERE jobId = :id AND `key` = :key")
     suspend fun resolve(id: String, key: String, status: String)
 
     @Query("DELETE FROM history_memory_candidate WHERE jobId = :id")

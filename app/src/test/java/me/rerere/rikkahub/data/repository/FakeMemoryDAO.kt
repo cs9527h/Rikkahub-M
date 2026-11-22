@@ -39,6 +39,13 @@ internal class FakeMemoryDAO : MemoryDAO {
     override suspend fun getFileIncludingDeleted(assistantId: String, path: String): MemoryFileEntity? =
         files.value.find { it.assistantId == assistantId && it.path == path }
 
+    override suspend fun listByPrefix(scope: String, prefix: String, limit: Int): List<MemoryFileEntity> =
+        getFilesOfAssistant(scope).filter { it.path.startsWith(prefix) }.take(limit)
+
+    override suspend fun findImportedFact(scope: String, key: String): MemoryFileEntity? =
+        files.value.filter { it.assistantId == scope && it.path.endsWith("/history-$key.md") }
+            .minWithOrNull(compareBy({ it.deletedAt }, { it.path }))
+
     override suspend fun upsertFile(file: MemoryFileEntity) = upsertFiles(listOf(file))
 
     override suspend fun upsertFiles(files: List<MemoryFileEntity>) {

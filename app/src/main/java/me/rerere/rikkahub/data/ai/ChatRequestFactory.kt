@@ -6,6 +6,7 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.rikkahub.data.ai.memory.RecallExcerpt
 import me.rerere.rikkahub.data.ai.memory.recallExcerpts
 import me.rerere.rikkahub.data.ai.memory.recalledFiles
 import me.rerere.rikkahub.data.db.AppDatabase
@@ -53,6 +54,7 @@ import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
@@ -79,6 +81,15 @@ class ChatTurnContext(
     val conversationSystemPrompt: String?,
     val workspaceCwd: String?,
     val tools: List<Tool>,
+) {
+    internal var recall: TurnRecall? = null
+}
+
+internal data class TurnRecall(
+    val userId: Uuid,
+    val matches: List<String>,
+    val excerpts: List<RecallExcerpt>,
+    val elapsedMillis: Long,
 )
 
 /** 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里 */
@@ -271,11 +282,16 @@ class ChatRequestFactory(
         ).expandNotices()
         val latestUser = messages.lastOrNull { it.role == MessageRole.USER && !it.isNoticeOnly }
         val requestMessages = if (assistant.enableMemory && latestUser != null) {
-            val clock = TimeSource.Monotonic.markNow()
-            val matches = memoryRepository.searchForRecall(assistant.memoryId, latestUser.toText())
-            val injected = recallExcerpts(matches)
+            val recall = turn.recall?.takeIf { it.userId == latestUser.id } ?: run {
+                val clock = TimeSource.Monotonic.markNow()
+                val matches = memoryRepository.searchForRecall(assistant.memoryId, latestUser.toText())
+                val preferences = memoryRepository.getFile(assistant.memoryId, MemoryFile.PREFERENCES_PATH)
+                val excerpts = recallExcerpts(listOfNotNull(preferences) + matches.filter { it.path != preferences?.path })
+                TurnRecall(latestUser.id, matches.map { it.path }, excerpts, clock.elapsedNow().inWholeMilliseconds)
+                    .also { turn.recall = it }
+            }
             val hasTools = ModelAbility.TOOL in turn.model.abilities
-            val prompt = buildRecallPrompt(injected, matches.map { it.path }, hasTools)
+            val prompt = buildRecallPrompt(recall.excerpts, recall.matches, hasTools)
             val first = baseMessages.firstOrNull()
             if (recordRecall) {
                 val reads = baseMessages.dropWhile { it.id != latestUser.id }.flatMap { message ->
@@ -288,10 +304,10 @@ class ChatRequestFactory(
                         dao.recordRecall(MemoryRecallRecord(
                             "${turn.conversationId}:${latestUser.id}", assistant.memoryId,
                             turn.conversationId.toString(), System.currentTimeMillis(),
-                            Json.encodeToString(matches.map { it.path }), Json.encodeToString(injected),
+                            Json.encodeToString(recall.matches), Json.encodeToString(recall.excerpts),
                             Json.encodeToString(reads.map { it.path }),
                             (prompt.length + reads.sumOf { it.content.length } + 1) / 2,
-                            clock.elapsedNow().inWholeMilliseconds,
+                            recall.elapsedMillis,
                         ))
                         dao.trimRecalls(assistant.memoryId)
                     }
