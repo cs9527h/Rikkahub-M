@@ -116,7 +116,7 @@ fun SettingSearchPage(vm: SettingVM = koinViewModel()) {
                 .fillMaxSize()
                 .imePadding(),
             contentPadding = it + PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             state = lazyListState
         ) {
             items(settings.searchServices, key = { it.id }) { service ->
@@ -364,7 +364,7 @@ private fun CommonOptions(
         ) {
             Text(
                 text = stringResource(R.string.setting_page_search_common_options),
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMediumEmphasized
             )
 
             FormItem(

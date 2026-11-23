@@ -78,7 +78,7 @@ fun QuickMessagesPage(vm: QuickMessagesVM = koinViewModel()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = innerPadding + PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (settings.quickMessages.isEmpty()) {
                 item {
