@@ -153,6 +153,7 @@ fun ChatMessage(
         fontFamily = chatFontFamily
     )
     var showActionsSheet by remember { mutableStateOf(false) }
+    var showTranslateDialog by remember { mutableStateOf(false) }
     var showSelectCopySheet by remember { mutableStateOf(false) }
     val navController = LocalNavController.current
     val context = LocalContext.current
@@ -232,9 +233,7 @@ fun ChatMessage(
                     onUpdate = onUpdate,
                     onOpenActionSheet = {
                         showActionsSheet = true
-                    },
-                    onTranslate = onTranslate,
-                    onClearTranslation = onClearTranslation
+                    }
                 )
             }
         }
@@ -262,6 +261,7 @@ fun ChatMessage(
             },
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
+            onRequestTranslate = if (onTranslate != null) ({ showTranslateDialog = true }) else null,
             onWebViewPreview = {
                 val textContent = message.parts
                     .filterIsInstance<UIMessagePart.Text>()
@@ -280,6 +280,20 @@ fun ChatMessage(
             onDismissRequest = {
                 showActionsSheet = false
             }
+        )
+    }
+
+    if (showTranslateDialog && onTranslate != null) {
+        LanguageSelectionDialog(
+            onLanguageSelected = { language ->
+                showTranslateDialog = false
+                onTranslate(message, language)
+            },
+            onClearTranslation = {
+                showTranslateDialog = false
+                onClearTranslation(message)
+            },
+            onDismissRequest = { showTranslateDialog = false },
         )
     }
 
