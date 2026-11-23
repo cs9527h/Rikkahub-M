@@ -38,7 +38,7 @@ import java.nio.file.Files
 @RunWith(AndroidJUnit4::class)
 class HistoryMemoryCandidateScopeTest {
     @Test
-    fun `restoring one job's skipped candidate keeps the other job's saved candidate saved`() = runBlocking {
+    fun restoringOneJobKeepsTheOtherJobsSavedCandidate() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = Files.createTempDirectory(app.cacheDir.toPath(), "history-scope-").toFile()
         val context = object : ContextWrapper(app) {

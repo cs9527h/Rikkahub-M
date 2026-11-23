@@ -80,7 +80,7 @@ private val MEMORY_CONTENT = """
 @RunWith(AndroidJUnit4::class)
 class MemoryConsolidationEndToEndTest {
     @Test
-    fun `consolidation writes a memory file that the next recall injects`() = runBlocking {
+    fun consolidationWritesAMemoryFileThatTheNextRecallInjects() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = Files.createTempDirectory(app.cacheDir.toPath(), "memory-e2e-").toFile()
         val context = object : ContextWrapper(app) {
