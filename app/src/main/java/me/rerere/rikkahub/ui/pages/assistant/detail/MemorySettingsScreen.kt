@@ -2,11 +2,9 @@ package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,7 +34,7 @@ import androidx.compose.ui.res.stringResource
 @Composable
 internal fun MemorySettingsScreen(
     assistant: Assistant,
-    scrollState: ScrollState,
+    showAdvanced: Boolean = false,
     onUpdateAssistant: (Assistant) -> Unit,
     onOpenModels: () -> Unit,
 ) {
@@ -107,8 +105,7 @@ internal fun MemorySettingsScreen(
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
+            .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -138,6 +135,9 @@ internal fun MemorySettingsScreen(
                 supportingContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream_desc)) },
                 headlineContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream)) },
             )
+        }
+        if (showAdvanced) {
+            CardGroup {
             item(
                 headlineContent = { Text("单次整理上限") },
                 supportingContent = { Text("超出后暂停，等你确认再继续。0 表示不限制。") },
@@ -210,6 +210,7 @@ internal fun MemorySettingsScreen(
                         timeDialog = true
                     },
                 )
+            }
             }
         }
     }
