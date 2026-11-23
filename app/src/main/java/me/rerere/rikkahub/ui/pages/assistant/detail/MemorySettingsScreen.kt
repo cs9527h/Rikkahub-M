@@ -29,7 +29,7 @@ import org.koin.compose.koinInject
 import androidx.compose.ui.res.stringResource
 
 /**
- * 高级设置：只有确实要改行为的人才需要进来，首页不展示这些开关。
+ * 记忆中心复用的设置组件：基础开关常驻，高级选项按需展开。
  */
 @Composable
 internal fun MemorySettingsScreen(
