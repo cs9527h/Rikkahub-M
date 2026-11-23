@@ -30,15 +30,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.8.3**（2026-11-23，commit `0e2bd21c`）
+> **最新正式版：v0.8.4**（2026-11-23，commit `37503a62`）
 >
-> 安装包：[Rikkahub-M-0.8.3.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.3/Rikkahub-M-0.8.3.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安装包：[Rikkahub-M-0.8.4.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.4/Rikkahub-M-0.8.4.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`f18ad184485f3c6ac822e546dcf80bee8884b1df57e8e7557405e93e700872ff`
+> SHA-256：`0fcc2a9ebf56ee1b668b214d2b3a093e63ebb028078306d58a5351c87de4cf2c`
 >
-> 本版摘要：记忆页高级设置改到顶栏菜单，打开即用。
+> 本版摘要：修复更新下载主线程崩溃与卡住的整理任务。
 >
-> 完整说明见 [v0.8.3 更新日志](docs/releases/0.8.3.md)。
+> 完整说明见 [v0.8.4 更新日志](docs/releases/0.8.4.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 这是什么
