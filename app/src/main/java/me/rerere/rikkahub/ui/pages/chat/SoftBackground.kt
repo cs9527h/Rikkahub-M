@@ -39,10 +39,14 @@ fun SoftBackground(modifier: Modifier = Modifier) {
 
     // 顶部靠主色一点点、底部靠中性色一点点，中间保持 surface：
     // 浅色下这是「米白 → 白 → 微灰」的层次，不会出现一条明显色带。
-    val topTint = if (dark) 0.14f else 0.07f
-    val bottomTint = if (dark) 0.05f else 0.035f
-    val glowAlpha = if (dark) 0.13f else 0.09f
-    val warmAlpha = if (dark) 0.08f else 0.05f
+    // 第一版取值（浅色 7%/9%、暗色 14%/13%）截图实测顶部亮度被压到 217（基线 246），
+    // 暗色顶部从 23 升到 62，两块都重了——变成「顶部一块灰紫」，不是想要的通透。
+    // 这里整体砍到约一半：浅色顶部只比 surface 暗 8~10 个亮度级别的量，暗色只提 8~10 级，
+    // 有层次但读起来仍然是「浅色页面 / 深色页面」，不是滤镜。
+    val topTint = if (dark) 0.07f else 0.03f
+    val bottomTint = if (dark) 0.03f else 0.03f
+    val glowAlpha = if (dark) 0.07f else 0.05f
+    val warmAlpha = if (dark) 0.04f else 0.025f
 
     Box(
         modifier = modifier
