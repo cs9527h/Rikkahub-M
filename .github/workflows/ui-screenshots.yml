@@ -5,6 +5,14 @@ name: UI screenshots
 # 而不是靠色值推算或 Compose Preview 冒充验收。
 
 on:
+  # 改到 UI 或截图脚本就自动跑一次，形成视觉回归闭环；
+  # 首页/输入框/背景这些改动每一次都能拿到真实截图对比。
+  push:
+    branches: [work/0.9.0]
+    paths:
+      - 'app/src/main/java/me/rerere/rikkahub/ui/**'
+      - 'scripts/capture-ui-screens.sh'
+      - '.github/workflows/ui-screenshots.yml'
   workflow_dispatch:
     inputs:
       label:
@@ -68,7 +76,7 @@ jobs:
               json.dump(config, f)
           PY
       - name: Build debug APK
-        if: ${{ inputs.apk_url == '' }}
+        if: ${{ (inputs.apk_url || '') == '' }}
         run: |
           chmod +x ./gradlew
           corepack enable
@@ -78,7 +86,7 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/github/debug/*.apk dist/candidate.apk
       - name: Download published APK
-        if: ${{ inputs.apk_url != '' }}
+        if: ${{ (inputs.apk_url || '') != '' }}
         run: |
           mkdir -p dist
           curl --fail --location --retry 3 "${{ inputs.apk_url }}" -o dist/candidate.apk
@@ -107,10 +115,10 @@ jobs:
             fi
             echo "capturing package=$PACKAGE"
             adb install -r -t dist/candidate.apk
-            bash scripts/capture-ui-screens.sh "${{ inputs.label }}" "$PACKAGE" || true
+            bash scripts/capture-ui-screens.sh "${{ inputs.label || 'auto' }}" "$PACKAGE" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ui-screenshots-${{ inputs.label }}
-          path: evidence/ui-${{ inputs.label }}/**
+          name: ui-screenshots-${{ inputs.label || 'auto' }}
+          path: evidence/ui-${{ inputs.label || 'auto' }}/**
           if-no-files-found: error
