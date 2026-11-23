@@ -130,13 +130,18 @@ private class Blob(
     val periodSeconds: Float,
 )
 
-// ---- 浅色：低饱和淡蓝 → 中性近白，留少量层次、不整屏泛蓝 ----
+// ---- 浅色：柔和淡蓝 → 中性蓝灰，两端都不刺眼 ----
+//
+// 取值的来历：原版（180c2b57）是 #AFD0F2 → … → #FFFFFF，下半屏纯白被反馈刺眼；
+// 0.8.8 改到 #BCD8F0 → … → #E1EBF5，整屏泛蓝又被反馈太蓝。
+// 这里取中间：顶部只比中性白略蓝一点点，底部比纯白暗一档、保留极淡蓝调
+// （#F3F6FA 为 243/246/250，与纯白 255 有可见差别，但不会像 #E1EBF5 那样整屏蓝）。
 private val LightBaseStops = arrayOf(
-    0.00f to Color(0xFFE4EEF8),
-    0.28f to Color(0xFFECF3FA),
-    0.52f to Color(0xFFF1F5FA),
-    0.76f to Color(0xFFF6F8FB),
-    1.00f to Color(0xFFF8FAFC),
+    0.00f to Color(0xFFD7E7F7),
+    0.30f to Color(0xFFE4EEF8),
+    0.55f to Color(0xFFECF2F9),
+    0.80f to Color(0xFFF0F4FA),
+    1.00f to Color(0xFFF3F6FA),
 )
 
 // ---- 暗色：顶部深蓝 → 底部近黑，中间过渡保持蓝调，不发灰 ----
@@ -151,22 +156,22 @@ private val DarkBaseStops = arrayOf(
 // 浅色光斑：低饱和 + 低浓度，只提供层次，不把画面推白；暖色保留但更淡
 private val LightBlobs = listOf(
     Blob(
-        color = Color(0xFF9EC5E8), alpha = 0.25f, radiusFactor = 0.36f,
+        color = Color(0xFF9EC5E8), alpha = 0.34f, radiusFactor = 0.36f,
         anchorX = 0.48f, anchorY = 0.08f, swayX = 0.38f, swayY = 0.18f,
         rateY = 1.15f, phaseShift = 0.90f, periodSeconds = 5.5f,
     ),
     Blob(
-        color = Color(0xFFA9DDD7), alpha = 0.18f, radiusFactor = 0.28f,
+        color = Color(0xFFA9DDD7), alpha = 0.24f, radiusFactor = 0.28f,
         anchorX = 0.18f, anchorY = 0.24f, swayX = 0.30f, swayY = 0.20f,
         rateY = 1.00f, phaseShift = 2.27f, periodSeconds = 7.0f,
     ),
     Blob(
-        color = Color(0xFFB1D3EB), alpha = 0.20f, radiusFactor = 0.30f,
+        color = Color(0xFFB1D3EB), alpha = 0.26f, radiusFactor = 0.30f,
         anchorX = 0.82f, anchorY = 0.12f, swayX = -0.34f, swayY = 0.18f,
         rateY = 0.90f, phaseShift = 4.08f, periodSeconds = 8.5f,
     ),
     Blob(
-        color = Color(0xFFF1D0D9), alpha = 0.13f, radiusFactor = 0.26f,
+        color = Color(0xFFF1D0D9), alpha = 0.16f, radiusFactor = 0.26f,
         anchorX = 0.58f, anchorY = 0.34f, swayX = 0.28f, swayY = 0.16f,
         rateY = 1.10f, phaseShift = 5.50f, periodSeconds = 6.2f,
     ),

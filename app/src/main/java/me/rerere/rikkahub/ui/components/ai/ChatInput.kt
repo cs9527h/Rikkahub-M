@@ -17,6 +17,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -212,14 +213,16 @@ fun ChatInput(
         }
     }
 
-    // 底部渐变遮罩：从输入区顶部一直过渡到屏幕底部（键盘弹出时到键盘上沿），避免消息透到系统导航栏
-    val scrimColor = MaterialTheme.colorScheme.background
+    // 底部渐变遮罩：从输入区顶部一直过渡到屏幕底部（键盘弹出时到键盘上沿），避免消息透到系统导航栏。
+    // 用输入框自己的 containerColor（surfaceContainerLow），而不是 background：浅色下 background 是
+    // 偏白的 surface，压在淡蓝灰的渐变背景上会浮出一块更白的区域，和输入框胶囊也不是同一种材料。
     val imeInsets = WindowInsets.ime
     Surface(
         color = Color.Transparent,
         modifier = Modifier.drawWithCache {
             val brush = Brush.verticalGradient(
-                colors = listOf(scrimColor.copy(alpha = 0f), scrimColor.copy(alpha = 0.82f)),
+                // 上限 0.82→0.6：够让消息淡出，又不至于在输入框背后糊成一整块底色
+                colors = listOf(containerColor.copy(alpha = 0f), containerColor.copy(alpha = 0.6f)),
                 startY = 0f,
                 endY = (size.height - imeInsets.getBottom(this)).coerceAtLeast(1f),
             )
@@ -628,6 +631,11 @@ private fun TextInputRow(
             placeholder = {
                 Text(stringResource(R.string.chat_input_placeholder))
             },
+            // 默认 contentPadding 是四周 16dp；尾部图标本身就是 48dp，聚焦时 48+32=80dp，
+            // 输入框会从 56dp 一下长到 80dp，这就是"打字时输入框突然变胖"的来源。
+            // 收到 12/6 之后聚焦高度 48+12=60dp，文字也不再被 16dp 空白架空。
+            // 高度下限仍是 M3 的 TextFieldDefaults.MinHeight = 56dp（改它需要重写 decorationBox），多行扩展不变。
+            contentPadding = PaddingValues(start = 12.dp, top = 6.dp, end = 12.dp, bottom = 6.dp),
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences,
