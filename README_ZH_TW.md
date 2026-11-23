@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.8.7**（2026-11-23，commit `797b02b3`）
+> **最新正式版：v0.8.8**（2026-11-23，commit `c4ba1578`）
 >
-> 安裝包：[Rikkahub-M-0.8.7.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.7/Rikkahub-M-0.8.7.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-0.8.8.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.8/Rikkahub-M-0.8.8.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`b71fd7986fcbe570222c90f3b858964bd989165937a6cc28650276cdb11e6abc`
+> SHA-256：`066aa3e2c6c7aba73a3c5d36237ce6634d8ac153af81cce9a8a6e315b6a4bb9d`
 >
-> 本版摘要：记忆中心一个页面就能开关与浏览，召回注入不再带空记录。
+> 本版摘要：聊天顶部不再泛白、消息栏更简洁、设置说明更短。
 >
-> 完整說明見 [v0.8.7 更新日誌](docs/releases/0.8.7.md)。
+> 完整說明見 [v0.8.8 更新日誌](docs/releases/0.8.8.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
