@@ -12,6 +12,7 @@ on:
     paths:
       - 'app/src/main/java/me/rerere/rikkahub/ui/**'
       - 'scripts/capture-ui-screens.sh'
+      - 'scripts/run-ui-capture.sh'
       - '.github/workflows/ui-screenshots.yml'
   workflow_dispatch:
     inputs:
@@ -103,19 +104,7 @@ jobs:
           profile: pixel_6
           disable-animations: false
           script: |
-            set -euo pipefail
-            PACKAGE=com.rikkahub.mate
-            if [[ "dist/candidate.apk" == *debug* ]] || ! unzip -l dist/candidate.apk >/dev/null 2>&1; then
-              PACKAGE=com.rikkahub.mate
-            fi
-            # debug 产物包名带 .debug 后缀；直接从清单判定，避免装错包导致截图空白
-            if command -v apkanalyzer >/dev/null 2>&1; then
-              PKG=$(apkanalyzer manifest application-id dist/candidate.apk || true)
-              if [ -n "${PKG:-}" ]; then PACKAGE=$PKG; fi
-            fi
-            echo "capturing package=$PACKAGE"
-            adb install -r -t dist/candidate.apk
-            bash scripts/capture-ui-screens.sh "${{ inputs.label || 'auto' }}" "$PACKAGE" || true
+            bash scripts/run-ui-capture.sh "${{ inputs.label || 'auto' }}" dist/candidate.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
