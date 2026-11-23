@@ -864,9 +864,14 @@ private fun OrganizeDialog(
     onConfirm: () -> Unit,
 ) {
     var priceInput by rememberSaveable { mutableStateOf("") }
-    val requests = plan.sources.size + plan.serializedChars / HISTORY_INPUT_CHARS + plan.nodes / 12L
+    // 只按“真正会发送的用户文字”和分批数估算。
+    // 旧公式用 message_node 总数 /12 当请求数，会把助手回复、附件与空节点也算进去，
+    // 于是 291 个会话被估成几百万输出 Token——那是估算 Bug，不是真实消耗。
+    val requests = maxOf(plan.sources.size.toLong(), plan.serializedChars / HISTORY_INPUT_CHARS + 1L)
+        .coerceAtLeast(1L)
     val inputTokens = plan.serializedChars / 2 + requests * 240
-    val outputTokens = requests * HISTORY_OUTPUT_TOKENS
+    // 每批事实数量有限，输出按“上限 512、约为输入字符的 1/12”估算
+    val outputTokens = minOf(requests * 512L, plan.serializedChars / 12 + requests * 40)
     val price = priceInput.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0 }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -876,7 +881,8 @@ private fun OrganizeDialog(
                 Text("会用 ${plan.destination} 阅读 ${plan.sources.size} 个最近有变化的聊天，整理后保存到$targetLabel。")
                 Text("只发送你在这几个聊天里说过的话，不发送附件、助手回复、人格提示词或已有记忆。")
                 Text(
-                    "大约 $inputTokens 输入 Token、$outputTokens 输出 Token（估算，实际取决于分批结果）。",
+                    "估算：输入约 $inputTokens Token，输出最多约 $outputTokens Token。" +
+                        "已经处理过的批次会自动跳过，实际发送量通常更少。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text("已经处理过的内容不会重复发送，也不会重复计费。", style = MaterialTheme.typography.bodySmall)

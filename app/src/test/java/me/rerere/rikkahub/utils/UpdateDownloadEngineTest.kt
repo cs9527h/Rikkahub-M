@@ -268,6 +268,32 @@ class UpdateDownloadEngineTest {
     }
 
     @Test
+    fun networkAndDiskWorkDoesNotRunOnCallerThread() {
+        // 真机回归：AppScope 是 Dispatchers.Main，0.8.2 在 Main 上直接跑 OkHttp，
+        // 导致 NetworkOnMainThreadException。这里断言实际请求发生在别的线程。
+        val caller = Thread.currentThread()
+        val requestThread = java.util.concurrent.atomic.AtomicReference<Thread>()
+        handler = { exchange ->
+            requestThread.set(Thread.currentThread())
+            ok(exchange, payload)
+        }
+
+        val file = runBlocking {
+            UpdateDownloadEngine.download(
+                client = client,
+                sources = listOf(UpdateSource("test", base)),
+                target = File(dir, "update.apk"),
+                expectedSha256 = payloadSha,
+                expectedSize = payload.size.toLong(),
+                retryDelayMillis = { 0 },
+            )
+        }
+
+        assertTrue("下载请求不应在调用方线程执行", requestThread.get() != caller)
+        assertEquals(payloadSha, UpdateDownloadEngine.sha256(file))
+    }
+
+    @Test
     fun allSourcesFailWithPerSourceReasons() {
         handler = { exchange ->
             exchange.sendResponseHeaders(404, -1)
