@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -58,7 +57,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Folder01
@@ -123,7 +121,6 @@ fun ChatDrawerContent(
     val conversations = drawerVm.conversations.collectAsLazyPagingItems()
     val folders by drawerVm.folders.collectAsStateWithLifecycle()
     val selectedFolderId by drawerVm.selectedFolderId.collectAsStateWithLifecycle()
-    val memoryDreaming by drawerVm.memoryDreaming.collectAsStateWithLifecycle()
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
         initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
@@ -344,21 +341,6 @@ fun ChatDrawerContent(
                     conversationToMoveFolder = it
                     showMoveToFolderSheet = true
                 }
-            )
-
-            // 记忆中心是常驻入口：以前只有开着「自动整理」才显示，关掉这个开关的人就再也找不到
-            // 自己记住了什么。正在整理时只在行尾点一个小转圈，不再单独占一张卡。
-            DrawerEntry(
-                icon = HugeIcons.Brain02,
-                text = "记忆中心",
-                onClick = {
-                    navController.navigate(Screen.MemoryCenter(assistantId = settings.assistantId.toString()))
-                },
-                trailing = if (memoryDreaming) {
-                    { ContainedLoadingIndicator(modifier = Modifier.size(16.dp)) }
-                } else {
-                    null
-                },
             )
 
             // 助手选择器
