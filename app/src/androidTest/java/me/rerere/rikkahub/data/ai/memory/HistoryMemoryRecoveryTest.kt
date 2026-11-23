@@ -59,7 +59,7 @@ class HistoryMemoryRecoveryTest {
             val history = fixture.history
             val scope = fixture.scope
             val job = history.persistConfirmedPlan(
-                history.prepare(scope, fixture.assistant, history.sources(0, 10))
+                history.prepare(scope, fixture.assistant, history.sources(Long.MIN_VALUE, Long.MAX_VALUE))
             )
             // 第 2 次模型调用（第二个批次）注入一次网络失败
             fixture.model.failOnCall = 2
@@ -113,7 +113,7 @@ class HistoryMemoryRecoveryTest {
             val before = file.content
 
             val second = history.persistConfirmedPlan(
-                history.prepare(scope, fixture.assistant, history.sources(0, 10))
+                history.prepare(scope, fixture.assistant, history.sources(Long.MIN_VALUE, Long.MAX_VALUE))
             )
             val callsBeforeSecondTask = fixture.model.totalCalls
             assertFalse(history.run(scope, second.id, second.generation))
@@ -132,7 +132,7 @@ class HistoryMemoryRecoveryTest {
             val scope = fixture.scope
             fixture.model.poisoned = { excerpt -> excerpt.contains("编号 2") }
             val job = history.persistConfirmedPlan(
-                history.prepare(scope, fixture.assistant, history.sources(0, 10))
+                history.prepare(scope, fixture.assistant, history.sources(Long.MIN_VALUE, Long.MAX_VALUE))
             )
 
             // 连续重试：同一批最多花 MAX_BATCH_ATTEMPTS 次钱，之后跳过并继续跑完
@@ -170,7 +170,7 @@ class HistoryMemoryRecoveryTest {
             val history = fixture.history
             val scope = fixture.scope
             val job = history.persistConfirmedPlan(
-                history.prepare(scope, fixture.assistant, history.sources(0, 10))
+                history.prepare(scope, fixture.assistant, history.sources(Long.MIN_VALUE, Long.MAX_VALUE))
             )
             // 计划确认之后，第 2 个会话被改动了：只跳过它，不能让整轮任务永远失败
             db(fixture).withTransaction {
