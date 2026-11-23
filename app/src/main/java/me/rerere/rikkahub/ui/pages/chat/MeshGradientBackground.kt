@@ -65,13 +65,13 @@ fun MeshGradientBackground(
             1.0f to Color(0xFF080B12),
         )
     } else {
-        // 亮色:顶部偏蓝,向下渐隐到白
+        // 浅色保留低饱和蓝灰层次，避免下半屏变成大面积纯白
         arrayOf(
-            0.0f to Color(0xFFAFD0F2),
-            0.22f to Color(0xFFCBE0F6),
-            0.45f to Color(0xFFF1F7FD),
-            0.65f to Color(0xFFFFFFFF),
-            1.0f to Color(0xFFFFFFFF),
+            0.0f to Color(0xFFB4D3F0),
+            0.22f to Color(0xFFD4E5F5),
+            0.45f to Color(0xFFE6EEF8),
+            0.65f to Color(0xFFECF3F9),
+            1.0f to Color(0xFFF0F4F9),
         )
     }
 
@@ -96,7 +96,7 @@ fun MeshGradientBackground(
             // 光斑半径取屏幕较长边的比例,够大才柔
             val r = maxOf(w, h)
 
-            // 光斑全部聚在顶部,向下渐隐,保留下半屏留白
+            // 光斑集中于上半部，下半屏由柔和蓝灰底色承接
             // 顶部蓝(主色,横向缓慢漂移)
             drawBlob(
                 center = Offset(
