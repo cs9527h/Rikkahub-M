@@ -38,7 +38,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -203,7 +203,7 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
 
     Scaffold(
         topBar = {
-            LargeFlexibleTopAppBar(
+            MediumFlexibleTopAppBar(
                 title = { Text(title) },
                 // 副标题只是说明当前记忆库，用 labelMedium 保持顶栏紧凑，避免大字挤掉首屏内容
                 subtitle = { Text(subtitle, style = MaterialTheme.typography.labelMedium) },
@@ -471,14 +471,15 @@ private fun MemoryCenterHome(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item(key = "scope") {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("浏览记忆库", style = MaterialTheme.typography.labelMedium)
                 ScopeRow(
                     assistantName = assistantName.ifBlank { "当前助手" },
                     useGlobal = useGlobal,
                     onSelectScope = onSelectScope,
                 )
                 Text(
-                    "这里只切换浏览的记忆库；聊天实际使用的范围由下方「所有助手共享记忆」开关控制。",
+                    "浏览范围不会改变聊天的记忆设置。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -495,7 +496,7 @@ private fun MemoryCenterHome(
         item(key = "advanced-toggle") {
             AssistChip(
                 onClick = { advancedVisible = !advancedVisible },
-                label = { Text(if (advancedVisible) "收起高级记忆设置" else "展开整理预算、模型等高级设置") },
+                label = { Text(if (advancedVisible) "收起高级设置" else "更多设置 · 预算与模型") },
             )
         }
         item(key = "stats") {
