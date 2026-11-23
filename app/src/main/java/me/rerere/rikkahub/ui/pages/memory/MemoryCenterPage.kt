@@ -127,10 +127,9 @@ private enum class MemoryGroup(val label: String) {
 /**
  * 记忆中心：长期记忆的一级页面。一个页面回答“记住了什么、要不要确认、怎么整理”。
  *
- * 之前这些内容和「助手详情 → 记忆」是同一个页面，常用动作还藏在右上角 ⋮ 里，用户要先找到助手的
- * 记忆设置才看得到自己记住了什么。现在入口直接放在侧边栏与设置页，助手详情只剩使用设置。
+ * 从设置页或助手详情进入，首页直接启用记忆并管理记忆文件。
  *
- * @param assistantId 从助手详情进入时带助手 id；从侧边栏/设置进入时为 null，跟随当前选中的助手。
+ * @param assistantId 从助手详情进入时带助手 id；从设置进入时为 null，跟随当前选中的助手。
  * @param path 深链要直接打开的记忆文件，普通进入为 null。
  */
 @Composable
@@ -307,8 +306,6 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         onOpenReview = { section = CenterSection.REVIEW },
                         onError = { vm.showError(it) },
                     )
-
-
                 }
             }
 
