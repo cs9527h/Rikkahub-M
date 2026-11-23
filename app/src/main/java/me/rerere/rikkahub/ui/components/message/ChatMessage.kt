@@ -56,6 +56,7 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.fastAll
 import androidx.compose.ui.util.fastForEach
@@ -104,6 +105,10 @@ import me.rerere.ui.webview.WebViewContentCache
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 
+// 聊天正文排版基准：见 ChatMessage 里的说明
+private val CHAT_BODY_FONT_SIZE = 15.5.sp
+private val CHAT_BODY_LINE_HEIGHT = 22.5.sp
+
 @Composable
 fun ChatMessage(
     node: MessageNode,
@@ -148,9 +153,14 @@ fun ChatMessage(
     }
     val settings = LocalSettings.current.displaySetting
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
-    val textStyle = LocalTextStyle.current.copy(
-        fontSize = LocalTextStyle.current.fontSize * settings.fontSizeRatio,
-        lineHeight = LocalTextStyle.current.lineHeight * settings.fontSizeRatio,
+    // 聊天正文的排版基准。M3 的 bodyLarge 是 16sp/24sp，放进气泡里再叠 10dp 内边距后，
+    // 长回复的行宽和行距都显得过松（用户反馈「正文偏大、信息层级松散」）。
+    // 这里降到 15.5sp/22.5sp：比 M3 标准略紧一档，接近主流聊天应用的行感，
+    // 同时保留 fontSizeRatio，用户自己调过字号时仍然按比例生效。
+    val baseStyle = MaterialTheme.typography.bodyLarge
+    val textStyle = baseStyle.copy(
+        fontSize = CHAT_BODY_FONT_SIZE * settings.fontSizeRatio,
+        lineHeight = CHAT_BODY_LINE_HEIGHT * settings.fontSizeRatio,
         fontFamily = chatFontFamily
     )
     var showActionsSheet by remember { mutableStateOf(false) }
