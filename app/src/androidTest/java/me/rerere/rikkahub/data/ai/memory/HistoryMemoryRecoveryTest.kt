@@ -73,7 +73,7 @@ class HistoryMemoryRecoveryTest {
             assertEquals(MemoryFailureCode.NETWORK, failed.failureCode)
             assertNotNull(failed.failureDetail)
             assertTrue(failed.failureDetail!!.contains("IOException"))
-            assertTrue(failed.failure.contains("从这一批继续"))
+            assertTrue(failed.failure.orEmpty().contains("从这一批继续"))
             assertEquals(1, failed.batchAttempts)
 
             val log = db(fixture).historyMemoryDao().taskLog(job.id)!!
