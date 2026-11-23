@@ -152,7 +152,7 @@ fun AssistantDetailPage(id: String) {
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_extensions)) },
                     )
                     item(
-                        onClick = { navController.navigate(Screen.AssistantMemory(id)) },
+                        onClick = { navController.navigate(Screen.MemoryCenter(assistantId = id)) },
                         leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_memory_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_memory)) },

@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -35,13 +34,11 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -83,7 +80,6 @@ import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.CheckList
 import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Sparkles
 import me.rerere.hugeicons.stroke.Time02
@@ -96,6 +92,7 @@ import me.rerere.rikkahub.data.ai.memory.HISTORY_OUTPUT_TOKENS
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
+import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -116,7 +113,7 @@ import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.util.Locale
 
-private enum class CenterSection { HOME, REVIEW, USAGE, TASK_HISTORY, SETTINGS }
+private enum class CenterSection { HOME, REVIEW, USAGE, TASK_HISTORY }
 
 private enum class MemoryGroup(val label: String) {
     ABOUT("关于我"),
@@ -130,10 +127,9 @@ private enum class MemoryGroup(val label: String) {
 /**
  * 记忆中心：长期记忆的一级页面。一个页面回答“记住了什么、要不要确认、怎么整理”。
  *
- * 之前这些内容和「助手详情 → 记忆」是同一个页面，常用动作还藏在右上角 ⋮ 里，用户要先找到助手的
- * 记忆设置才看得到自己记住了什么。现在入口直接放在侧边栏与设置页，助手详情只剩使用设置。
+ * 从设置页或助手详情进入，首页直接启用记忆并管理记忆文件。
  *
- * @param assistantId 从助手详情进入时带助手 id；从侧边栏/设置进入时为 null，跟随当前选中的助手。
+ * @param assistantId 从助手详情进入时带助手 id；从设置进入时为 null，跟随当前选中的助手。
  * @param path 深链要直接打开的记忆文件，普通进入为 null。
  */
 @Composable
@@ -163,7 +159,6 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
     val autoSave by vm.autoSave.collectAsStateWithLifecycle()
 
     var section by rememberSaveable { mutableStateOf(CenterSection.HOME) }
-    var showMenu by remember { mutableStateOf(false) }
     var reextract by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<HistoryMemoryCandidate?>(null) }
     var deepLinkHandled by rememberSaveable { mutableStateOf(false) }
@@ -175,7 +170,6 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
     val reviewListState = rememberLazyListState()
     val usageListState = rememberLazyListState()
     val taskHistoryListState = rememberLazyListState()
-    val settingsScrollState = rememberScrollState()
 
     val reduceMotion = remember {
         AndroidSettings.Global.getFloat(
@@ -199,19 +193,17 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
         CenterSection.REVIEW -> "确认记忆"
         CenterSection.USAGE -> "记忆使用记录"
         CenterSection.TASK_HISTORY -> "任务历史"
-        CenterSection.SETTINGS -> "记忆设置"
     }
     val subtitle = when (section) {
         CenterSection.HOME -> if (useGlobal) "所有助手共享这一份记忆" else "只属于「${assistant.name.ifBlank { "这个助手" }}」"
         CenterSection.REVIEW -> "确认之后才写入，随时可以撤销"
         CenterSection.USAGE -> "这一轮到底带上了哪些记忆"
         CenterSection.TASK_HISTORY -> "每一轮整理留下了什么"
-        CenterSection.SETTINGS -> "共享范围、预算和后台整理"
     }
 
     Scaffold(
         topBar = {
-            LargeFlexibleTopAppBar(
+            MediumFlexibleTopAppBar(
                 title = { Text(title) },
                 // 副标题只是说明当前记忆库，用 labelMedium 保持顶栏紧凑，避免大字挤掉首屏内容
                 subtitle = { Text(subtitle, style = MaterialTheme.typography.labelMedium) },
@@ -229,24 +221,6 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                             shapes = IconButtonDefaults.shapes(),
                         ) {
                             Icon(HugeIcons.Add01, contentDescription = stringResource(R.string.add))
-                        }
-                        // 只剩高级设置放这里：常用动作（整理/提取/确认/历史/使用记录）都在首页上直接可见
-                        Box {
-                            FilledTonalIconButton(
-                                onClick = { showMenu = true },
-                                shapes = IconButtonDefaults.shapes(),
-                            ) {
-                                Icon(HugeIcons.MoreVertical, contentDescription = "更多")
-                            }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("记忆设置") },
-                                    onClick = {
-                                        showMenu = false
-                                        section = CenterSection.SETTINGS
-                                    },
-                                )
-                            }
                         }
                     }
                 },
@@ -276,6 +250,7 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                 when (current) {
                     CenterSection.HOME -> MemoryCenterHome(
                         assistantName = assistant.name,
+                        assistant = assistant,
                         scopeKey = scope,
                         useGlobal = useGlobal,
                         memories = memories,
@@ -293,6 +268,8 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         notice = notice,
                         onNoticeShown = { vm.noticeShown() },
                         onSelectScope = { vm.selectGlobal(it) },
+                        onUpdateAssistant = { vm.updateAssistant(it) },
+                        onOpenModels = { navController.navigate(Screen.SettingModels) },
                         onOrganize = { vm.startOrganize() },
                         onReextract = { reextract = true },
                         onOpenReview = { section = CenterSection.REVIEW },
@@ -328,13 +305,6 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         listState = taskHistoryListState,
                         onOpenReview = { section = CenterSection.REVIEW },
                         onError = { vm.showError(it) },
-                    )
-
-                    CenterSection.SETTINGS -> MemorySettingsScreen(
-                        assistant = assistant,
-                        scrollState = settingsScrollState,
-                        onUpdateAssistant = { vm.updateAssistant(it) },
-                        onOpenModels = { navController.navigate(Screen.SettingModels) },
                     )
                 }
             }
@@ -421,6 +391,7 @@ private fun CenterSectionBack(onClick: () -> Unit) {
 @Composable
 private fun MemoryCenterHome(
     assistantName: String,
+    assistant: Assistant,
     // 检索预览也要跟着记忆库换：只按 query 做 key 的话，切换记忆库后预览还是旧库的结果
     scopeKey: String,
     useGlobal: Boolean,
@@ -439,6 +410,8 @@ private fun MemoryCenterHome(
     notice: String?,
     onNoticeShown: () -> Unit,
     onSelectScope: (Boolean) -> Unit,
+    onUpdateAssistant: (Assistant) -> Unit,
+    onOpenModels: () -> Unit,
     onOrganize: () -> Unit,
     onReextract: () -> Unit,
     onOpenReview: () -> Unit,
@@ -457,6 +430,7 @@ private fun MemoryCenterHome(
     var deleteTarget by remember { mutableStateOf<MemoryFile?>(null) }
     var purgeTarget by remember { mutableStateOf<MemoryFile?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    var advancedVisible by rememberSaveable { mutableStateOf(false) }
     // 分组折叠状态用竖线拼成字符串存：Bundle 只保证能存基本类型，Set 会在进程重建后丢
     var collapsedGroups by rememberSaveable { mutableStateOf("") }
     val collapsed = remember(collapsedGroups) {
@@ -497,10 +471,32 @@ private fun MemoryCenterHome(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item(key = "scope") {
-            ScopeRow(
-                assistantName = assistantName.ifBlank { "当前助手" },
-                useGlobal = useGlobal,
-                onSelectScope = onSelectScope,
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("浏览记忆库", style = MaterialTheme.typography.labelMedium)
+                ScopeRow(
+                    assistantName = assistantName.ifBlank { "当前助手" },
+                    useGlobal = useGlobal,
+                    onSelectScope = onSelectScope,
+                )
+                Text(
+                    "浏览范围不会改变聊天的记忆设置。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item(key = "memory-controls") {
+            MemorySettingsScreen(
+                assistant = assistant,
+                showAdvanced = advancedVisible,
+                onUpdateAssistant = onUpdateAssistant,
+                onOpenModels = onOpenModels,
+            )
+        }
+        item(key = "advanced-toggle") {
+            AssistChip(
+                onClick = { advancedVisible = !advancedVisible },
+                label = { Text(if (advancedVisible) "收起高级设置" else "更多设置 · 预算与模型") },
             )
         }
         item(key = "stats") {

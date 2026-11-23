@@ -258,6 +258,7 @@ internal class MemoryCenterVM(
 
     /** 记忆中心只管记忆相关的开关，其余字段沿用当前值，避免把别处的修改覆盖掉。 */
     fun updateAssistant(updated: Assistant) {
+        if (updated.useGlobalMemory != assistant.value.useGlobalMemory) scopePreference.value = null
         viewModelScope.launch {
             settingsStore.update { settings ->
                 settings.copy(
