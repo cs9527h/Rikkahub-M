@@ -1,12 +1,12 @@
 {
-  "version": "0.8.8",
+  "version": "0.8.9",
   "measured": false,
   "source": "未采集（本版只有 CI 模拟器与自动化门禁，无真机数据）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
   "metrics": {},
-  "note": "0.8.8 调整聊天背景绘制与设置页密度，未采集真机帧率；模拟器数据库微基准沿用 0.8.6 记录。",
+  "note": "0.8.9 调整顶栏底色、背景色阶与列表/输入框密度，未采集真机指标。",
   "ciEmulator": {
     "device": "Android SDK built for x86_64 (emu64x, API 35, 2 cores)",
     "buildType": "benchmarkRelease",
