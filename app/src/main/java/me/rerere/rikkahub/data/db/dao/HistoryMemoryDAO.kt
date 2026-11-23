@@ -40,8 +40,34 @@ interface HistoryMemoryDAO {
     @Upsert
     suspend fun putTaskLog(log: HistoryMemoryTaskLog)
 
-    @Query("UPDATE history_memory_task_log SET status = :status, finishedAt = :finishedAt, errorMessage = :error, jobGeneration = :generation WHERE id = :id")
-    suspend fun setTaskStatus(id: String, status: String, finishedAt: Long, error: String?, generation: Long)
+    @Query(
+        "UPDATE history_memory_task_log SET status = :status, finishedAt = :finishedAt, errorMessage = :error, " +
+            "errorStage = :stage, errorCode = :code, errorDetail = :detail, jobGeneration = :generation WHERE id = :id"
+    )
+    suspend fun setTaskStatus(
+        id: String,
+        status: String,
+        finishedAt: Long,
+        error: String?,
+        stage: String?,
+        code: String?,
+        detail: String?,
+        generation: Long,
+    )
+
+    /**
+     * 任务已经被暂停/取消时不要改写状态，但失败的技术信息仍然要留下来：
+     * 否则用户只看到“已暂停”，再用“继续”又撞同一个错，历史里什么都查不到。
+     */
+    @Query("UPDATE history_memory_task_log SET errorStage = :stage, errorCode = :code, errorDetail = :detail WHERE id = :id")
+    suspend fun setTaskFailure(id: String, stage: String?, code: String?, detail: String?)
+
+    /** 被跳过的批次/会话数按次累加，跨重试不会丢。 */
+    @Query(
+        "UPDATE history_memory_task_log SET skippedBatches = skippedBatches + :batches, " +
+            "skippedSources = skippedSources + :sources WHERE id = :id"
+    )
+    suspend fun addTaskSkips(id: String, batches: Int = 0, sources: Int = 0)
 
     /** Token 按批次累加，避免并发写覆盖掉已经花掉的部分。 */
     @Query("UPDATE history_memory_task_log SET inputTokens = inputTokens + :input, outputTokens = outputTokens + :output WHERE id = :id")

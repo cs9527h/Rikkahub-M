@@ -38,7 +38,6 @@ import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.MemoryWriteResult
 import me.rerere.rikkahub.utils.JsonInstant
 import java.io.File
-import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -89,6 +88,9 @@ internal class HistoryMemoryManager(
      * 历史里存的必须和候选表现在的事实一致，而不是停在任务结束那一刻。
      */
     suspend fun refreshTaskLogs(scope: String) = withContext(Dispatchers.IO) {
+        // 顺手释放“数据库说 running、其实没有 worker”的僵尸任务：
+        // 否则用户打开历史页只看到永远转圈的“正在整理”，点继续又被“已经有任务在跑”挡住。
+        releaseStaleLock(scope)
         dao.taskLogIds(scope, TASK_LOG_KEEP).forEach { dao.refreshTaskCounters(it) }
     }
 
@@ -198,7 +200,18 @@ internal class HistoryMemoryManager(
                         )
                     )
                 } else {
-                    HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.KEEP).result.get()
+                    try {
+                        HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.KEEP).result.get()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // 后台调度失败必须落到任务行上：否则用户看到“正在整理”，其实没有任何 worker。
+                        fail(
+                            job.scope, job.id, job.generation,
+                            memoryFailure(MemoryStage.WORKER_SCHEDULE, e),
+                            billable = false,
+                        )
+                    }
                 }
             }
         }
@@ -207,7 +220,15 @@ internal class HistoryMemoryManager(
     suspend fun start(plan: Plan): String = withContext(Dispatchers.IO) {
         controls.withLock {
             val job = persistConfirmedPlan(plan)
-            HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
+            try {
+                HistoryMemoryWorker.enqueue(context, job.scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 任务行已经建好了：调度失败要让它变成“可继续的失败”，而不是永远停在运行中。
+                fail(job.scope, job.id, job.generation, memoryFailure(MemoryStage.WORKER_SCHEDULE, e), billable = false)
+                throw e
+            }
             job.id
         }
     }
@@ -257,6 +278,9 @@ internal class HistoryMemoryManager(
             current.copy(
                 status = "paused",
                 failure = "上次整理被系统中断，已保存进度；可以继续，也可以重新开始整理。",
+                failureStage = null,
+                failureCode = null,
+                failureDetail = null,
                 generation = current.generation + 1,
             )
         )
@@ -277,6 +301,11 @@ internal class HistoryMemoryManager(
                 current.copy(
                     status = status,
                     failure = null,
+                    // 继续/暂停/取消都清掉上一次失败的结构化信息：
+                    // 否则历史里会拿旧阶段解释新状态，用户看不出这次到底怎么了。
+                    failureStage = null,
+                    failureCode = null,
+                    failureDetail = null,
                     generation = current.generation + 1,
                     // 取消后 finishedAt 由 saveJob 补上；继续跑的时候清回 0
                     finishedAt = if (status == "cancelled") System.currentTimeMillis() else 0,
@@ -288,8 +317,18 @@ internal class HistoryMemoryManager(
                     },
                 ).also { saveJob(it) }
             } ?: return@withContext
-            if (status == "running") HistoryMemoryWorker.enqueue(context, scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
-            else HistoryMemoryWorker.cancel(context, scope).result.get()
+            if (status == "running") {
+                try {
+                    HistoryMemoryWorker.enqueue(context, scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // 任务行已经写成 running：调度失败必须自解释，否则又是一次“什么都没发生”。
+                    fail(scope, job.id, job.generation, memoryFailure(MemoryStage.WORKER_SCHEDULE, e), billable = false)
+                }
+            } else {
+                HistoryMemoryWorker.cancel(context, scope).result.get()
+            }
             Unit
         }
     }
@@ -305,13 +344,39 @@ internal class HistoryMemoryManager(
         return config.copyProvider(models = emptyList())
     }
 
-    private class ExtractionFailure(val reason: String) : IllegalStateException()
+    /**
+     * 整理主循环里抛出的、已经知道阶段和错误码的失败。
+     *
+     * [skipSource] 只用于“来源会话/消息被改或删”这类只影响单个会话的问题：
+     * 跳过这个会话继续跑，而不是让整个任务每次重试都在同一个位置失败。
+     */
+    private class ExtractionFailure(
+        val stage: MemoryStage,
+        val code: String,
+        val reason: String,
+        val advice: String = "",
+        val skipSource: Boolean = false,
+    ) : IllegalStateException(reason) {
+        /** 是否可能已经花掉一次模型调用。 */
+        val billable: Boolean get() = stage.isBillable
+
+        fun toFailure(): MemoryFailure = MemoryFailure(
+            stage = stage,
+            code = code,
+            message = reason,
+            advice = advice.ifBlank { MemoryFailureText.advice(code) },
+            detail = "阶段=" + stage.id + " 错误码=" + code + " 异常=ExtractionFailure" +
+                " 摘要=" + sanitizeFailureDetail(reason),
+        )
+    }
 
     /** Return true when this work unit used its time slice and should resume at its durable cursor. */
     suspend fun run(scope: String, id: String, generation: Long): Boolean = withContext(Dispatchers.IO) {
         val start = TimeSource.Monotonic.markNow()
         val sources = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
             ?.let { Json.decodeFromString<List<HistorySource>>(it.sources) } ?: return@withContext false
+        // 阶段跟着代码走：任何一次失败都能说清是在读历史、调模型、解析还是写库时挂的。
+        var stage = MemoryStage.READING_HISTORY
         try {
             while (start.elapsedNow() < 6.minutes) {
                 val job = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
@@ -321,36 +386,82 @@ internal class HistoryMemoryManager(
                     checkpoint(job, job.copy(status = "finished", finishedAt = System.currentTimeMillis()))
                     return@withContext false
                 }
-                if (job.deviceConsent != consentId) throw ExtractionFailure("本机授权已失效，请重新确认提取范围")
+                stage = MemoryStage.MODEL_CONFIG
+                if (job.deviceConsent != consentId) {
+                    throw ExtractionFailure(stage, MemoryFailureCode.CONSENT, "本机授权已失效，请重新确认提取范围")
+                }
                 val settings = settingsStore.awaitLoaded()
                 if (scope != MemoryRepository.GLOBAL_MEMORY_ID && settings.assistants.none { it.id.toString() == scope }) {
-                    throw ExtractionFailure("目标助手已不存在")
+                    throw ExtractionFailure(stage, MemoryFailureCode.CONFIG, "目标助手已不存在")
                 }
                 val model = settings.findModelById(Uuid.parse(job.modelId))
-                    ?: throw ExtractionFailure("已确认的模型已移除，请重新创建任务")
+                    ?: throw ExtractionFailure(stage, MemoryFailureCode.CONFIG, "已确认的模型已移除，请重新创建任务")
                 val provider = model.findProvider(settings.providers)
-                    ?: throw ExtractionFailure("已确认的提供商已移除，请重新创建任务")
+                    ?: throw ExtractionFailure(stage, MemoryFailureCode.CONFIG, "已确认的提供商已移除，请重新创建任务")
                 if (!provider.enabled || fingerprint(settings, provider, model) != job.providerFingerprint) {
-                    throw ExtractionFailure("模型或网络配置已变更，请重新确认提取范围")
+                    throw ExtractionFailure(stage, MemoryFailureCode.CONFIG, "模型或网络配置已变更，请重新确认提取范围")
                 }
-                val revision = conversations.historyRevision(source.id)
-                if (revision == null || revision != source.revision) {
-                    throw ExtractionFailure("来源会话已修改或删除，请重新选择提取范围")
+                stage = MemoryStage.READING_HISTORY
+                val batch = try {
+                    val revision = conversations.historyRevision(source.id)
+                    if (revision == null || revision != source.revision) {
+                        throw ExtractionFailure(stage, MemoryFailureCode.SOURCE, "来源会话已修改或删除", skipSource = true)
+                    }
+                    val read = try {
+                        readBatch(job, source.id)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: ExtractionFailure) {
+                        throw e
+                    } catch (_: Exception) {
+                        // 消息 JSON 损坏这类问题只影响这一段会话：跳过它继续，别让整轮任务卡死
+                        throw ExtractionFailure(
+                            stage,
+                            MemoryFailureCode.HISTORY,
+                            "读取这段会话时遇到无法解析的数据",
+                            skipSource = true,
+                        )
+                    }
+                    if (conversations.historyRevision(source.id) != source.revision) {
+                        throw ExtractionFailure(stage, MemoryFailureCode.SOURCE, "来源会话已修改", skipSource = true)
+                    }
+                    read
+                } catch (e: ExtractionFailure) {
+                    if (!e.skipSource) throw e
+                    // 只跳过这一个会话：已保存的记忆、候选和其他会话都不动，游标继续向前。
+                    checkpoint(
+                        job,
+                        job.copy(
+                            sourceIndex = job.sourceIndex + 1,
+                            nodeIndex = -1,
+                            nodeId = "",
+                            textOffset = 0,
+                            batchAttempts = 0,
+                        ),
+                        skippedSources = 1,
+                    )
+                    continue
                 }
-                val (cursor, excerpts) = readBatch(job, source.id)
+                val (cursor, excerpts) = batch
                 if (excerpts.isEmpty()) {
                     checkpoint(job, cursor)
                     continue
                 }
-                if (conversations.historyRevision(source.id) != source.revision) {
-                    throw ExtractionFailure("来源会话已修改，请重新选择提取范围")
-                }
                 if (dao.job(scope) != job) return@withContext false
                 // 预算在真正花钱之前检查：超了就暂停，等用户下次明确继续。
                 budgetStop(scope, job, settings)?.let { reason ->
-                    saveJob(job.copy(status = "paused", failure = reason))
+                    saveJob(
+                        job.copy(
+                            status = "paused",
+                            failure = reason,
+                            failureStage = null,
+                            failureCode = null,
+                            failureDetail = null,
+                        )
+                    )
                     return@withContext false
                 }
+                stage = MemoryStage.PROMPT_BUILD
                 val payload = Json.encodeToString(excerpts.map { it.text })
                 val digest = historyDigest(payload)
                 // 同一个任务内按批次去重；跨任务再按全局指纹去重，同一段聊天永远不会第二次计费。
@@ -358,6 +469,18 @@ internal class HistoryMemoryManager(
                     checkpoint(job, cursor, digest = digest)
                     continue
                 }
+                // 同一批连续失败到上限就跳过：用户点“继续”不应该每次都重新花一次钱却进度不动。
+                if (job.batchAttempts >= MAX_BATCH_ATTEMPTS) {
+                    checkpoint(
+                        job,
+                        cursor.copy(batchAttempts = 0),
+                        digest,
+                        rememberDigest = true,
+                        skippedBatches = 1,
+                    )
+                    continue
+                }
+                stage = MemoryStage.MODEL_CALL
                 val result = withTimeout(2.minutes) {
                     providers.getProviderByType(provider).generateText(
                         providerSetting = provider,
@@ -371,17 +494,22 @@ internal class HistoryMemoryManager(
                     ?: ((payload.length + historyExtractionPrompt.length + 1L) / 2L)
                 val outputTokens = result.usage?.completionTokens?.toLong()?.takeIf { it > 0 }
                     ?: ((result.message.toText().length + 1L) / 2L)
+                stage = MemoryStage.RESPONSE_PARSE
                 val facts = try {
                     parseHistoryCandidates(result.message.toText(), excerpts, id, source.id)
-                } catch (_: IllegalArgumentException) {
-                    throw ExtractionFailure("模型返回的候选格式无效，可重试当前批次")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    throw ExtractionFailure(stage, MemoryFailureCode.PARSE, "模型返回的候选格式无效，可重试当前批次")
                 }
+                stage = MemoryStage.DB_WRITE
                 checkpoint(
                     job,
                     cursor.copy(
                         batches = job.batches + 1,
                         estimatedTokens = job.estimatedTokens + (result.usage?.totalTokens?.toLong()?.takeIf { it > 0 }
                             ?: (payload.length + historyExtractionPrompt.length + result.message.toText().length + 1L) / 2L),
+                        batchAttempts = 0,
                     ),
                     digest,
                     facts,
@@ -391,24 +519,52 @@ internal class HistoryMemoryManager(
                 )
             }
             true
-        } catch (_: TimeoutCancellationException) {
-            fail(scope, id, generation, "模型请求超时，可重试当前批次")
+        } catch (e: TimeoutCancellationException) {
+            fail(scope, id, generation, memoryFailure(MemoryStage.MODEL_CALL, e), billable = true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ExtractionFailure) {
-            fail(scope, id, generation, e.reason)
-        } catch (_: IOException) {
-            fail(scope, id, generation, "网络或模型请求失败，可重试当前批次")
-        } catch (_: Exception) {
-            fail(scope, id, generation, "读取历史或调用模型失败，可重试当前批次")
+            fail(scope, id, generation, e.toFailure(), billable = e.billable)
+        } catch (e: Exception) {
+            fail(scope, id, generation, memoryFailure(stage, e), billable = stage.isBillable)
         }
     }
 
-    private suspend fun fail(scope: String, id: String, generation: Long, reason: String): Boolean {
+    /**
+     * 失败落到任务行和任务历史行上。
+     *
+     * 之前只在 status == "running" 时写 job，任务被暂停/取消/换代时就静默丢弃：
+     * 历史里仍显示“正在整理”，用户点继续又撞同一个错，看起来“什么都没发生”。
+     * 现在只要还是同一轮任务，诊断信息一定写进历史；状态本身不乱改。
+     */
+    private suspend fun fail(
+        scope: String,
+        id: String,
+        generation: Long,
+        failure: MemoryFailure,
+        billable: Boolean,
+    ): Boolean {
         database.withTransaction {
             val current = dao.job(scope)
-            if (current?.id == id && current.generation == generation && current.status == "running") {
-                saveJob(current.copy(status = "failed", failure = reason, finishedAt = System.currentTimeMillis()))
+            if (current?.id != id || current.generation != generation) return@withTransaction
+            val detail = failure.detail + " 游标=" + current.sourceIndex + "/" + current.sourceCount +
+                " 批次=" + current.batches + " 估算Token=" + current.estimatedTokens
+            if (current.status == "running") {
+                saveJob(
+                    current.copy(
+                        status = "failed",
+                        failure = failure.userText,
+                        failureStage = failure.stage.id,
+                        failureCode = failure.code,
+                        failureDetail = detail,
+                        // 只有可能已经产生模型费用的阶段才累计次数，配置类错误不会把批次“用掉”
+                        batchAttempts = if (billable) current.batchAttempts + 1 else current.batchAttempts,
+                        finishedAt = System.currentTimeMillis(),
+                    )
+                )
+            } else {
+                // 已经暂停/取消/被替换：只补诊断，不动用户选择的状态。
+                dao.setTaskFailure(current.id, failure.stage.id, failure.code, detail)
             }
         }
         return false
@@ -422,6 +578,8 @@ internal class HistoryMemoryManager(
         rememberDigest: Boolean = false,
         inputTokens: Long = 0,
         outputTokens: Long = 0,
+        skippedBatches: Int = 0,
+        skippedSources: Int = 0,
     ) = database.withTransaction {
         if (dao.job(previous.scope) != previous) return@withTransaction
         if (digest != null) dao.markProcessed(HistoryMemoryBatch(previous.id, digest))
@@ -434,6 +592,7 @@ internal class HistoryMemoryManager(
         recordTaskStatus(next)
         dao.syncTaskCounters(next.id, next.sourceIndex)
         if (inputTokens > 0 || outputTokens > 0) dao.addTaskTokens(next.id, inputTokens, outputTokens)
+        if (skippedBatches > 0 || skippedSources > 0) dao.addTaskSkips(next.id, skippedBatches, skippedSources)
         val existing = dao.state(next.scope) ?: MemoryScopeState(next.scope)
         val today = java.time.LocalDate.now().toString()
         val usedToday = (if (existing.dailyDay == today) existing.dailyTokens else 0L) +
@@ -479,7 +638,13 @@ internal class HistoryMemoryManager(
         val excerpts = mutableListOf<HistoryExcerpt>()
         var chars = 0
         val continuation = if (job.textOffset == 0) emptyList() else listOf(
-            nodes.historyNode(conversationId, job.nodeId) ?: throw ExtractionFailure("来源消息已被删除")
+            nodes.historyNode(conversationId, job.nodeId)
+                ?: throw ExtractionFailure(
+                    MemoryStage.READING_HISTORY,
+                    MemoryFailureCode.SOURCE,
+                    "来源消息已被删除",
+                    skipSource = true,
+                )
         )
         val page = continuation + nodes.nextHistoryNodes(conversationId, job.nodeIndex, job.nodeId, 12)
         if (page.isEmpty()) {
@@ -888,6 +1053,10 @@ internal class HistoryMemoryManager(
     }
 
     private suspend fun recordTaskStatus(job: HistoryMemoryJob) {
+        // 只有真正“失败/中断/暂停”的状态才带说明；任务跑起来或跑完以后，
+        // 上一次失败留下的阶段与错误码必须清掉，否则历史里会出现“已完成 · 在调用模型阶段失败”。
+        val hasFailure = job.status == "failed" || job.status == "interrupted" || job.status == "paused"
+        val failed = job.status == "failed"
         dao.setTaskStatus(
             id = job.id,
             status = job.status,
@@ -896,7 +1065,10 @@ internal class HistoryMemoryManager(
                 job.status in FINAL_STATUSES -> System.currentTimeMillis()
                 else -> 0
             },
-            error = job.failure,
+            error = job.failure.takeIf { hasFailure },
+            stage = job.failureStage.takeIf { failed },
+            code = job.failureCode.takeIf { failed },
+            detail = job.failureDetail.takeIf { failed },
             generation = job.generation,
         )
     }
@@ -912,12 +1084,17 @@ internal class HistoryMemoryManager(
         return "${sources.size} 个会话 · ${day(from)} ~ ${day(until)}"
     }
 
-    private companion object {
+    internal companion object {
         const val MAX_BULK = 2_000
         /** 历史只留最近 100 轮：够回看，也不会把库撑大。 */
         const val TASK_LOG_KEEP = 100
         val FINAL_STATUSES = setOf("finished", "cancelled", "failed", "interrupted")
         const val MAX_UNDO_CHARS = 3_000_000L
+        /**
+         * 同一批连续失败的上限。到上限就把这一批跳过并记进历史：
+         * 否则“失败 → 继续 → 同一批再失败”会无限重复调用模型，每次都在同一个地方扣费。
+         */
+        const val MAX_BATCH_ATTEMPTS = 3
     }
 
     private fun MemoryFile.containsFact(key: String): Boolean = body.lineSequence().any {

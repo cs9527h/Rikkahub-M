@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +55,7 @@ internal fun MemoryTaskHistoryScreen(
     val logs by remember(scope) { history.observeTaskLogs(scope) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val coroutine = rememberCoroutineScope()
+    val context = LocalContext.current
     var detail by remember(scope) { mutableStateOf<HistoryMemoryTaskLog?>(null) }
     var candidateRound by remember(scope) { mutableStateOf<HistoryMemoryTaskLog?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -97,14 +103,25 @@ internal fun MemoryTaskHistoryScreen(
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.labelSmall,
                         )
-                        // 失败原因直接写在列表里：用户不该为了看“为什么没跑完”再点两层
-                        log.errorMessage?.takeIf { it.isNotBlank() }?.let { reason ->
+                        // 失败原因直接写在列表里：用户不该为了看“为什么没跑完”再点两层。
+                        // 有阶段信息时写成“在哪个阶段失败”，旧记录退回原来的单行原因。
+                        val failureLine = MemoryTaskLogSummary.failedLine(log)
+                            ?: log.errorMessage?.takeIf { it.isNotBlank() }
+                        failureLine?.let { reason ->
                             Text(
                                 reason,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.error,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        // 有批次被自动跳过时必须写出来，否则用户只会看到“进度不动”
+                        MemoryTaskLogSummary.skipLabel(log)?.let { skipped ->
+                            Text(
+                                skipped,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -138,9 +155,28 @@ internal fun MemoryTaskHistoryScreen(
                     if (log.finishedAt > 0) {
                         Text("结束时间：${localDateTime(log.finishedAt)}", style = MaterialTheme.typography.bodySmall)
                     }
-                    log.errorMessage?.takeIf { it.isNotBlank() }?.let { reason ->
-                        Text("没跑完的原因", style = MaterialTheme.typography.titleSmall)
-                        Text(reason)
+                    if (MemoryTaskLogSummary.failedLine(log) != null) {
+                        Text("失败在哪一步", style = MaterialTheme.typography.titleSmall)
+                        MemoryTaskLogSummary.failedLine(log)?.let { Text(it) }
+                        log.errorMessage?.takeIf { it.isNotBlank() }?.let { reason ->
+                            // 阶段文案和任务行里的原因可能不完全相同，原始原因仍然给出来
+                            Text(reason, style = MaterialTheme.typography.bodySmall)
+                        }
+                        MemoryTaskLogSummary.failureAdvice(log)?.let { advice ->
+                            Text(
+                                advice,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        log.errorMessage?.takeIf { it.isNotBlank() }?.let { reason ->
+                            Text("没跑完的原因", style = MaterialTheme.typography.titleSmall)
+                            Text(reason)
+                        }
+                    }
+                    MemoryTaskLogSummary.skipLabel(log)?.let { skipped ->
+                        Text("自动跳过：$skipped", style = MaterialTheme.typography.bodySmall)
                     }
                     if (log.status == "running") {
                         Text(
@@ -154,6 +190,11 @@ internal fun MemoryTaskHistoryScreen(
             confirmButton = { TextButton(onClick = { detail = null }) { Text("关闭") } },
             dismissButton = {
                 Row {
+                    TextButton(
+                        onClick = {
+                            copyDiagnostic(context, log)
+                        }
+                    ) { Text("复制诊断") }
                     TextButton(
                         onClick = {
                             detail = null
@@ -178,11 +219,11 @@ internal fun MemoryTaskHistoryScreen(
                                     }
                                     detail = null
                                     if (!resumed) {
-                                        onError("这一轮任务已经被新的整理任务替代，请重新开始整理。")
+                                        onError("这一轮任务已经被新的整理任务取代，请重新开始整理。")
                                     }
                                 }
                             },
-                        ) { Text("重试这一轮") }
+                        ) { Text("从这一批继续") }
                     }
                 }
             },
@@ -225,4 +266,16 @@ internal fun MemoryTaskHistoryScreen(
             },
         )
     }
+}
+
+/**
+ * 复制的是结构化的诊断文本：阶段、错误码、异常类名、游标和 Token。
+ * 不含聊天正文、候选正文和任何密钥，贴到反馈里不会泄漏内容。
+ */
+private fun copyDiagnostic(context: Context, log: HistoryMemoryTaskLog) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    clipboard.setPrimaryClip(
+        ClipData.newPlainText("memory-task-diagnostic", MemoryTaskLogSummary.diagnosticText(log))
+    )
+    Toast.makeText(context, "已复制诊断信息", Toast.LENGTH_SHORT).show()
 }

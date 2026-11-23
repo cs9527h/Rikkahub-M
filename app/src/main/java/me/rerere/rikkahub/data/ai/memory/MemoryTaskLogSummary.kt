@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.memory
 
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryTaskLog
 
 /**
@@ -44,4 +45,61 @@ internal object MemoryTaskLogSummary {
 
     fun headline(log: HistoryMemoryTaskLog): String =
         "${statusLabel(log.status)} · ${progressLabel(log.sourceCount, log.processedCount)}"
+
+    /** 失败阶段的中文名；旧记录没有阶段时返回 null，界面退回原来的单行原因。 */
+    fun stageLabel(stageId: String?): String? =
+        stageId?.takeIf { it.isNotBlank() }?.let { MemoryStage.from(it).label }
+
+    /** 列表/详情里的“在哪一步失败”：阶段 + 面向用户的原因。 */
+    fun failedLine(log: HistoryMemoryTaskLog): String? {
+        val stage = stageLabel(log.errorStage) ?: return null
+        val code = log.errorCode
+        return if (code.isNullOrBlank()) {
+            "在「$stage」阶段失败"
+        } else {
+            "在「$stage」阶段失败：${MemoryFailureText.message(code)}"
+        }
+    }
+
+    /** 可执行建议：和写入失败时用的是同一份文案。 */
+    fun failureAdvice(log: HistoryMemoryTaskLog): String? =
+        log.errorCode?.takeIf { it.isNotBlank() }?.let { MemoryFailureText.advice(it) }
+
+    /** 被跳过的批次/会话：让“进度不动”和“没有报错”都有据可查。 */
+    fun skipLabel(log: HistoryMemoryTaskLog): String? {
+        val batches = log.skippedBatches.coerceAtLeast(0)
+        val sources = log.skippedSources.coerceAtLeast(0)
+        if (batches == 0 && sources == 0) return null
+        return buildList {
+            if (batches > 0) add("跳过 $batches 个批次")
+            if (sources > 0) add("跳过 $sources 个会话")
+        }.joinToString(" · ")
+    }
+
+    /**
+     * 可复制的诊断文本。
+     *
+     * 只包含阶段、错误码、异常类名、游标、Token 和时间这类结构性信息：
+     * 不含聊天正文、候选正文、API Key、token 或带查询串的 URL，贴到 issue 里也不会泄漏内容。
+     */
+    fun diagnosticText(log: HistoryMemoryTaskLog): String = buildString {
+        appendLine("整理任务诊断")
+        appendLine("任务 ID: ${log.id}")
+        appendLine("状态: ${statusLabel(log.status)}")
+        stageLabel(log.errorStage)?.let { appendLine("失败阶段: ${log.errorStage}（$it）") }
+        log.errorCode?.takeIf { it.isNotBlank() }?.let { appendLine("错误码: $it") }
+        log.errorMessage?.takeIf { it.isNotBlank() }?.let { appendLine("原因: ${sanitizeFailureDetail(it, 160)}") }
+        log.errorDetail?.takeIf { it.isNotBlank() }?.let { appendLine("技术摘要: $it") }
+        appendLine(progressLabel(log.sourceCount, log.processedCount))
+        appendLine(
+            "候选 ${log.candidateCount.coerceAtLeast(0)} 条 · 已保存 ${log.savedCount.coerceAtLeast(0)} 条 · " +
+                "已跳过 ${log.skippedCount.coerceAtLeast(0)} 条"
+        )
+        skipLabel(log)?.let { appendLine("自动跳过: $it") }
+        tokenLabel(log.inputTokens, log.outputTokens)?.let { appendLine(it) }
+        if (log.rangeLabel.isNotBlank()) appendLine("来源: ${log.rangeLabel}")
+        appendLine("创建时间: ${log.createdAt}")
+        if (log.finishedAt > 0) appendLine("结束时间: ${log.finishedAt}")
+        append("版本: ${BuildConfig.VERSION_NAME} · 记忆任务历史")
+    }
 }
