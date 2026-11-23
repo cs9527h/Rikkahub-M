@@ -54,16 +54,19 @@ internal fun QuickStartHeroCard(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            // 截图实测：20dp 内边距 + 56dp 图标 + 16dp 间距让这张卡在聊天页占到 24% 屏高，
+            // 未配置模型时首屏几乎只有一张大卡（用户反馈「空状态占用大量屏幕」「巨型卡片」）。
+            // 收到 16dp/44dp/12dp：信息一个不少，视觉重量明显下降。
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(44.dp)
                         .background(MaterialTheme.colorScheme.primary, MaterialShapes.Cookie9Sided.toShape()),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -73,7 +76,7 @@ internal fun QuickStartHeroCard(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(text = title, style = MaterialTheme.typography.titleLargeEmphasized)
+                    Text(text = title, style = MaterialTheme.typography.titleMediumEmphasized)
                     Text(text = description, style = MaterialTheme.typography.bodyMedium)
                 }
             }

@@ -57,7 +57,12 @@ fun AssistantBackground(setting: Settings, modifier: Modifier) {
                 )
             }
         }
+        return
     }
+    // 没有壁纸、也没开动态渐变：仍然给一层跟随主题的静态柔光。
+    // 原来这里什么都不画，浅色主题下整屏就是 colorScheme.surface 的死白，
+    // 顶栏、消息区、输入框全糊成一片（截图实测中部 100% 像素亮度 ≥248）。
+    SoftBackground(modifier = modifier)
 }
 
 /** 壁纸拉满时的最大遮罩强度：浅色保留壁纸辨识度，暗色压暗到正文可读。 */
