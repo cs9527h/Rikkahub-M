@@ -8,10 +8,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.ui.theme.LocalDarkMode
 
 @Composable
 fun AssistantBackground(setting: Settings, modifier: Modifier) {
@@ -21,8 +23,14 @@ fun AssistantBackground(setting: Settings, modifier: Modifier) {
         return
     }
     if (assistant.background != null) {
-        val backgroundColor = MaterialTheme.colorScheme.background
         val backgroundOpacity = assistant.backgroundOpacity.coerceIn(0f, 1f)
+        val dark = LocalDarkMode.current
+        // 遮罩强度跟着壁纸透明度走：壁纸越淡，遮罩越轻（原来固定 0.20/0.45，
+        // 把透明度调低之后仍有一层常量白雾，看起来"没那么淡"）。
+        val scrimAlpha = (if (dark) DARK_MAX_SCRIM else LIGHT_MAX_SCRIM) * backgroundOpacity
+        // 中性 scrim：浅色用主题 surface 而不是纯白，暗色用黑——暗色下只压暗、不提亮。
+        val scrimColor = if (dark) Color.Black else MaterialTheme.colorScheme.surface
+
         Box(modifier = modifier) {
             AsyncImage(
                 model = assistant.background,
@@ -33,20 +41,25 @@ fun AssistantBackground(setting: Settings, modifier: Modifier) {
                     .alpha(backgroundOpacity)
             )
 
-            // 全屏渐变遮罩
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                // 保留壁纸辨识度，以轻遮罩保证消息可读性
-                                backgroundColor.copy(alpha = 0.20f),
-                                backgroundColor.copy(alpha = 0.45f)
+            if (scrimAlpha > 0f) {
+                // 顶部轻、底部略重：标题区域要透出壁纸，消息区保证可读
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    scrimColor.copy(alpha = scrimAlpha * 0.45f),
+                                    scrimColor.copy(alpha = scrimAlpha),
+                                )
                             )
                         )
-                    )
-            )
+                )
+            }
         }
     }
 }
+
+/** 壁纸拉满时的最大遮罩强度：浅色保留壁纸辨识度，暗色压暗到正文可读。 */
+private const val LIGHT_MAX_SCRIM = 0.28f
+private const val DARK_MAX_SCRIM = 0.42f
