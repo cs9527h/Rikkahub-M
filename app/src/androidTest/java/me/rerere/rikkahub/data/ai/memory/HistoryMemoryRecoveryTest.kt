@@ -172,12 +172,12 @@ class HistoryMemoryRecoveryTest {
             val job = history.persistConfirmedPlan(
                 history.prepare(scope, fixture.assistant, history.sources(Long.MIN_VALUE, Long.MAX_VALUE))
             )
-            // 计划确认之后，第 2 个会话被改动了：只跳过它，不能让整轮任务永远失败
-            db(fixture).withTransaction {
-                db(fixture).conversationDao().insert(
-                    ConversationEntity("fixture-1", scope, "Synthetic 1", "[]", 2000, 4000, "[]", false)
-                )
-            }
+            // 计划确认之后，第 2 个会话被改动了：只跳过它，不能让整轮任务永远失败。
+            // revision 就是 conversationentity.update_at，所以直接改这一列来模拟“又聊过一轮”，
+            // 不能重新 insert 同 id 的会话（主键冲突）。
+            db(fixture).openHelper.writableDatabase.execSQL(
+                "UPDATE conversationentity SET update_at = 4000 WHERE id = 'fixture-1'"
+            )
             assertFalse(history.run(scope, job.id, job.generation))
 
             val finished = db(fixture).historyMemoryDao().job(scope)!!
