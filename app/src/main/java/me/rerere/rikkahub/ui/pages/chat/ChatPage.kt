@@ -3,7 +3,6 @@ package me.rerere.rikkahub.ui.pages.chat
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -47,8 +46,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -358,16 +357,6 @@ private fun ChatPageContent(
         AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
             topBar = {
-                // 顶栏本身是透明胶囊：加一层向下淡出的底色，滚动文字经过时不会和标题按钮糊在一起
-                Box(
-                    modifier = Modifier.background(
-                        Brush.verticalGradient(
-                            0f to MaterialTheme.colorScheme.background.copy(alpha = 0.92f),
-                            0.65f to MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                            1f to Color.Transparent,
-                        ),
-                    ),
-                ) {
                 TopBar(
                     settings = setting,
                     assistant = assistant,
@@ -396,7 +385,6 @@ private fun ChatPageContent(
                         vm.updateTitle(it)
                     }
                 )
-                }
             },
             bottomBar = {
                 val messageQueue by vm.messageQueue.collectAsStateWithLifecycle()
@@ -695,31 +683,46 @@ private fun TopBar(
         },
         title = {
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
-            Surface(
-                onClick = {
-                    if (conversation.messageNodes.isNotEmpty()) {
-                        titleState.open(conversation.title)
-                    } else {
-                        toaster.show(editTitleWarning, type = ToastType.Warning)
-                    }
-                },
-                color = Color.Transparent,
+            // 标题不再靠整条顶栏的渐变遮罩脱离正文：滚动后和两个按钮胶囊一样，
+            // 由标题自己的胶囊给一层底色，没滚到顶栏下面时胶囊完全透明（不糊背景、不起雾）。
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterStart,
             ) {
-                Column {
-                    Text(
-                        text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    // 第二行只放助手身份，模型和供应商名称移到设置和连接详情里
-                    Text(
-                        text = assistant.name.ifBlank { resources.getString(R.string.assistant_page_default_assistant) },
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                        color = LocalContentColor.current.copy(0.65f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                ChatTopBarCapsule(
+                    hazeState = hazeState,
+                    displaySetting = settings.displaySetting,
+                    showBackground = showCapsuleBackground,
+                ) {
+                    Surface(
+                        onClick = {
+                            if (conversation.messageNodes.isNotEmpty()) {
+                                titleState.open(conversation.title)
+                            } else {
+                                toaster.show(editTitleWarning, type = ToastType.Warning)
+                            }
+                        },
+                        color = Color.Transparent,
+                    ) {
+                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)) {
+                            Text(
+                                text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
+                                maxLines = 1,
+                                style = MaterialTheme.typography.bodyMedium,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            // 第二行只放助手身份，模型和供应商名称移到设置和连接详情里
+                            Text(
+                                text = assistant.name.ifBlank {
+                                    resources.getString(R.string.assistant_page_default_assistant)
+                                },
+                                overflow = TextOverflow.Ellipsis,
+                                maxLines = 1,
+                                color = LocalContentColor.current.copy(0.65f),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
                 }
             }
         },

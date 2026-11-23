@@ -136,11 +136,8 @@ fun ChatMessageNerdLine(
                     StatsItem(
                         icon = { StatsIcon(HugeIcons.Layers01, stringResource(R.string.chat_message_usage_context)) },
                         content = {
+                            // 缓存命中详情在点击后的统计卡片中展示，避免行内堆叠技术文字。
                             Text(text = stringResource(R.string.chat_message_usage_context_short, stats.contextTokens.formatNumber()))
-                            val cached = stats.lastUsage.cachedTokens
-                            if (cached > 0) {
-                                Text(text = stringResource(R.string.chat_message_usage_cached_short, cached.formatNumber()))
-                            }
                         }
                     )
                 }

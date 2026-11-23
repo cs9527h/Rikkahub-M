@@ -97,7 +97,9 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             if (!state.expandState.expanded && settings.displaySetting.showThinkingContent)
                 state.expandState = ReasoningCardState.Preview
-            scrollState.animateScrollTo(scrollState.maxValue)
+            // 每个 token 都会重启这个 effect；用 animateScrollTo 会不断打断上一段弹簧动画，
+            // 在预览窗口里表现为抖动。流式期间直接贴底，稳定且省一帧动画。
+            scrollState.scrollTo(scrollState.maxValue)
         } else {
             if (state.expandState.expanded) {
                 state.expandState = if (settings.displaySetting.autoCloseThinking)
@@ -112,7 +114,8 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             while (isActive) {
                 state.duration = (reasoning.finishedAt ?: Clock.System.now()) - reasoning.createdAt
-                delay(50)
+                // 标签按 0.1s 展示，100ms 刷新足够；原来 50ms 相当于每秒白跑 20 次重组
+                delay(100)
             }
         }
     }
@@ -145,13 +148,15 @@ private fun ReasoningContent(
                     contentModifier
                         .graphicsLayer { alpha = 0.99f }
                         .drawWithCache {
+                            // 内容比两段 fade 还短时，比例会超过 0.5 甚至倒序，渲染成硬边；夹到 0..0.5 保证单调
+                            val fadeFraction = (fadeHeight / size.height).coerceIn(0f, 0.5f)
                             val brush = Brush.verticalGradient(
                                 startY = 0f,
                                 endY = size.height,
                                 colorStops = arrayOf(
                                     0.0f to Color.Transparent,
-                                    (fadeHeight / size.height) to Color.Black,
-                                    (1 - fadeHeight / size.height) to Color.Black,
+                                    fadeFraction to Color.Black,
+                                    (1 - fadeFraction) to Color.Black,
                                     1.0f to Color.Transparent
                                 )
                             )
@@ -164,7 +169,8 @@ private fun ReasoningContent(
                                 )
                             }
                         }
-                        .heightIn(max = 100.dp)
+                        // 预览只露 3 行左右：原来 100dp 在长思考里几乎占半屏
+                        .heightIn(max = 76.dp)
                         .verticalScroll(scrollState)
                 } else {
                     contentModifier

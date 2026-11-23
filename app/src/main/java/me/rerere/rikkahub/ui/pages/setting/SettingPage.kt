@@ -169,26 +169,19 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferences) },
                         leadingContent = { CardGroupIcon(HugeIcons.Settings03, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_preferences_desc)) },
+                        supportingContent = { Text("主题、通知与界面") },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Assistant) },
                         leadingContent = { CardGroupIcon(HugeIcons.LookTop, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_assistant_desc)) },
+                        supportingContent = { Text("管理助手与个性化") },
                         headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
-                    )
-                    item(
-                        // 记忆中心是一级页：从设置进来跟随当前选中的助手；助手详情带 id 进来就锁定那个助手
-                        onClick = { navController.navigate(Screen.MemoryCenter()) },
-                        leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text("记住了什么、有哪些待确认，都在这里") },
-                        headlineContent = { Text("记忆") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Extensions) },
                         leadingContent = { CardGroupIcon(HugeIcons.Package, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
+                        supportingContent = { Text("记忆、提示词与技能") },
                         headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
                     )
                 }
@@ -203,7 +196,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         onClick = { navController.navigate(Screen.SettingModels) },
                         leadingContent = { CardGroupIcon(HugeIcons.AiMagic, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_default_model_desc)) },
+                        supportingContent = { Text("设置默认模型") },
                         headlineContent = { Text(stringResource(R.string.setting_page_default_model)) },
                     )
                     item(
@@ -251,7 +244,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         onClick = { navController.navigate(Screen.Backup) },
                         leadingContent = { CardGroupIcon(HugeIcons.Database02, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
+                        supportingContent = { Text("备份与恢复数据") },
                         headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },
                     )
                     item(
@@ -294,7 +287,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     item(
                         onClick = { navController.navigate(Screen.QuickStart) },
                         leadingContent = { CardGroupIcon(HugeIcons.Rocket01, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text(stringResource(R.string.setting_page_quick_start_desc)) },
+                        supportingContent = { Text("快速上手指南") },
                         headlineContent = { Text(stringResource(R.string.setting_page_quick_start)) },
                     )
                     item(

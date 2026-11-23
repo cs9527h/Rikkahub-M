@@ -947,7 +947,7 @@ private fun ModelPicker(
                 ) {
                     Text(
                         text = stringResource(R.string.setting_provider_page_avaliable_models),
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMediumEmphasized,
                         modifier = Modifier.weight(1f),
                     )
 
@@ -1460,7 +1460,7 @@ private fun BuiltInToolsSettings(
     ) {
         Text(
             text = stringResource(R.string.setting_page_built_in_tools),
-            style = MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMediumEmphasized
         )
 
         Text(

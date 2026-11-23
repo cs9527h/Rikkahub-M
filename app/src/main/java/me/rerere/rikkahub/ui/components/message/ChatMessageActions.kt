@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
@@ -22,7 +21,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,7 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
-import kotlinx.coroutines.delay
 import kotlinx.datetime.toJavaLocalDateTime
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
@@ -74,21 +71,10 @@ fun ColumnScope.ChatMessageActionButtons(
     onUpdate: (MessageNode) -> Unit,
     onRegenerate: () -> Unit,
     onOpenActionSheet: () -> Unit,
-    onTranslate: ((UIMessage, Locale) -> Unit)? = null,
-    onClearTranslation: (UIMessage) -> Unit = {},
 ) {
     val context = LocalContext.current
     val settings = LocalSettings.current
-    var isPendingDelete by remember { mutableStateOf(false) }
-    var showTranslateDialog by remember { mutableStateOf(false) }
     var showRegenerateConfirm by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isPendingDelete) {
-        if (isPendingDelete) {
-            delay(3000) // 3秒后自动取消
-            isPendingDelete = false
-        }
-    }
 
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -112,55 +98,6 @@ fun ColumnScope.ChatMessageActionButtons(
             },
         )
 
-        if (message.role == MessageRole.ASSISTANT) {
-            val tts = LocalTTSState.current
-            val isSpeaking by tts.isSpeaking.collectAsState()
-            val isAvailable by tts.isAvailable.collectAsState()
-            // 朗读中换成带底色的方角按钮
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
-                IconToggleButton(
-                    checked = isSpeaking,
-                    onCheckedChange = { speak ->
-                        if (speak) {
-                            val text = message.toText()
-                            var textToSpeak = text
-                            if (settings.displaySetting.ttsOnlyReadQuoted) {
-                                textToSpeak = textToSpeak.extractQuotedContentAsText() ?: textToSpeak
-                            }
-                            if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
-                                textToSpeak = textToSpeak.removeBracketedContent() ?: textToSpeak
-                            }
-                            tts.speak(textToSpeak)
-                        } else {
-                            tts.stop()
-                        }
-                    },
-                    shapes = IconButtonDefaults.toggleableShapes(),
-                    modifier = Modifier.size(IconButtonDefaults.extraSmallContainerSize()),
-                    enabled = isAvailable,
-                    colors = IconButtonDefaults.iconToggleButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = if (isSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
-                        contentDescription = stringResource(R.string.tts),
-                        modifier = Modifier.size(ActionIconSize),
-                    )
-                }
-            }
-
-            // Translation button
-            if (onTranslate != null) {
-                ChatMessageActionButton(
-                    icon = HugeIcons.Translate,
-                    contentDescription = stringResource(R.string.translate),
-                    onClick = { showTranslateDialog = true },
-                )
-            }
-        }
 
         ChatMessageActionButton(
             icon = HugeIcons.MoreVertical,
@@ -182,23 +119,6 @@ fun ColumnScope.ChatMessageActionButtons(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
-    }
-
-    // Translation dialog
-    if (showTranslateDialog && onTranslate != null) {
-        LanguageSelectionDialog(
-            onLanguageSelected = { language ->
-                showTranslateDialog = false
-                onTranslate(message, language)
-            },
-            onClearTranslation = {
-                showTranslateDialog = false
-                onClearTranslation(message)
-            },
-            onDismissRequest = {
-                showTranslateDialog = false
-            },
-        )
     }
 
     // Regenerate confirmation dialog
@@ -266,6 +186,7 @@ fun ChatMessageActionsSheet(
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
     onWebViewPreview: () -> Unit,
+    onRequestTranslate: (() -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     ModalBottomSheet(
@@ -275,7 +196,36 @@ fun ChatMessageActionsSheet(
         // WebView Preview (only show if message has text content)
         val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
             .any { it.text.isNotBlank() }
+        val tts = LocalTTSState.current
+        val isTtsAvailable by tts.isAvailable.collectAsState()
+        val isSpeaking by tts.isSpeaking.collectAsState()
+        val settings = LocalSettings.current
         val actions = buildList {
+            if (message.role == MessageRole.ASSISTANT) {
+                if (isTtsAvailable) {
+                    add(MessageSheetAction(
+                        if (isSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
+                        stringResource(if (isSpeaking) R.string.stop else R.string.tts),
+                        onClick = {
+                        if (isSpeaking) {
+                            tts.stop()
+                        } else {
+                        val text = message.toText()
+                        var spokenText = text
+                        if (settings.displaySetting.ttsOnlyReadQuoted) {
+                            spokenText = spokenText.extractQuotedContentAsText() ?: spokenText
+                        }
+                        if (settings.displaySetting.ttsOnlyReadOutsideBrackets) {
+                            spokenText = spokenText.removeBracketedContent() ?: spokenText
+                        }
+                        tts.speak(spokenText)
+                        }
+                    }))
+                }
+                if (onRequestTranslate != null) {
+                    add(MessageSheetAction(HugeIcons.Translate, stringResource(R.string.translate), onClick = onRequestTranslate))
+                }
+            }
             add(MessageSheetAction(HugeIcons.TextSelection, stringResource(R.string.select_and_copy), onClick = onSelectAndCopy))
             if (hasTextContent) {
                 add(MessageSheetAction(HugeIcons.WebDesign01, stringResource(R.string.render_with_webview), onClick = onWebViewPreview))

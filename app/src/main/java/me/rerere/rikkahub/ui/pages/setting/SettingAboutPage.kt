@@ -172,7 +172,7 @@ fun SettingAboutPage() {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = innerPadding + PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item {
                     val interactionSource = remember { MutableInteractionSource() }
@@ -309,7 +309,7 @@ fun SettingAboutPage() {
                         item(
                             onClick = { context.openUrl("https://github.com/cs9527h/Rikkahub-M/blob/master/LICENSE") },
                             leadingContent = { CardGroupIcon(HugeIcons.File02, containerColor = containerColor, contentColor = contentColor) },
-                            supportingContent = { Text("AGPL-3.0 · 上游 RikkaHub 版权保留") },
+                            supportingContent = { Text("AGPL-3.0 · 上游版权保留") },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )
                     }

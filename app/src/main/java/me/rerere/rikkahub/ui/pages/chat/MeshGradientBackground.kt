@@ -1,24 +1,27 @@
 package me.rerere.rikkahub.ui.pages.chat
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+import android.provider.Settings as AndroidSettings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
-import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -26,137 +29,189 @@ import kotlin.math.sin
  * Gemini 风格动态渐变背景。
  *
  * 原理:
- *  1. 底层一个线性渐变(顶部偏蓝、底部偏白)。
+ *  1. 底层一个线性渐变(顶部偏蓝、底部柔和蓝灰)。
  *  2. 上面叠几个 radialGradient 光斑(中心有色 → 边缘透明),天生就是柔的。
- *  3. 每个光斑用一个独立周期的无限动画,沿正弦/余弦轨迹缓慢漂移。
+ *  3. 光斑沿正弦/余弦轨迹缓慢漂移。
  *
  * 不依赖 Modifier.blur,全 API 级别可用,性能也更好。
+ *
+ * 性能约束(0.8.8):
+ *  - 相位来自一个被节流的时钟(约 20fps),只在绘制阶段读取,不触发重组;
+ *  - 光斑 Brush 在 [drawWithCache] 里按尺寸构造一次,逐帧只做 canvas translate + drawCircle,
+ *    不再每帧 new 4 个 radialGradient / Offset / listOf;
+ *  - 系统开启「移除动画」(ANIMATOR_DURATION_SCALE = 0) 时不启动任何动画,直接画一帧静态图。
  */
 @Composable
 fun MeshGradientBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    val transition = rememberInfiniteTransition(label = "aurora")
-
-    // 每个光斑一个相位(0..2π),不同时长 → 错落漂移,避免整齐划一
-    // 增加 loops 参数，按需放大目标值和总动画时长
-    @Composable
-    fun phase(durationMillis: Int, loops: Int, label: String) = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI * loops).toFloat(),
-        animationSpec = infiniteRepeatable(tween(durationMillis * loops, easing = LinearEasing)),
-        label = label,
-    )
-    // 针对各自身上的乘数，传入消除小数所需的最小公倍数圈数
-    val p1 by phase(5_500, loops = 20, "p1") // 1.15 对应 20 圈 (总长 110秒)
-    val p2 by phase(7_000, loops = 1,  "p2") // 1.0  对应 1 圈
-    val p3 by phase(8_500, loops = 10, "p3") // 0.9  对应 10 圈 (总长 85秒)
-    val p4 by phase(6_200, loops = 10, "p4") // 1.1  对应 10 圈 (总长 62秒)
-
     val dark = LocalDarkMode.current
-    val baseGradient = if (dark) {
-        // 暗色:顶部深蓝,向下渐隐到接近纯黑
-        arrayOf(
-            0.0f to Color(0xFF1B2A45),
-            0.22f to Color(0xFF15223A),
-            0.45f to Color(0xFF0D1626),
-            0.65f to Color(0xFF0A0F18),
-            1.0f to Color(0xFF080B12),
-        )
-    } else {
-        // 亮色:顶部偏蓝,向下渐隐到白
-        arrayOf(
-            0.0f to Color(0xFFAFD0F2),
-            0.22f to Color(0xFFCBE0F6),
-            0.45f to Color(0xFFF1F7FD),
-            0.65f to Color(0xFFFFFFFF),
-            1.0f to Color(0xFFFFFFFF),
-        )
-    }
+    val reduceMotion = rememberReduceMotion()
 
-    // 光斑配色(蓝 / 青 / 淡蓝 / 暖色)及浓度,亮暗各一套
-    val blobBlue = if (dark) Color(0xFF3E6FB0) else Color(0xFF9EC5F0)
-    val blobTeal = if (dark) Color(0xFF2E7D74) else Color(0xFFA8E6E0)
-    val blobLightBlue = if (dark) Color(0xFF4A6E96) else Color(0xFFB6D7F2)
-    val blobWarm = if (dark) Color(0xFF7C5F9E) else Color(0xFFFFC8D2)
-    val alphaBlue = if (dark) 0.56f else 0.72f
-    val alphaTeal = if (dark) 0.44f else 0.56f
-    val alphaLightBlue = if (dark) 0.48f else 0.62f
-    val alphaWarm = if (dark) 0.32f else 0.42f
+    val baseStops = if (dark) DarkBaseStops else LightBaseStops
+    val blobs = if (dark) DarkBlobs else LightBlobs
+    // 让 drawWithCache 的缓存块能感知配色切换（读 State 才会让它重建缓存）
+    val currentBlobs = rememberUpdatedState(blobs)
+
+    // 一个共享时钟（秒），光斑各自按自己的周期换算相位；关闭动画时停在 0（静态帧）
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) return@LaunchedEffect
+        val startNanos = withFrameNanos { it }
+        while (isActive) {
+            withFrameNanos { now -> clock.floatValue = (now - startNanos) / 1_000_000_000f }
+            // 20fps 足够表达缓慢漂移，比跟随屏幕刷新率省 3~6 倍绘制
+            delay(FRAME_INTERVAL_MS)
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(colorStops = baseGradient)),
+            .background(Brush.verticalGradient(colorStops = baseStops)),
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            // 光斑半径取屏幕较长边的比例,够大才柔
-            val r = maxOf(w, h)
-
-            // 光斑全部聚在顶部,向下渐隐,保留下半屏留白
-            // 顶部蓝(主色,横向缓慢漂移)
-            drawBlob(
-                center = Offset(
-                    w * 0.48f + sin(p1) * w * 0.38f,
-                    h * 0.08f + cos(p1 * 1.15f) * h * 0.18f,
-                ),
-                radius = r * 0.36f,
-                color = blobBlue,
-                centerAlpha = alphaBlue,
-            )
-            // 左上青绿点缀
-            drawBlob(
-                center = Offset(
-                    w * 0.18f + sin(p2 + PI.toFloat() * 0.55f) * w * 0.30f,
-                    h * 0.24f + cos(p2) * h * 0.20f,
-                ),
-                radius = r * 0.28f,
-                color = blobTeal,
-                centerAlpha = alphaTeal,
-            )
-            // 右上淡蓝
-            drawBlob(
-                center = Offset(
-                    w * 0.82f + sin(p3 + PI.toFloat() * 0.9f) * w * -0.34f,
-                    h * 0.12f + cos(p3 * 0.9f) * h * 0.18f,
-                ),
-                radius = r * 0.30f,
-                color = blobLightBlue,
-                centerAlpha = alphaLightBlue,
-            )
-            // 暖色光斑给运动提供更明显的色彩参照
-            drawBlob(
-                center = Offset(
-                    w * 0.58f + sin(p4 + PI.toFloat() * 1.25f) * w * 0.28f,
-                    h * 0.34f + cos(p4 * 1.1f) * h * 0.16f,
-                ),
-                radius = r * 0.26f,
-                color = blobWarm,
-                centerAlpha = alphaWarm,
-            )
-        }
+        Spacer(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    // 尺寸变化时才重建 Brush：radialGradient 的着色器以自身坐标为准，
+                    // 逐帧移动时用 canvas translate 把光斑"带"到目标位置，而不是重建 Brush。
+                    val longest = maxOf(size.width, size.height)
+                    val spotBrushes = currentBlobs.value.map { blob ->
+                        val radius = longest * blob.radiusFactor
+                        Brush.radialGradient(
+                            colors = listOf(blob.color.copy(alpha = blob.alpha), Color.Transparent),
+                            center = Offset(radius, radius),
+                            radius = radius,
+                        ) to radius
+                    }
+                    onDrawBehind {
+                        val seconds = clock.floatValue
+                        currentBlobs.value.forEachIndexed { index, blob ->
+                            val (brush, radius) = spotBrushes[index]
+                            val phase = seconds * (TWO_PI / blob.periodSeconds) + blob.phaseShift
+                            val centerX = size.width * blob.anchorX + sin(phase) * size.width * blob.swayX
+                            val centerY =
+                                size.height * blob.anchorY + cos(phase * blob.rateY) * size.height * blob.swayY
+                            withTransform({ translate(centerX - radius, centerY - radius) }) {
+                                drawCircle(brush = brush, radius = radius, center = Offset(radius, radius))
+                            }
+                        }
+                    }
+                },
+        )
 
         content()
     }
 }
 
-/** 画一个柔光斑:中心有色,向外渐隐到透明。 */
-private fun DrawScope.drawBlob(
-    center: Offset,
-    radius: Float,
-    color: Color,
-    centerAlpha: Float = 0.75f,
-) {
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = centerAlpha), Color.Transparent),
-            center = center,
-            radius = radius,
-        ),
-        radius = radius,
-        center = center,
-    )
+private const val TWO_PI = 6.2831855f
+
+/** 每帧之间的最小间隔；1000/45≈22fps，肉眼看不出的漂移足够顺。 */
+private const val FRAME_INTERVAL_MS = 45L
+
+private class Blob(
+    val color: Color,
+    val alpha: Float,
+    /** 半径占屏幕长边的比例 */
+    val radiusFactor: Float,
+    /** 漂移中心（相对宽高） */
+    val anchorX: Float,
+    val anchorY: Float,
+    /** 漂移幅度（相对宽高） */
+    val swayX: Float,
+    val swayY: Float,
+    /** 纵向周期倍率，让每个光斑的轨迹不是纯正弦 */
+    val rateY: Float,
+    /** 初始相位，静态帧（关闭动画）时也保持错落 */
+    val phaseShift: Float,
+    /** 一个完整周期的秒数 */
+    val periodSeconds: Float,
+)
+
+// ---- 浅色：顶部淡蓝 → 中部柔和蓝灰 → 底部蓝灰（不再接近纯白）----
+private val LightBaseStops = arrayOf(
+    0.00f to Color(0xFFBCD8F0),
+    0.28f to Color(0xFFCBDEF1),
+    0.52f to Color(0xFFD5E4F1),
+    0.76f to Color(0xFFDCE8F3),
+    1.00f to Color(0xFFE1EBF5),
+)
+
+// ---- 暗色：顶部深蓝 → 底部近黑，中间过渡保持蓝调，不发灰 ----
+private val DarkBaseStops = arrayOf(
+    0.00f to Color(0xFF18243C),
+    0.28f to Color(0xFF131D31),
+    0.55f to Color(0xFF0E1626),
+    0.80f to Color(0xFF0A0F1B),
+    1.00f to Color(0xFF070A12),
+)
+
+// 浅色光斑：低饱和 + 低浓度，只提供层次，不把画面推白；暖色保留但更淡
+private val LightBlobs = listOf(
+    Blob(
+        color = Color(0xFF8FBEEA), alpha = 0.44f, radiusFactor = 0.36f,
+        anchorX = 0.48f, anchorY = 0.08f, swayX = 0.38f, swayY = 0.18f,
+        rateY = 1.15f, phaseShift = 0.90f, periodSeconds = 5.5f,
+    ),
+    Blob(
+        color = Color(0xFF9FDCD6), alpha = 0.30f, radiusFactor = 0.28f,
+        anchorX = 0.18f, anchorY = 0.24f, swayX = 0.30f, swayY = 0.20f,
+        rateY = 1.00f, phaseShift = 2.27f, periodSeconds = 7.0f,
+    ),
+    Blob(
+        color = Color(0xFFA9CFF0), alpha = 0.36f, radiusFactor = 0.30f,
+        anchorX = 0.82f, anchorY = 0.12f, swayX = -0.34f, swayY = 0.18f,
+        rateY = 0.90f, phaseShift = 4.08f, periodSeconds = 8.5f,
+    ),
+    Blob(
+        color = Color(0xFFF7C9CF), alpha = 0.20f, radiusFactor = 0.26f,
+        anchorX = 0.58f, anchorY = 0.34f, swayX = 0.28f, swayY = 0.16f,
+        rateY = 1.10f, phaseShift = 5.50f, periodSeconds = 6.2f,
+    ),
+)
+
+// 暗色光斑：沿用原有配色，浓度略降以免整屏发灰
+private val DarkBlobs = listOf(
+    Blob(
+        color = Color(0xFF3E6FB0), alpha = 0.52f, radiusFactor = 0.36f,
+        anchorX = 0.48f, anchorY = 0.08f, swayX = 0.38f, swayY = 0.18f,
+        rateY = 1.15f, phaseShift = 0.90f, periodSeconds = 5.5f,
+    ),
+    Blob(
+        color = Color(0xFF2E7D74), alpha = 0.40f, radiusFactor = 0.28f,
+        anchorX = 0.18f, anchorY = 0.24f, swayX = 0.30f, swayY = 0.20f,
+        rateY = 1.00f, phaseShift = 2.27f, periodSeconds = 7.0f,
+    ),
+    Blob(
+        color = Color(0xFF4A6E96), alpha = 0.44f, radiusFactor = 0.30f,
+        anchorX = 0.82f, anchorY = 0.12f, swayX = -0.34f, swayY = 0.18f,
+        rateY = 0.90f, phaseShift = 4.08f, periodSeconds = 8.5f,
+    ),
+    Blob(
+        color = Color(0xFF7C5F9E), alpha = 0.28f, radiusFactor = 0.26f,
+        anchorX = 0.58f, anchorY = 0.34f, swayX = 0.28f, swayY = 0.16f,
+        rateY = 1.10f, phaseShift = 5.50f, periodSeconds = 6.2f,
+    ),
+)
+
+/**
+ * 系统「移除动画」是否打开。
+ *
+ * 和 MemoryCenterPage / ChatPage 里已有的 reduceMotion 写法保持一致：读
+ * Settings.Global.ANIMATOR_DURATION_SCALE，等于 0 视为用户要求移除动画。
+ */
+@Composable
+private fun rememberReduceMotion(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        runCatching {
+            AndroidSettings.Global.getFloat(
+                context.contentResolver,
+                AndroidSettings.Global.ANIMATOR_DURATION_SCALE,
+                1f,
+            ) == 0f
+        }.getOrDefault(false)
+    }
 }

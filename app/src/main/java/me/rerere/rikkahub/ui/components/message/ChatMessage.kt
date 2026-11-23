@@ -99,6 +99,7 @@ import me.rerere.rikkahub.utils.openUrl
 import me.rerere.rikkahub.utils.urlDecode
 import me.rerere.ui.charts.ChartCard
 import me.rerere.ui.charts.ChartSpec
+import me.rerere.ui.components.RikkaConfirmDialog
 import me.rerere.ui.webview.WebViewContentCache
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
@@ -153,7 +154,10 @@ fun ChatMessage(
         fontFamily = chatFontFamily
     )
     var showActionsSheet by remember { mutableStateOf(false) }
+    var showTranslateDialog by remember { mutableStateOf(false) }
     var showSelectCopySheet by remember { mutableStateOf(false) }
+    // 删除在更多菜单里，离开菜单后仍要一次确认：消息删掉就找不回来，误触代价太高
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
@@ -232,9 +236,7 @@ fun ChatMessage(
                     onUpdate = onUpdate,
                     onOpenActionSheet = {
                         showActionsSheet = true
-                    },
-                    onTranslate = onTranslate,
-                    onClearTranslation = onClearTranslation
+                    }
                 )
             }
         }
@@ -253,7 +255,7 @@ fun ChatMessage(
         ChatMessageActionsSheet(
             message = message,
             onEdit = onEdit,
-            onDelete = onDelete,
+            onDelete = { showDeleteConfirm = true },
             onShare = onShare,
             onFork = onFork,
             model = model,
@@ -262,6 +264,7 @@ fun ChatMessage(
             },
             isFavorite = isFavorite,
             onToggleFavorite = onToggleFavorite,
+            onRequestTranslate = if (onTranslate != null) ({ showTranslateDialog = true }) else null,
             onWebViewPreview = {
                 val textContent = message.parts
                     .filterIsInstance<UIMessagePart.Text>()
@@ -280,6 +283,35 @@ fun ChatMessage(
             onDismissRequest = {
                 showActionsSheet = false
             }
+        )
+    }
+
+    if (showTranslateDialog && onTranslate != null) {
+        LanguageSelectionDialog(
+            onLanguageSelected = { language ->
+                showTranslateDialog = false
+                onTranslate(message, language)
+            },
+            onClearTranslation = {
+                showTranslateDialog = false
+                onClearTranslation(message)
+            },
+            onDismissRequest = { showTranslateDialog = false },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        RikkaConfirmDialog(
+            show = true,
+            title = stringResource(R.string.delete),
+            confirmText = stringResource(R.string.confirm),
+            dismissText = stringResource(R.string.cancel),
+            onConfirm = {
+                showDeleteConfirm = false
+                onDelete()
+            },
+            onDismiss = { showDeleteConfirm = false },
+            text = { Text("删除后无法恢复。") },
         )
     }
 

@@ -139,7 +139,7 @@ fun SettingSearchDetailPage(
                     ) {
                         Text(
                             text = stringResource(R.string.setting_page_search_config),
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleMediumEmphasized
                         )
 
                         SearchServiceOptionsEditor(
@@ -256,7 +256,7 @@ private fun SearchTestSection(
         ) {
             Text(
                 text = stringResource(R.string.setting_page_search_test),
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleMediumEmphasized
             )
 
             Row(

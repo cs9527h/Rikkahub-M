@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
+import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Zap
@@ -56,6 +57,12 @@ fun ExtensionsPage() {
                 CardGroup(
                     title = { Text(stringResource(R.string.extensions_page_section_extensions)) },
                 ) {
+                    item(
+                        onClick = { navController.navigate(Screen.MemoryCenter()) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text("记忆") },
+                        supportingContent = { Text("开启与管理记忆") },
+                    )
                     item(
                         onClick = { navController.navigate(Screen.QuickMessages) },
                         leadingContent = { CardGroupIcon(HugeIcons.Zap, containerColor = containerColor, contentColor = contentColor) },

@@ -548,7 +548,7 @@ private fun CardGroupScope.deepSeekASRItems(
 ) {
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_asr_configure_api_key)) },
-        supportingContent = { Text("DeepSeek 开放平台的 API Key") }
+        supportingContent = { Text("DeepSeek 开放平台密钥") }
     ) {
         OutlinedTextField(
             value = setting.apiKey,
@@ -560,7 +560,7 @@ private fun CardGroupScope.deepSeekASRItems(
 
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_asr_configure_base_url)) },
-        supportingContent = { Text("请求地址为 {Base URL}/v1/tools/asr") }
+        supportingContent = { Text("路径 /v1/tools/asr") }
     ) {
         OutlinedTextField(
             value = setting.baseUrl,
@@ -572,7 +572,7 @@ private fun CardGroupScope.deepSeekASRItems(
 
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_asr_configure_sample_rate)) },
-        supportingContent = { Text("录音采样率，16000 Hz 即可满足识别") }
+        supportingContent = { Text("采样率（Hz），推荐 16000") }
     ) {
         SelectTextField(
             value = "${setting.sampleRate} Hz",
@@ -586,7 +586,7 @@ private fun CardGroupScope.deepSeekASRItems(
 
     formItem(
         headlineContent = { Text(stringResource(R.string.setting_asr_configure_segment_duration)) },
-        supportingContent = { Text("录音每满多少秒上传识别一段，0 表示停止录音时才上传。单段最长约 110 秒，超出会自动切段") }
+        supportingContent = { Text("每 N 秒一段，0 停止时上传（≤110）") }
     ) {
         OutlinedNumberInput(
             value = setting.segmentDurationSec,

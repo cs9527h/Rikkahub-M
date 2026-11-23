@@ -299,7 +299,7 @@ private fun TestResultItem(
             ) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMediumEmphasized
                 )
                 Text(
                     text = state.error.message ?: "Error",
