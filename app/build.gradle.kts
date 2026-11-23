@@ -26,8 +26,8 @@ android {
         applicationId = "com.rikkahub.mate"
         minSdk = 26
         targetSdk = 37
-        versionCode = 31
-        versionName = "0.8.5"
+        versionCode = 32
+        versionName = "0.8.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -358,6 +358,8 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.room.testing)
+    // 仪器化用例要直接对着本地 HTTP 服务验证下载线程，显式声明避免依赖被测变体传递
+    androidTestImplementation(libs.okhttp)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

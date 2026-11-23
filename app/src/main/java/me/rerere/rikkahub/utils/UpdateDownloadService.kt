@@ -28,8 +28,13 @@ import org.koin.core.component.inject
 
 /**
  * 更新包下载的前台服务：只负责保活进程与刷新通知栏进度。
- * 真正的下载在 [UpdateChecker] 的 AppScope 里跑，服务观察同一份状态，
+ * 真正的下载在 [UpdateChecker] 的 AppScope 里、Dispatchers.IO 上跑，服务观察同一份状态，
  * 因此界面、通知栏不会出现两套进度，取消也只作用一次。
+ *
+ * 线程约定：Service 的 onCreate/onStartCommand/collect 全在主线程，这里**只允许**
+ * binder 调用（startForeground、NotificationManager、PackageManager）与状态渲染，
+ * 不许出现网络、文件读写或大对象哈希；那些一律留在 UpdateChecker 的 IO 段。
+ * 这条约定由 UpdateMainThreadSourceGuardTest 检查。
  *
  * 通知权限被拒绝、startForeground 被系统拒绝等失败一律记录并回报界面，
  * 不再用 runCatching 静默吞掉，也不会继续提示「请在状态栏查看进度」。
@@ -231,11 +236,9 @@ class UpdateDownloadService : Service(), KoinComponent {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
                 PackageManager.PERMISSION_GRANTED
             ) {
+                // 不再往 SharedPreferences 里写标记：这个值没有读取方，而 SharedPreferences
+                // 的加载/写入是主线程磁盘 IO 风险点。调用方已经通过返回值处理「通知不可用」。
                 Log.w(TAG, "缺少 POST_NOTIFICATIONS，跳过前台通知服务")
-                runCatching {
-                    context.getSharedPreferences("update-check", Context.MODE_PRIVATE).edit()
-                        .putBoolean("notification_blocked", true).apply()
-                }
                 return false
             }
             if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
