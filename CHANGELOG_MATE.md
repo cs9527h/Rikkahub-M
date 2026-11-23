@@ -8,6 +8,15 @@
 
 # Mate · 更新日志
 
+## 0.9.0 — 聊天页不再死白、正文排版收紧（2026-11-24）
+
+- 新增：默认背景。`Assistant.useGradientBackground` 默认 false 且壁纸为空时，`AssistantBackground` 原来什么都不画，聊天页露出的就是 `colorScheme.surface`（浅色近 #FFFBFE）——整屏死白，顶栏/消息/输入框全糊成一片。现在补一层 `SoftBackground`：纵向 `lerp(surface, primary, 3%)` → `surface` → `lerp(surface, onSurface, 3%)`，加左上主色光晕 5%、右上暖色光晕 2.5%，全静态绘制（`drawWithCache`，零动画、零重组）。
+- 优化：暗色单独取值（`7%` / 光晕 `7%`），暗底上有层次但不提亮整屏；动态渐变与自定义壁纸路径完全不变。
+- 优化：聊天正文排版基准 16sp/24sp → 15.5sp/22.5sp（`ChatMessage` 里 `CHAT_BODY_FONT_SIZE`/`CHAT_BODY_LINE_HEIGHT`），`fontSizeRatio` 用户设置仍按比例生效。
+- 优化：未配置模型时的 `QuickStartHeroCard` 从 padding 20dp/图标 56dp/间距 16dp 收到 16dp/44dp/12dp，标题降一档到 `titleMediumEmphasized`。
+- 新增：`.github/workflows/ui-screenshots.yml` + `scripts/capture-ui-screens.sh` + `scripts/run-ui-capture.sh`，装包后按浅色/暗色截「空态 / 输入态 / 发送后 / 抽屉」，产物上传为 artifact。UI 改动从此有真实渲染证据。
+- 兼容：无数据库迁移；versionCode 36 / 0.9.0，签名与包名不变，可覆盖升级 0.8.9。
+
 ## 0.8.9 — 顶部与背景回到中性、消息区与输入框收紧（2026-11-24）
 
 - 修复：0.8.8 把标题包进一个大白色胶囊，视觉突兀。现在标题是简洁两行文字，滚动后由「向下淡出」的渐变提供可读底色（顶部最实、顶栏底部完全透明），不再是一条 0.45 的白带，也不会把顶部割成三块。
