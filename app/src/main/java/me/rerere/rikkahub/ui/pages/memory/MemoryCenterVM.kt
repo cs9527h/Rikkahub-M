@@ -164,9 +164,20 @@ internal class MemoryCenterVM(
         }
     }
 
-    /** 切换记忆库；[global] 为 true 时切到所有助手共享的那一份。 */
+    /**
+     * 切换浏览的记忆库；[global] 为 true 时切到所有助手共享的那一份。
+     *
+     * 这里只改页面状态，绝不写 assistant.useGlobalMemory：浏览别人/共享的记忆不该顺手把
+     * 聊天配置改掉。用户选回“就是助手实际在用的那一个”时清掉偏好，重新跟随助手，
+     * 之后助手设置被改动，页面也跟着变。
+     */
     fun selectGlobal(global: Boolean) {
-        scopePreference.value = global
+        scopePreference.value = if (global == assistant.value.useGlobalMemory) null else global
+    }
+
+    /** 从“浏览别处”回到聊天实际使用的记忆库：清掉浏览偏好，重新跟随助手的 useGlobalMemory。 */
+    fun followAssistantScope() {
+        scopePreference.value = null
     }
 
     /** 当前记忆库对应的助手快照：整理与使用记录看的是这个库，不是另一个库的配置。 */

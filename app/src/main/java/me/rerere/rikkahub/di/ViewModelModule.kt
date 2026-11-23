@@ -62,7 +62,7 @@ val viewModelModule = module {
     }
     viewModel<MemoryCenterVM> {
         MemoryCenterVM(
-            // 从设置/侧边栏进来时不带助手，VM 会跟随当前选中的助手
+            // 从设置进来时不带助手，VM 跟随当前选中的助手；从助手详情进来带那一个助手的 id
             assistantId = it.getOrNull(),
             settingsStore = get(),
             memoryRepository = get(),

@@ -87,7 +87,6 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantDetailPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantExtensionsPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantLocalToolPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
-import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantPromptPage
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
@@ -397,10 +396,7 @@ class RouteActivity : ComponentActivity() {
                                 AssistantPromptPage(key.id)
                             }
 
-                            entry<Screen.AssistantMemory> { key ->
-                                AssistantMemoryPage(key.id)
-                            }
-
+                            // 记忆只有一个页面：设置和助手详情都直接跳到记忆中心，不再保留中转页
                             entry<Screen.MemoryCenter> { key ->
                                 MemoryCenterPage(assistantId = key.assistantId, path = key.path)
                             }
@@ -692,13 +688,10 @@ sealed interface Screen : NavKey {
     @Serializable
     data class AssistantPrompt(val id: String) : Screen
 
-    @Serializable
-    data class AssistantMemory(val id: String) : Screen
-
     /**
-     * 记忆中心，长期记忆的一级页面。
+     * 记忆中心，长期记忆的唯一入口页面。
      *
-     * [assistantId] 为 null 时跟随当前选中的助手（设置页和侧边栏的入口就是这样进来的）；
+     * [assistantId] 为 null 时跟随当前选中的助手（设置页的入口就是这样进来的）；
      * [path] 用来直接打开某一篇记忆文件，普通进入时为空。
      */
     @Serializable

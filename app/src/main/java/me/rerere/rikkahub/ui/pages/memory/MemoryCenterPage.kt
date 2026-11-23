@@ -14,12 +14,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -34,12 +34,14 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -56,13 +58,17 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,6 +83,7 @@ import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Brain02
+import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.CheckList
 import me.rerere.hugeicons.stroke.Delete01
@@ -88,12 +95,12 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.MemoryConsolidationStatus
 import me.rerere.rikkahub.data.ai.memory.HISTORY_INPUT_CHARS
-import me.rerere.rikkahub.data.ai.memory.HISTORY_OUTPUT_TOKENS
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
+import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -101,9 +108,10 @@ import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.pages.assistant.detail.HistoryCandidateDialog
+import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryAdvancedSettings
 import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryReextractPicker
 import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryReviewScreen
-import me.rerere.rikkahub.ui.pages.assistant.detail.MemorySettingsScreen
+import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryStatusSwitches
 import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryTaskHistoryScreen
 import me.rerere.rikkahub.ui.pages.assistant.detail.MemoryUsageScreen
 import me.rerere.rikkahub.ui.theme.CustomColors
@@ -194,8 +202,15 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
         CenterSection.USAGE -> "记忆使用记录"
         CenterSection.TASK_HISTORY -> "任务历史"
     }
+    // 顶栏副标题说明“正在看的这份记忆库”，浏览别处时直接说出来，避免和聊天实际配置混淆
+    val assistantLabel = assistant.name.ifBlank { "这个助手" }
+    val browsingElsewhere = scope != assistant.memoryId
     val subtitle = when (section) {
-        CenterSection.HOME -> if (useGlobal) "所有助手共享这一份记忆" else "只属于「${assistant.name.ifBlank { "这个助手" }}」"
+        CenterSection.HOME -> when {
+            browsingElsewhere -> "正在浏览另一份记忆库 · 不影响聊天设置"
+            useGlobal -> "所有助手共享这一份记忆"
+            else -> "只属于「$assistantLabel」"
+        }
         CenterSection.REVIEW -> "确认之后才写入，随时可以撤销"
         CenterSection.USAGE -> "这一轮到底带上了哪些记忆"
         CenterSection.TASK_HISTORY -> "每一轮整理留下了什么"
@@ -205,23 +220,13 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
         topBar = {
             MediumFlexibleTopAppBar(
                 title = { Text(title) },
-                // 副标题只是说明当前记忆库，用 labelMedium 保持顶栏紧凑，避免大字挤掉首屏内容
-                subtitle = { Text(subtitle, style = MaterialTheme.typography.labelMedium) },
+                // 副标题沿用其它二级页的默认字号，不再单独指定，四个 section 之间也不会跳字号
+                subtitle = { Text(subtitle) },
                 navigationIcon = {
                     if (section == CenterSection.HOME) {
                         BackButton()
                     } else {
                         CenterSectionBack { section = CenterSection.HOME }
-                    }
-                },
-                actions = {
-                    if (section == CenterSection.HOME) {
-                        FilledTonalIconButton(
-                            onClick = { navController.navigate(Screen.MemoryFile(scope, null)) },
-                            shapes = IconButtonDefaults.shapes(),
-                        ) {
-                            Icon(HugeIcons.Add01, contentDescription = stringResource(R.string.add))
-                        }
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -264,10 +269,12 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         lastOrganizedAt = lastState?.lastOrganizedAt ?: 0,
                         lastResult = lastState?.lastResult.orEmpty(),
                         memoryEnabled = assistant.enableMemory,
+                        reduceMotion = reduceMotion,
                         busy = busy,
                         notice = notice,
                         onNoticeShown = { vm.noticeShown() },
                         onSelectScope = { vm.selectGlobal(it) },
+                        onFollowAssistantScope = { vm.followAssistantScope() },
                         onUpdateAssistant = { vm.updateAssistant(it) },
                         onOpenModels = { navController.navigate(Screen.SettingModels) },
                         onOrganize = { vm.startOrganize() },
@@ -276,6 +283,7 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         onOpenTaskHistory = { section = CenterSection.TASK_HISTORY },
                         onOpenUsage = { section = CenterSection.USAGE },
                         onOpenMemory = { memoryPath -> navController.navigate(Screen.MemoryFile(scope, memoryPath)) },
+                        onCreateMemory = { navController.navigate(Screen.MemoryFile(scope, null)) },
                         onDelete = { vm.deleteMemory(it) },
                         onRestore = { vm.restoreMemory(it) },
                         onPurge = { vm.purgeMemory(it) },
@@ -406,10 +414,12 @@ private fun MemoryCenterHome(
     lastOrganizedAt: Long,
     lastResult: String,
     memoryEnabled: Boolean,
+    reduceMotion: Boolean,
     busy: Boolean,
     notice: String?,
     onNoticeShown: () -> Unit,
     onSelectScope: (Boolean) -> Unit,
+    onFollowAssistantScope: () -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onOpenModels: () -> Unit,
     onOrganize: () -> Unit,
@@ -418,6 +428,7 @@ private fun MemoryCenterHome(
     onOpenTaskHistory: () -> Unit,
     onOpenUsage: () -> Unit,
     onOpenMemory: (String) -> Unit,
+    onCreateMemory: () -> Unit,
     onDelete: (MemoryFile) -> Unit,
     onRestore: (MemoryFile) -> Unit,
     onPurge: (MemoryFile) -> Unit,
@@ -427,6 +438,7 @@ private fun MemoryCenterHome(
     previewRecall: suspend (String) -> List<MemoryFile>,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<MemoryFile?>(null) }
     var purgeTarget by remember { mutableStateOf<MemoryFile?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
@@ -442,6 +454,13 @@ private fun MemoryCenterHome(
         } else {
             (collapsed + name).joinToString("|")
         }
+    }
+
+    // 搜索框钉在列表上方：点“搜索”立刻能打字，关掉搜索会清空关键词并回到完整列表
+    val searchFocus = remember { FocusRequester() }
+    BackHandler(enabled = searchOpen) {
+        searchOpen = false
+        query = ""
     }
 
     val preview by produceState<List<MemoryFile>?>(initialValue = null, key1 = query, key2 = scopeKey) {
@@ -464,163 +483,246 @@ private fun MemoryCenterHome(
             .map { (group, files) -> group to files.sortedByDescending { it.updatedAt } }
     }
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item(key = "scope") {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("浏览记忆库", style = MaterialTheme.typography.labelMedium)
-                ScopeRow(
-                    assistantName = assistantName.ifBlank { "当前助手" },
-                    useGlobal = useGlobal,
-                    onSelectScope = onSelectScope,
-                )
-                Text(
-                    "浏览范围不会改变聊天的记忆设置。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    // 浏览记忆库只是换个视角看记忆，和聊天实际用哪一份是两件事，这里把差异写清楚
+    val actuallyGlobal = assistant.useGlobalMemory
+    val browsingElsewhere = scopeKey != assistant.memoryId
+    val assistantLabel = assistantName.ifBlank { "当前助手" }
+    val actualScopeLabel = if (actuallyGlobal) "所有助手共享的记忆" else "「$assistantLabel」自己的记忆"
+
+    // 只有“正在整理 / 暂停 / 失败 / 有对话等着整理”时才多占一行；
+    // 平时“最近整理”已经在统计行里，不再重复一块卡片
+    val jobStatus = job?.status
+    val jobNeedsAttention = jobStatus == "running" || jobStatus == "paused" ||
+        jobStatus == "failed" || jobStatus == "interrupted"
+    val statusVisible = jobNeedsAttention || consolidation.running || consolidation.pendingTurns > 0
+
+    Column(Modifier.fillMaxSize()) {
+        if (searchOpen) {
+            // 等一帧再抢焦点：输入框刚组合出来时焦点修饰符还没挂上，直接 requestFocus 会抛异常
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                searchFocus.requestFocus()
             }
-        }
-        item(key = "memory-controls") {
-            MemorySettingsScreen(
-                assistant = assistant,
-                showAdvanced = advancedVisible,
-                onUpdateAssistant = onUpdateAssistant,
-                onOpenModels = onOpenModels,
+            TextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                    .focusRequester(searchFocus),
+                placeholder = { Text("问一句，比如“我之前说过的阅读习惯”") },
+                leadingIcon = {
+                    Icon(HugeIcons.Search01, contentDescription = null, modifier = Modifier.size(18.dp))
+                },
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            searchOpen = false
+                            query = ""
+                        },
+                    ) {
+                        Icon(HugeIcons.Cancel01, contentDescription = "关闭搜索", modifier = Modifier.size(18.dp))
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(20.dp),
             )
-        }
-        item(key = "advanced-toggle") {
-            AssistChip(
-                onClick = { advancedVisible = !advancedVisible },
-                label = { Text(if (advancedVisible) "收起高级设置" else "更多设置 · 预算与模型") },
-            )
-        }
-        item(key = "stats") {
-            StatsStrip(
-                files = memories.size,
-                pending = pendingCount,
-                skipped = skippedCount,
-                saved = savedCount,
-            )
-        }
-        item(key = "status") {
-            OrganizeStatusRow(
-                job = job,
-                consolidation = consolidation,
-                lastOrganizedAt = lastOrganizedAt,
-                lastResult = lastResult,
-                memoryEnabled = memoryEnabled,
-                busy = busy,
-                onPause = onPause,
-                onResume = onResume,
-                onCancel = onCancel,
-            )
-        }
-        item(key = "actions") {
-            // 常用动作全部平铺：以前「使用记录」「任务历史」在右上角 ⋮ 里，用户反馈根本找不到
-            ActionChips(
-                pendingCount = pendingCount,
-                skippedCount = skippedCount,
-                busy = busy,
-                onOrganize = onOrganize,
-                onReextract = onReextract,
-                onOpenReview = onOpenReview,
-                onOpenTaskHistory = onOpenTaskHistory,
-                onOpenUsage = onOpenUsage,
-            )
-        }
-        notice?.let { message ->
-            item(key = "notice") {
-                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-            }
-        }
-        if (memories.isNotEmpty()) {
-            item(key = "search") {
-                SearchField(query) { query = it }
-            }
         }
 
-        val searching = query.isNotBlank()
-        if (searching) {
-            item(key = "search-heading") {
-                Text(
-                    if ((preview ?: emptyList()).isEmpty()) "没有找到相关记忆" else "聊天时会带上这些记忆",
-                    style = MaterialTheme.typography.titleSmall,
+        // 搜索框占一行时列表自动让出高度，不用固定高度去算
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // 1) 使用状态：三个开关决定聊天到底用不用记忆
+            item(key = "usage-switches") {
+                MemoryStatusSwitches(assistant = assistant, onUpdateAssistant = onUpdateAssistant)
+            }
+
+            // 2) 记忆库浏览：只换视角，不动聊天配置
+            item(key = "scope") {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SectionTitle("浏览记忆库")
+                    ScopeRow(
+                        assistantName = assistantLabel,
+                        useGlobal = useGlobal,
+                        onSelectScope = onSelectScope,
+                    )
+                    Text(
+                        text = if (browsingElsewhere) {
+                            "只切换这里浏览哪一份记忆，不会改动聊天实际使用的记忆库。聊天现在用的是$actualScopeLabel。"
+                        } else {
+                            "这里显示的就是聊天实际使用的记忆库；切到别的库只改浏览，不改聊天设置。"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (browsingElsewhere) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    if (browsingElsewhere) {
+                        FilledTonalButton(
+                            onClick = onFollowAssistantScope,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text("回到实际使用的记忆库")
+                        }
+                    }
+                }
+            }
+
+            // 3) 统计：一行读完，不占一张大卡
+            item(key = "stats") {
+                StatsStrip(
+                    files = memories.size,
+                    pending = pendingCount,
+                    skipped = skippedCount,
+                    lastOrganizedAt = lastOrganizedAt,
                 )
             }
-            items(preview ?: emptyList(), key = { "search:${it.path}" }) { memory ->
-                MemoryRow(memory, onOpen = { onOpenMemory(memory.path) }, onDelete = { deleteTarget = memory })
+
+            if (statusVisible) {
+                item(key = "status") {
+                    OrganizeStatusRow(
+                        job = job,
+                        consolidation = consolidation,
+                        lastOrganizedAt = lastOrganizedAt,
+                        lastResult = lastResult,
+                        memoryEnabled = memoryEnabled,
+                        busy = busy,
+                        onPause = onPause,
+                        onResume = onResume,
+                        onCancel = onCancel,
+                    )
+                }
             }
-        } else if (memories.isEmpty() && pendingCount == 0 && savedCount == 0) {
-            item(key = "empty") {
-                Box(Modifier.fillMaxWidth().height(168.dp)) {
+
+            // 4) 功能分组：整理 / 审阅 / 内容，全部平铺，不进右上角 ⋮
+            item(key = "actions") {
+                ActionChips(
+                    pendingCount = pendingCount,
+                    skippedCount = skippedCount,
+                    busy = busy,
+                    searchOpen = searchOpen,
+                    onOrganize = onOrganize,
+                    onReextract = onReextract,
+                    onOpenReview = onOpenReview,
+                    onOpenTaskHistory = onOpenTaskHistory,
+                    onOpenUsage = onOpenUsage,
+                    onToggleSearch = {
+                        searchOpen = !searchOpen
+                        if (!searchOpen) query = ""
+                    },
+                    onCreateMemory = onCreateMemory,
+                )
+            }
+
+            notice?.let { message ->
+                item(key = "notice") {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            // 5) 记忆列表：搜索时换成召回预览，平时按分组折叠
+            item(key = "list-title") {
+                SectionTitle(
+                    when {
+                        query.isBlank() -> "记住了什么"
+                        (preview ?: emptyList()).isEmpty() -> "没有找到相关记忆"
+                        else -> "召回预览 · 聊天时会带上这几条"
+                    },
+                )
+            }
+            if (query.isNotBlank()) {
+                items(preview ?: emptyList(), key = { "search:${it.path}" }) { memory ->
+                    MemoryRow(memory, onOpen = { onOpenMemory(memory.path) }, onDelete = { deleteTarget = memory })
+                }
+            } else if (memories.isEmpty() && pendingCount == 0 && savedCount == 0) {
+                item(key = "empty") {
                     ExtensionEmptyState(
                         message = "还没有记住什么",
-                        description = "聊过几次之后再点“智能整理”，我会把值得长期记住的事整理出来。",
+                        description = "聊过几次之后再点“智能整理”，我会把值得长期记住的事整理出来；也可以自己先写一条。",
+                        buttonText = "新建一条记忆",
+                        onAction = onCreateMemory,
                         icon = HugeIcons.Brain02,
                     )
                 }
-            }
-        } else {
-            groups.forEach { (group, files) ->
-                val isCollapsed = group.name in collapsed
-                item(key = "group:${group.name}") {
-                    GroupHeader(
-                        label = group.label,
-                        count = files.size,
-                        collapsed = isCollapsed,
-                        onClick = { toggleGroup(group.name) },
-                    )
-                }
-                if (!isCollapsed) {
-                    items(files, key = { "memory:${it.path}" }) { memory ->
-                        MemoryRow(memory, onOpen = { onOpenMemory(memory.path) }, onDelete = { deleteTarget = memory })
-                    }
-                }
-            }
-        }
-
-        if (deletedMemories.isNotEmpty()) {
-            item(key = "trash") {
-                TextButton(onClick = { showTrash = !showTrash }) {
-                    Text(if (showTrash) "收起最近删除" else "最近删除（${deletedMemories.size}）")
-                }
-            }
-            if (showTrash) {
-                items(deletedMemories, key = { "trash:${it.path}" }) { memory ->
-                    CardGroup {
-                        item(
-                            trailingContent = {
-                                ItemActionMenu(
-                                    actions = listOf(
-                                        ItemAction(
-                                            text = stringResource(R.string.memory_restore),
-                                            icon = HugeIcons.ArrowTurnBackward,
-                                            onClick = { onRestore(memory) },
-                                        ),
-                                        ItemAction(
-                                            text = stringResource(R.string.memory_delete_forever),
-                                            icon = HugeIcons.Delete01,
-                                            destructive = true,
-                                            onClick = { purgeTarget = memory },
-                                        ),
-                                    )
-                                )
-                            },
-                            headlineContent = { Text(memory.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            supportingContent = {
-                                Text(
-                                    stringResource(R.string.memory_deleted_at, relativeTimeOf(memory.deletedAt)),
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
+            } else {
+                groups.forEach { (group, files) ->
+                    val isCollapsed = group.name in collapsed
+                    item(key = "group:${group.name}") {
+                        GroupHeader(
+                            label = group.label,
+                            count = files.size,
+                            collapsed = isCollapsed,
+                            onClick = { toggleGroup(group.name) },
                         )
                     }
+                    if (!isCollapsed) {
+                        items(files, key = { "memory:${it.path}" }) { memory ->
+                            MemoryRow(memory, onOpen = { onOpenMemory(memory.path) }, onDelete = { deleteTarget = memory })
+                        }
+                    }
                 }
+            }
+
+            if (deletedMemories.isNotEmpty()) {
+                item(key = "trash") {
+                    TextButton(onClick = { showTrash = !showTrash }) {
+                        Text(if (showTrash) "收起最近删除" else "最近删除（${deletedMemories.size}）")
+                    }
+                }
+                if (showTrash) {
+                    items(deletedMemories, key = { "trash:${it.path}" }) { memory ->
+                        CardGroup {
+                            item(
+                                trailingContent = {
+                                    ItemActionMenu(
+                                        actions = listOf(
+                                            ItemAction(
+                                                text = stringResource(R.string.memory_restore),
+                                                icon = HugeIcons.ArrowTurnBackward,
+                                                onClick = { onRestore(memory) },
+                                            ),
+                                            ItemAction(
+                                                text = stringResource(R.string.memory_delete_forever),
+                                                icon = HugeIcons.Delete01,
+                                                destructive = true,
+                                                onClick = { purgeTarget = memory },
+                                            ),
+                                        ),
+                                    )
+                                },
+                                headlineContent = { Text(memory.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                supportingContent = {
+                                    Text(
+                                        stringResource(R.string.memory_deleted_at, relativeTimeOf(memory.deletedAt)),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 6) 高级设置：预算、模型、时间提醒这些低频项折叠在最后，展开有过渡
+            item(key = "advanced") {
+                MemoryAdvancedSettings(
+                    assistant = assistant,
+                    expanded = advancedVisible,
+                    reduceMotion = reduceMotion,
+                    onExpandedChange = { advancedVisible = it },
+                    onUpdateAssistant = onUpdateAssistant,
+                    onOpenModels = onOpenModels,
+                )
             }
         }
     }
@@ -656,6 +758,17 @@ private fun MemoryCenterHome(
     )
 }
 
+/** 分区标题：和 CardGroup 的分组标题同字号同色，几个分区看起来是一个层级。 */
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp),
+    )
+}
+
 /** 记忆库选择器：两个 chip 就够了，助手名直接写在 chip 上，不用再点开下拉才知道看的是谁。 */
 @Composable
 private fun ScopeRow(
@@ -663,10 +776,11 @@ private fun ScopeRow(
     useGlobal: Boolean,
     onSelectScope: (Boolean) -> Unit,
 ) {
-    Row(
+    // 窄屏 / 大字体下两个 chip 会换行，不用固定宽度，避免文字被裁掉
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FilterChip(
             selected = !useGlobal,
@@ -676,7 +790,7 @@ private fun ScopeRow(
                     text = "「$assistantName」",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = 160.dp),
+                    modifier = Modifier.widthIn(max = 180.dp),
                 )
             },
         )
@@ -689,41 +803,41 @@ private fun ScopeRow(
 }
 
 /**
- * 统计行：三个数字一行读完，不占一张大卡。
+ * 统计行：四个数字一行读完，不占一张大卡。
  *
- * 文件数是记忆库里真实存在的 markdown 文件，【已保存】是整理候选累计写入的条数——两者对不上
- * 通常意味着候选被合并过，用户能一眼看出“数字怎么和列表长度不一样”。
+ * 文件数是记忆库里真实存在的 markdown 文件，【待确认】【已跳过】是候选数，
+ * 【最近整理】是上一次整理完成的时间——对不上时用户能一眼看出“数字和列表长度为什么不同”。
  */
 @Composable
-private fun StatsStrip(files: Int, pending: Int, skipped: Int, saved: Int) {
+private fun StatsStrip(files: Int, pending: Int, skipped: Int, lastOrganizedAt: Long) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                StatCell("记忆文件", files, Modifier.weight(1f))
-                StatCell(
-                    "待确认",
-                    pending,
-                    Modifier.weight(1f),
-                    valueColor = if (pending > 0) MaterialTheme.colorScheme.primary else null,
-                )
-                StatCell(
-                    "已跳过",
-                    skipped,
-                    Modifier.weight(1f),
-                    valueColor = if (skipped > 0) MaterialTheme.colorScheme.tertiary else null,
-                )
-            }
-            if (saved > 0) {
-                Text(
-                    "整理累计保存 $saved 条候选",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                )
-            }
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatCell(label = "记忆文件", value = files.toString(), modifier = Modifier.weight(1f))
+            StatCell(
+                label = "待确认",
+                value = pending.toString(),
+                modifier = Modifier.weight(1f),
+                valueColor = if (pending > 0) MaterialTheme.colorScheme.primary else null,
+            )
+            StatCell(
+                label = "已跳过",
+                value = skipped.toString(),
+                modifier = Modifier.weight(1f),
+                valueColor = if (skipped > 0) MaterialTheme.colorScheme.tertiary else null,
+            )
+            StatCell(
+                label = "最近整理",
+                value = if (lastOrganizedAt > 0) compactRelativeTime(lastOrganizedAt) else "还没有",
+                modifier = Modifier.weight(1.2f),
+                valueStyle = MaterialTheme.typography.titleSmall,
+            )
         }
     }
 }
@@ -731,20 +845,25 @@ private fun StatsStrip(files: Int, pending: Int, skipped: Int, saved: Int) {
 @Composable
 private fun StatCell(
     label: String,
-    value: Int,
+    value: String,
     modifier: Modifier = Modifier,
     valueColor: Color? = null,
+    valueStyle: TextStyle = MaterialTheme.typography.titleMedium,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            text = value.toString(),
-            style = MaterialTheme.typography.titleLarge,
+            text = value,
+            style = valueStyle,
             color = valueColor ?: MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -774,11 +893,15 @@ private fun OrganizeStatusRow(
         status == "running" -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // 这一行只在“需要动作”时才出现，所以文字优先说正在发生/失败的事，
+    // 平时那句“最近整理”已经交给上面的统计行了，不在这里重复一遍
     val text = when {
         status == "running" && job != null ->
             "正在整理 ${job.sourceIndex}/${job.sourceCount.coerceAtLeast(1)} 个聊天"
         status == "paused" -> job?.failure?.takeIf { it.isNotBlank() } ?: "整理已暂停"
         failed -> job?.failure?.takeIf { it.isNotBlank() }?.let { "上次整理失败：$it" } ?: "上次整理中断，可以重试"
+        consolidation.running -> "后台正在整理最近的对话…"
+        consolidation.pendingTurns > 0 -> "有 ${consolidation.pendingTurns} 轮最近对话等待自动整理"
         lastOrganizedAt > 0 -> buildString {
             append("最近整理：")
             append(relativeTimeOf(lastOrganizedAt))
@@ -789,11 +912,10 @@ private fun OrganizeStatusRow(
         }
         else -> "还没有整理过历史聊天"
     }
-    val hint = when {
-        consolidation.running -> "后台正在整理最近的对话…"
-        consolidation.pendingTurns > 0 -> "有 ${consolidation.pendingTurns} 轮最近对话等待自动整理"
-        !memoryEnabled -> "这个助手还没开启记忆，开启后整理结果才会在聊天里用上"
-        else -> null
+    val hint = if (!memoryEnabled) {
+        "这个助手还没开启记忆，整理结果暂时不会在聊天里用上"
+    } else {
+        null
     }
 
     Surface(
@@ -837,55 +959,90 @@ private fun OrganizeStatusRow(
     }
 }
 
-/** 常用动作：全部平铺可见，只有「记忆设置」留在右上角作为二级页。 */
+/** 功能分组：整理 / 审阅 / 内容。都用 chip 平铺，不藏进右上角 ⋮。 */
 @Composable
 private fun ActionChips(
     pendingCount: Int,
     skippedCount: Int,
     busy: Boolean,
+    searchOpen: Boolean,
     onOrganize: () -> Unit,
     onReextract: () -> Unit,
     onOpenReview: () -> Unit,
     onOpenTaskHistory: () -> Unit,
     onOpenUsage: () -> Unit,
+    onToggleSearch: () -> Unit,
+    onCreateMemory: () -> Unit,
 ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        AssistChip(
-            onClick = onOrganize,
-            enabled = !busy,
-            leadingIcon = { Icon(HugeIcons.Sparkles, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text("智能整理") },
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle("功能")
+        ActionGroup(label = "整理") {
+            AssistChip(
+                onClick = onOrganize,
+                enabled = !busy,
+                leadingIcon = { Icon(HugeIcons.Sparkles, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text("智能整理") },
+            )
+            AssistChip(
+                onClick = onReextract,
+                enabled = !busy,
+                leadingIcon = { Icon(HugeIcons.Time02, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text("从历史提取") },
+            )
+        }
+        ActionGroup(label = "审阅") {
+            AssistChip(
+                onClick = onOpenReview,
+                leadingIcon = { Icon(HugeIcons.CheckList, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text(if (pendingCount > 0) "确认记忆 $pendingCount" else "确认记忆") },
+            )
+            // 审核页自带「待审核 / 已跳过」分页，这里只负责把用户送进去
+            AssistChip(
+                onClick = onOpenReview,
+                enabled = skippedCount > 0,
+                leadingIcon = { Icon(HugeIcons.ArrowTurnBackward, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text(if (skippedCount > 0) "已跳过 $skippedCount" else "已跳过") },
+            )
+            AssistChip(
+                onClick = onOpenTaskHistory,
+                leadingIcon = { Icon(HugeIcons.TransactionHistory, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text("任务历史") },
+            )
+            AssistChip(
+                onClick = onOpenUsage,
+                leadingIcon = { Icon(HugeIcons.ChartColumn, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text("使用记录") },
+            )
+        }
+        ActionGroup(label = "内容") {
+            AssistChip(
+                onClick = onToggleSearch,
+                leadingIcon = { Icon(HugeIcons.Search01, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text(if (searchOpen) "收起搜索" else "搜索") },
+            )
+            AssistChip(
+                onClick = onCreateMemory,
+                leadingIcon = { Icon(HugeIcons.Add01, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                label = { Text("新建") },
+            )
+        }
+    }
+}
+
+/** 一组带标题的 chip；FlowRow 保证 360dp 窄屏与 1.3 倍字体下自动换行。 */
+@Composable
+private fun ActionGroup(label: String, content: @Composable FlowRowScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        AssistChip(
-            onClick = onReextract,
-            enabled = !busy,
-            leadingIcon = { Icon(HugeIcons.Time02, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text("从历史提取") },
-        )
-        AssistChip(
-            onClick = onOpenReview,
-            leadingIcon = { Icon(HugeIcons.CheckList, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text(if (pendingCount > 0) "确认记忆 $pendingCount" else "确认记忆") },
-        )
-        // 审核页自带「待审核 / 已跳过」分页，这里只负责把用户送进去
-        AssistChip(
-            onClick = onOpenReview,
-            enabled = skippedCount > 0,
-            leadingIcon = { Icon(HugeIcons.ArrowTurnBackward, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text(if (skippedCount > 0) "已跳过 $skippedCount" else "已跳过") },
-        )
-        AssistChip(
-            onClick = onOpenTaskHistory,
-            leadingIcon = { Icon(HugeIcons.TransactionHistory, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text("任务历史") },
-        )
-        AssistChip(
-            onClick = onOpenUsage,
-            leadingIcon = { Icon(HugeIcons.ChartColumn, null, Modifier.size(AssistChipDefaults.IconSize)) },
-            label = { Text("使用记录") },
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            content = content,
         )
     }
 }
@@ -922,19 +1079,6 @@ private fun GroupHeader(label: String, count: Int, collapsed: Boolean, onClick: 
             )
         }
     }
-}
-
-@Composable
-private fun SearchField(query: String, onChange: (String) -> Unit) {
-    TextField(
-        value = query,
-        onValueChange = onChange,
-        modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("问一句，比如“我之前说过的阅读习惯”") },
-        leadingIcon = { Icon(HugeIcons.Search01, contentDescription = null, modifier = Modifier.size(18.dp)) },
-        singleLine = true,
-        shape = RoundedCornerShape(20.dp),
-    )
 }
 
 @Composable
@@ -1090,6 +1234,9 @@ private fun memoryGroupOf(file: MemoryFile): MemoryGroup {
         else -> MemoryGroup.OTHER
     }
 }
+
+/** 统计行里的相对时间：去掉空格，挤出四列也不换行。 */
+private fun compactRelativeTime(time: Long): String = relativeTimeOf(time).replace(" ", "")
 
 private fun relativeTimeOf(time: Long): String = DateUtils.getRelativeTimeSpanString(
     time,
