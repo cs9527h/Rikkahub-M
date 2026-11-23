@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **Latest stable release: v0.8.2** (2026-11-22, commit `0eed954e`)
+> **Latest stable release: v0.8.3** (2026-11-23, commit `0e2bd21c`)
 >
-> APK: [Rikkahub-M-0.8.2.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.2/Rikkahub-M-0.8.2.apk) · 18.6 MB · universal (arm64-v8a + x86_64)
+> APK: [Rikkahub-M-0.8.3.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.3/Rikkahub-M-0.8.3.apk) · 18.6 MB · universal (arm64-v8a + x86_64)
 >
-> SHA-256: `77169a0e616fee751cab21b79ccf97c54b5b42e7177ddbc0f49754fcc427ba6b`
+> SHA-256: `f18ad184485f3c6ac822e546dcf80bee8884b1df57e8e7557405e93e700872ff`
 >
 > Summary: see the release notes for this version.
 >
-> Details: [v0.8.2 release notes](docs/releases/0.8.2.md).
+> Details: [v0.8.3 release notes](docs/releases/0.8.3.md).
 <!-- RELEASE-BLOCK:END -->
 
 ## What is this

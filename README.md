@@ -30,15 +30,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.8.2**（2026-11-22，commit `0eed954e`）
+> **最新正式版：v0.8.3**（2026-11-23，commit `0e2bd21c`）
 >
-> 安装包：[Rikkahub-M-0.8.2.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.2/Rikkahub-M-0.8.2.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安装包：[Rikkahub-M-0.8.3.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.3/Rikkahub-M-0.8.3.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`77169a0e616fee751cab21b79ccf97c54b5b42e7177ddbc0f49754fcc427ba6b`
+> SHA-256：`f18ad184485f3c6ac822e546dcf80bee8884b1df57e8e7557405e93e700872ff`
 >
-> 本版摘要：更新下载给出真实原因并提速切换，记忆召回更准、更可解释。
+> 本版摘要：记忆页高级设置改到顶栏菜单，打开即用。
 >
-> 完整说明见 [v0.8.2 更新日志](docs/releases/0.8.2.md)。
+> 完整说明见 [v0.8.3 更新日志](docs/releases/0.8.3.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 这是什么
