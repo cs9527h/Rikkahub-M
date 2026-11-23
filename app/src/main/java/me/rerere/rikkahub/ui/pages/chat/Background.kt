@@ -40,9 +40,9 @@ fun AssistantBackground(setting: Settings, modifier: Modifier) {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                // 自定义背景图不能盖过消息可读性：底部再压一层更实的底色
-                                backgroundColor.copy(alpha = 0.32f),
-                                backgroundColor.copy(alpha = 0.66f)
+                                // 保留壁纸辨识度，以轻遮罩保证消息可读性
+                                backgroundColor.copy(alpha = 0.20f),
+                                backgroundColor.copy(alpha = 0.45f)
                             )
                         )
                     )
