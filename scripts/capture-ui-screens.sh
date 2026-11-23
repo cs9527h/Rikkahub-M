@@ -63,11 +63,14 @@ PY
 capture_theme() {
   local theme=$1
   adb shell cmd uimode night "$theme" >/dev/null 2>&1 || true
+  # 切深浅色后系统会跑一次转场，太早启动+截图会拍到半透明的中间帧
+  # （实测出现过整屏亮度 95 的"浅色"截图）。这里多等两拍再启动、启动后再等两拍。
+  sleep 4
   adb shell am force-stop "$package" >/dev/null 2>&1 || true
-  sleep 1
+  sleep 2
   adb shell am start -W -n "$package/$activity" > "$out/$theme-start.txt" 2>&1 || return 1
   grep -q '^Status: ok' "$out/$theme-start.txt" || { echo "ERROR: app failed to start ($theme)"; return 1; }
-  sleep 3
+  sleep 5
 
   # 1) 空态：顶栏 + 背景 + 输入框
   shot "$theme-1-empty" || return 1
