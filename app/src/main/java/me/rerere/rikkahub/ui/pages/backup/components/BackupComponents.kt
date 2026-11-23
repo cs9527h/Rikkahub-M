@@ -285,7 +285,11 @@ internal fun <T> BackupFilesSheet(
                             contentPadding = PaddingValues(bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            itemsIndexed(files) { index, file ->
+                            itemsIndexed(
+                                items = files,
+                                // 备份文件名唯一，用它当 key：刷新列表时已有行不会被整行重建
+                                key = { _, file -> info(file).name },
+                            ) { index, file ->
                                 val fileInfo = info(file)
                                 BackupFileItem(
                                     info = fileInfo,

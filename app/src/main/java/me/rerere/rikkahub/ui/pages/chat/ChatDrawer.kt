@@ -536,11 +536,13 @@ fun ChatDrawerContent(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(folders) { folder ->
+                    items(folders, key = { it.id }) { folder ->
                         val isCurrent = folder.id == conversationToMoveFolder?.folderId
                         Surface(
                             onClick = { doMove(folder.id) },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem(),
                             shape = MaterialTheme.shapes.medium,
                             color = if (isCurrent) {
                                 MaterialTheme.colorScheme.surfaceVariant
@@ -685,7 +687,7 @@ fun ChatDrawerContent(
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(settings.assistants) { assistant ->
+                    items(settings.assistants, key = { it.id }) { assistant ->
                         AssistantItem(
                             assistant = assistant,
                             isCurrentAssistant = assistant.id == conversationToMove?.assistantId,
@@ -861,7 +863,7 @@ private fun FolderBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        item {
+        item(key = "folder_all") {
             FolderChip(
                 label = stringResource(R.string.chat_page_folder_default),
                 selected = selectedFolderId == null,
@@ -869,9 +871,10 @@ private fun FolderBar(
                 onLongClick = {},
             )
         }
-        items(folders) { folder ->
+        // 每片 chip 自带菜单展开状态，必须有稳定 key，否则删除/重命名文件夹后状态会串到下一个 chip 上
+        items(folders, key = { it.id }) { folder ->
             var menuExpanded by remember { mutableStateOf(false) }
-            Box {
+            Box(modifier = Modifier.animateItem()) {
                 FolderChip(
                     label = folder.name,
                     icon = HugeIcons.Folder01,

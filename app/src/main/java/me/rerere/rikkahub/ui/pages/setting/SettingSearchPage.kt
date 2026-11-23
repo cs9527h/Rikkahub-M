@@ -199,6 +199,8 @@ private fun AddProviderDialog(
     var selectedType by remember {
         mutableStateOf(SearchServiceOptions.TYPES.keys.first())
     }
+    // 类型表是静态的，别在每次重组时都 toList() 一遍
+    val serviceTypes = remember { SearchServiceOptions.TYPES.keys.toList() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -209,7 +211,7 @@ private fun AddProviderDialog(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(SearchServiceOptions.TYPES.keys.toList()) { type ->
+                items(serviceTypes, key = { it }) { type ->
                     val name = SearchServiceOptions.TYPES[type] ?: "Unknown"
                     val isSelected = selectedType == type
                     Card(

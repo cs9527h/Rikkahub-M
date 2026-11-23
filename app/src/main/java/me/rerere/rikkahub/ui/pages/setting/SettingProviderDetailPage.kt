@@ -924,7 +924,18 @@ private fun ModelPicker(
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
         ) {
             var filterText by remember { mutableStateOf("") }
-            val filteredModels = remoteModels.models.filterByKeywords(filterText)
+            // 过滤结果只在模型列表或关键词变化时重算。原来直接在组合里算：这个弹窗每次重组
+            // （敲一个字、勾选一个模型、loading 状态变化）都会把整份模型列表重新过滤一遍。
+            val filteredModels = remember(remoteModels.models, filterText) {
+                remoteModels.models.filterByKeywords(filterText)
+            }
+            // 已选模型先折成 id 集合：原来 count { selectedModels.none { ... } } 是 O(n*m)。
+            val selectedModelIds = remember(selectedModels) {
+                selectedModels.mapTo(HashSet(selectedModels.size)) { it.modelId }
+            }
+            val unselectedCount = remember(filteredModels, selectedModelIds) {
+                filteredModels.count { it.modelId !in selectedModelIds }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -952,10 +963,6 @@ private fun ModelPicker(
                         enabled = !remoteModels.loading,
                     ) {
                         Icon(HugeIcons.Refresh01, contentDescription = "Refresh")
-                    }
-
-                    val unselectedCount = filteredModels.count { model ->
-                        selectedModels.none { it.modelId == model.modelId }
                     }
 
                     TextButton(
