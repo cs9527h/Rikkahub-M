@@ -100,7 +100,7 @@ import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.util.Locale
 
-private enum class MemorySection { HOME, REVIEW, USAGE, SETTINGS }
+private enum class MemorySection { HOME, REVIEW, USAGE, TASK_HISTORY, SETTINGS }
 
 private enum class MemoryGroup(val label: String) {
     ABOUT("关于我"),
@@ -145,6 +145,7 @@ fun AssistantMemoryPage(id: String) {
     val homeListState = rememberLazyListState()
     val reviewListState = rememberLazyListState()
     val usageListState = rememberLazyListState()
+    val taskHistoryListState = rememberLazyListState()
     val settingsScrollState = rememberScrollState()
     val reduceMotion = remember {
         AndroidSettings.Global.getFloat(
@@ -223,12 +224,14 @@ fun AssistantMemoryPage(id: String) {
         MemorySection.HOME -> "记忆"
         MemorySection.REVIEW -> "确认记忆"
         MemorySection.USAGE -> "记忆使用记录"
+        MemorySection.TASK_HISTORY -> "任务历史"
         MemorySection.SETTINGS -> "记忆设置"
     }
     val subtitle = when (section) {
         MemorySection.HOME -> "让我记住对你重要的事情"
         MemorySection.REVIEW -> "确认之后才写入，随时可以撤销"
         MemorySection.USAGE -> "这一轮到底带上了哪些记忆"
+        MemorySection.TASK_HISTORY -> "每一轮整理留下了什么"
         MemorySection.SETTINGS -> "共享范围、预算和后台整理"
     }
 
@@ -266,6 +269,13 @@ fun AssistantMemoryPage(id: String) {
                                     onClick = {
                                         showMenu = false
                                         section = MemorySection.USAGE
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("任务历史") },
+                                    onClick = {
+                                        showMenu = false
+                                        section = MemorySection.TASK_HISTORY
                                     },
                                 )
                                 DropdownMenuItem(
@@ -343,6 +353,14 @@ fun AssistantMemoryPage(id: String) {
                         assistant = assistant,
                         listState = usageListState,
                     ) { navController.navigate(Screen.Chat(it)) }
+
+                    MemorySection.TASK_HISTORY -> MemoryTaskHistoryScreen(
+                        scope = memoryId,
+                        history = history,
+                        listState = taskHistoryListState,
+                        onOpenReview = { section = MemorySection.REVIEW },
+                        onError = { error = it },
+                    )
 
                     MemorySection.SETTINGS -> MemorySettingsScreen(
                         assistant = assistant,

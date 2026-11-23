@@ -32,6 +32,51 @@ data class HistoryMemoryJob(
     val budgetAckTokens: Long = 0,
 )
 
+/**
+ * 一轮记忆整理的历史记录。
+ *
+ * 任务表按 scope 只存“当前这一轮”，被新任务覆盖后上一轮就查不到了；
+ * 用户想回看“上次整理了哪些会话、花了多少 Token、为什么失败”，只能靠这张表。
+ * 数字全部在任务运行过程中从真实计数写入，不在这里推算。
+ */
+@Entity(tableName = "history_memory_task_log", indices = [Index("scope", "createdAt")])
+data class HistoryMemoryTaskLog(
+    /** 任务 id，与 history_memory_job.id 一致；候选也按这个 id 归属。 */
+    @PrimaryKey val id: String,
+    val scope: String,
+    /** 任务代数，和 history_memory_job.generation 对得上，用来区分“同一 id 的第几次运行”。 */
+    @ColumnInfo(defaultValue = "0")
+    val jobGeneration: Long = 0,
+    @ColumnInfo(defaultValue = "0")
+    val createdAt: Long = 0,
+    /** 结束（完成/失败/取消）时间；暂停后继续的任务会清回 0。 */
+    @ColumnInfo(defaultValue = "0")
+    val finishedAt: Long = 0,
+    @ColumnInfo(defaultValue = "'running'")
+    val status: String = "running",
+    /** 计划整理的会话数 */
+    @ColumnInfo(defaultValue = "0")
+    val sourceCount: Int = 0,
+    /** 已经处理完的会话数，来自任务游标 sourceIndex */
+    @ColumnInfo(defaultValue = "0")
+    val processedCount: Int = 0,
+    /** 这一轮提取出的候选总数（含之后被保存/跳过的） */
+    @ColumnInfo(defaultValue = "0")
+    val candidateCount: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val savedCount: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val skippedCount: Int = 0,
+    @ColumnInfo(defaultValue = "0")
+    val inputTokens: Long = 0,
+    @ColumnInfo(defaultValue = "0")
+    val outputTokens: Long = 0,
+    /** 来源范围的简短说明，例如“3 个会话 · 2025-01-02 ~ 2025-03-04”。 */
+    @ColumnInfo(defaultValue = "''")
+    val rangeLabel: String = "",
+    val errorMessage: String? = null,
+)
+
 @Entity(
     tableName = "history_memory_candidate",
     primaryKeys = ["jobId", "key"],
