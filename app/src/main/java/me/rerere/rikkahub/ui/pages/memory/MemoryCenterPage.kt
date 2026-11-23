@@ -213,7 +213,8 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(title) },
-                subtitle = { Text(subtitle) },
+                // 副标题只是说明当前记忆库，用 labelMedium 保持顶栏紧凑，避免大字挤掉首屏内容
+                subtitle = { Text(subtitle, style = MaterialTheme.typography.labelMedium) },
                 navigationIcon = {
                     if (section == CenterSection.HOME) {
                         BackButton()
@@ -560,7 +561,7 @@ private fun MemoryCenterHome(
             }
         } else if (memories.isEmpty() && pendingCount == 0 && savedCount == 0) {
             item(key = "empty") {
-                Box(Modifier.fillMaxWidth().height(260.dp)) {
+                Box(Modifier.fillMaxWidth().height(168.dp)) {
                     ExtensionEmptyState(
                         message = "还没有记住什么",
                         description = "聊过几次之后再点“智能整理”，我会把值得长期记住的事整理出来。",

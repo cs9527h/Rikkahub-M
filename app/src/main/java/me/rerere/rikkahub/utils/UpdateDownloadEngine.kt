@@ -85,19 +85,24 @@ object UpdateDownloadEngine {
     private const val MAX_TRIES_PER_SOURCE = 2
     private const val META_FILE_SUFFIX = ".meta"
 
-    @Volatile
-    private var downloadClient: OkHttpClient? = null
+    /**
+     * 下载用客户端缓存。**必须按 base client 分别缓存**：早期实现只缓存「第一次见到的那个」，
+     * 之后无论是设置里换了 OkHttpClient（代理/拦截器/超时），还是测试里注入了带
+     * network interceptor 的客户端，下载都会继续用旧的实例，导致新配置静默失效，
+     * 测试里也看不到任何请求。用 WeakHashMap 跟着 base 的生命周期，不额外泄漏。
+     */
+    private val downloadClients =
+        java.util.Collections.synchronizedMap(java.util.WeakHashMap<OkHttpClient, OkHttpClient>())
 
     /** 大文件不能用聊天用的短超时；取消整体超时，保留连接/读取超时，不改动 TLS 校验。 */
-    fun clientFor(base: OkHttpClient): OkHttpClient =
-        downloadClient ?: base.newBuilder()
-            .callTimeout(0, TimeUnit.MILLISECONDS)
-            // 连接超时压短：主源被墙时要尽快切到备用源，而不是让用户干等一分多钟
-            .connectTimeout(12, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
-            .also { downloadClient = it }
+    fun clientFor(base: OkHttpClient): OkHttpClient = downloadClients[base] ?: base.newBuilder()
+        .callTimeout(0, TimeUnit.MILLISECONDS)
+        // 连接超时压短：主源被墙时要尽快切到备用源，而不是让用户干等一分多钟
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
+        .also { downloadClients[base] = it }
 
     /**
      * 下载入口**必须在 IO 线程执行**：OkHttp 的 execute()、文件写入与哈希计算都是阻塞调用。
