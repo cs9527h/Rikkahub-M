@@ -662,7 +662,14 @@ private fun TopBar(
     val resources = LocalResources.current
 
     TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        // 滚动到标题栏后，仅使用淡薄的整栏背景保证文字可读，避免独立标题白色胶囊。
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = if (showCapsuleBackground) {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
+            } else {
+                Color.Transparent
+            },
+        ),
         navigationIcon = {
             if (!bigScreen) {
                 ChatTopBarCapsule(
@@ -683,46 +690,33 @@ private fun TopBar(
         },
         title = {
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
-            // 标题不再靠整条顶栏的渐变遮罩脱离正文：滚动后和两个按钮胶囊一样，
-            // 由标题自己的胶囊给一层底色，没滚到顶栏下面时胶囊完全透明（不糊背景、不起雾）。
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                ChatTopBarCapsule(
-                    hazeState = hazeState,
-                    displaySetting = settings.displaySetting,
-                    showBackground = showCapsuleBackground,
-                ) {
-                    Surface(
-                        onClick = {
-                            if (conversation.messageNodes.isNotEmpty()) {
-                                titleState.open(conversation.title)
-                            } else {
-                                toaster.show(editTitleWarning, type = ToastType.Warning)
-                            }
-                        },
-                        color = Color.Transparent,
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)) {
-                            Text(
-                                text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
-                                maxLines = 1,
-                                style = MaterialTheme.typography.bodyMedium,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            // 第二行只放助手身份，模型和供应商名称移到设置和连接详情里
-                            Text(
-                                text = assistant.name.ifBlank {
-                                    resources.getString(R.string.assistant_page_default_assistant)
-                                },
-                                overflow = TextOverflow.Ellipsis,
-                                maxLines = 1,
-                                color = LocalContentColor.current.copy(0.65f),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
+            // 不再给标题加独立胶囊；用简洁的两行文字呈现会话与助手。
+            Surface(
+                onClick = {
+                    if (conversation.messageNodes.isNotEmpty()) {
+                        titleState.open(conversation.title)
+                    } else {
+                        toaster.show(editTitleWarning, type = ToastType.Warning)
                     }
+                },
+                color = Color.Transparent,
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+                    Text(
+                        text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = assistant.name.ifBlank {
+                            resources.getString(R.string.assistant_page_default_assistant)
+                        },
+                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 1,
+                        color = LocalContentColor.current.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
         },

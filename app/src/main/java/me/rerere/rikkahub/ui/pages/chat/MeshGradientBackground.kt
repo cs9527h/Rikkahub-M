@@ -130,13 +130,13 @@ private class Blob(
     val periodSeconds: Float,
 )
 
-// ---- 浅色：顶部淡蓝 → 中部柔和蓝灰 → 底部蓝灰（不再接近纯白）----
+// ---- 浅色：低饱和淡蓝 → 中性近白，留少量层次、不整屏泛蓝 ----
 private val LightBaseStops = arrayOf(
-    0.00f to Color(0xFFBCD8F0),
-    0.28f to Color(0xFFCBDEF1),
-    0.52f to Color(0xFFD5E4F1),
-    0.76f to Color(0xFFDCE8F3),
-    1.00f to Color(0xFFE1EBF5),
+    0.00f to Color(0xFFE4EEF8),
+    0.28f to Color(0xFFECF3FA),
+    0.52f to Color(0xFFF1F5FA),
+    0.76f to Color(0xFFF6F8FB),
+    1.00f to Color(0xFFF8FAFC),
 )
 
 // ---- 暗色：顶部深蓝 → 底部近黑，中间过渡保持蓝调，不发灰 ----
@@ -151,22 +151,22 @@ private val DarkBaseStops = arrayOf(
 // 浅色光斑：低饱和 + 低浓度，只提供层次，不把画面推白；暖色保留但更淡
 private val LightBlobs = listOf(
     Blob(
-        color = Color(0xFF8FBEEA), alpha = 0.44f, radiusFactor = 0.36f,
+        color = Color(0xFF9EC5E8), alpha = 0.25f, radiusFactor = 0.36f,
         anchorX = 0.48f, anchorY = 0.08f, swayX = 0.38f, swayY = 0.18f,
         rateY = 1.15f, phaseShift = 0.90f, periodSeconds = 5.5f,
     ),
     Blob(
-        color = Color(0xFF9FDCD6), alpha = 0.30f, radiusFactor = 0.28f,
+        color = Color(0xFFA9DDD7), alpha = 0.18f, radiusFactor = 0.28f,
         anchorX = 0.18f, anchorY = 0.24f, swayX = 0.30f, swayY = 0.20f,
         rateY = 1.00f, phaseShift = 2.27f, periodSeconds = 7.0f,
     ),
     Blob(
-        color = Color(0xFFA9CFF0), alpha = 0.36f, radiusFactor = 0.30f,
+        color = Color(0xFFB1D3EB), alpha = 0.20f, radiusFactor = 0.30f,
         anchorX = 0.82f, anchorY = 0.12f, swayX = -0.34f, swayY = 0.18f,
         rateY = 0.90f, phaseShift = 4.08f, periodSeconds = 8.5f,
     ),
     Blob(
-        color = Color(0xFFF7C9CF), alpha = 0.20f, radiusFactor = 0.26f,
+        color = Color(0xFFF1D0D9), alpha = 0.13f, radiusFactor = 0.26f,
         anchorX = 0.58f, anchorY = 0.34f, swayX = 0.28f, swayY = 0.16f,
         rateY = 1.10f, phaseShift = 5.50f, periodSeconds = 6.2f,
     ),
