@@ -49,6 +49,7 @@ import me.rerere.hugeicons.stroke.GitFork
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Share04
+import me.rerere.hugeicons.stroke.StopCircle
 import me.rerere.hugeicons.stroke.TextSelection
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
@@ -207,11 +208,18 @@ fun ChatMessageActionsSheet(
             .any { it.text.isNotBlank() }
         val tts = LocalTTSState.current
         val isTtsAvailable by tts.isAvailable.collectAsState()
+        val isSpeaking by tts.isSpeaking.collectAsState()
         val settings = LocalSettings.current
         val actions = buildList {
             if (message.role == MessageRole.ASSISTANT) {
                 if (isTtsAvailable) {
-                    add(MessageSheetAction(HugeIcons.VolumeHigh, stringResource(R.string.tts), onClick = {
+                    add(MessageSheetAction(
+                        if (isSpeaking) HugeIcons.StopCircle else HugeIcons.VolumeHigh,
+                        stringResource(if (isSpeaking) R.string.stop else R.string.tts),
+                        onClick = {
+                        if (isSpeaking) {
+                            tts.stop()
+                        } else {
                         val text = message.toText()
                         var spokenText = text
                         if (settings.displaySetting.ttsOnlyReadQuoted) {
@@ -221,6 +229,7 @@ fun ChatMessageActionsSheet(
                             spokenText = spokenText.removeBracketedContent() ?: spokenText
                         }
                         tts.speak(spokenText)
+                        }
                     }))
                 }
                 if (onRequestTranslate != null) {
