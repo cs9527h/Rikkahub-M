@@ -179,13 +179,6 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
                     )
                     item(
-                        // 记忆中心是一级页：从设置进来跟随当前选中的助手；助手详情带 id 进来就锁定那个助手
-                        onClick = { navController.navigate(Screen.MemoryCenter()) },
-                        leadingContent = { CardGroupIcon(HugeIcons.Brain02, containerColor = containerColor, contentColor = contentColor) },
-                        supportingContent = { Text("记住了什么、有哪些待确认，都在这里") },
-                        headlineContent = { Text("记忆") },
-                    )
-                    item(
                         onClick = { navController.navigate(Screen.Extensions) },
                         leadingContent = { CardGroupIcon(HugeIcons.Package, containerColor = containerColor, contentColor = contentColor) },
                         supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
