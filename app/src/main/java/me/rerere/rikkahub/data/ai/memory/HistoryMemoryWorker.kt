@@ -7,6 +7,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -39,5 +40,19 @@ class HistoryMemoryWorker(context: Context, params: WorkerParameters) :
 
         fun cancel(context: Context, scope: String) =
             WorkManager.getInstance(context).cancelUniqueWork(name(scope))
+
+        /**
+         * 这个记忆库是否真的还有排队的整理任务。
+         * 数据库里残留的 “running” 不等于任务还活着：进程被杀、系统清理 WorkManager 之后
+         * 状态会永远卡在运行中，导致用户再点整理只看到“已有任务正在运行”。
+         */
+        fun isActive(context: Context, scope: String): Boolean = runCatching {
+            WorkManager.getInstance(context).getWorkInfosForUniqueWork(name(scope)).get()
+                .any {
+                    it.state == WorkInfo.State.RUNNING ||
+                        it.state == WorkInfo.State.ENQUEUED ||
+                        it.state == WorkInfo.State.BLOCKED
+                }
+        }.getOrDefault(false)
     }
 }

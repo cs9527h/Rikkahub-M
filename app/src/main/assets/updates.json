@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-22T23:51:59Z",
+  "updatedAt": "2026-11-23T00:57:45Z",
   "releases": [
+    {
+      "version": "0.8.4",
+      "tag": "v0.8.4",
+      "title": "Rikkahub-M 0.8.4",
+      "summary": "修复更新下载主线程崩溃与卡住的整理任务。",
+      "body": "## 修复\n\n- 修复应用内下载必定失败并提示「NetworkOnMainThreadException」：下载、校验与哈希计算全部改到后台线程\n- 修复上次整理被系统中断后，界面一直提示「已有任务正在运行或等待处理」，无法重新整理\n- 修复暂停/失败的历史任务会阻塞新的整理任务；现在会释放卡住的锁并可重新开始\n- 修复历史整理 Token 估算虚高：不再用消息节点总数推算请求数，改为按实际发送字符与分批数估算\n\n## 优化\n\n- 整理确认页显示「实际发送量通常更少」，已完成批次会自动跳过\n- 失败原因继续按来源展示，并保留重试与浏览器下载\n\n## 其他\n\n- 版本 0.8.4 / versionCode 30，包名与签名不变，可覆盖升级 0.8.3\n- 不新增数据库迁移；记忆、候选、聊天与人格设置保持不变",
+      "publishedAt": "2026-11-23T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.8.3",
       "tag": "v0.8.3",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-23T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.8.2",

@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.utils
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -67,6 +69,11 @@ object UpdateDownloadEngine {
             .build()
             .also { downloadClient = it }
 
+    /**
+     * 下载入口**必须在 IO 线程执行**：OkHttp 的 execute()、文件写入与哈希计算都是阻塞调用。
+     * 调用方（UpdateChecker.startDownload）运行在 AppScope 的 Main 上，
+     * 0.8.2 少了这层 withContext，真机上直接抛 NetworkOnMainThreadException。
+     */
     suspend fun download(
         client: OkHttpClient,
         sources: List<UpdateSource>,
@@ -78,6 +85,32 @@ object UpdateDownloadEngine {
         onVerifying: (source: String) -> Unit = {},
         isCancelled: () -> Boolean = { false },
         retryDelayMillis: (attempt: Int) -> Long = { UpdateTransferPolicy.retryDelayMillis(it) },
+    ): File = withContext(Dispatchers.IO) {
+        downloadBlocking(
+            client = client,
+            sources = sources,
+            target = target,
+            expectedSha256 = expectedSha256,
+            expectedSize = expectedSize,
+            version = version,
+            onProgress = onProgress,
+            onVerifying = onVerifying,
+            isCancelled = isCancelled,
+            retryDelayMillis = retryDelayMillis,
+        )
+    }
+
+    private suspend fun downloadBlocking(
+        client: OkHttpClient,
+        sources: List<UpdateSource>,
+        target: File,
+        expectedSha256: String?,
+        expectedSize: Long?,
+        version: String?,
+        onProgress: (read: Long, total: Long, source: String) -> Unit,
+        onVerifying: (source: String) -> Unit,
+        isCancelled: () -> Boolean,
+        retryDelayMillis: (attempt: Int) -> Long,
     ): File {
         require(sources.isNotEmpty()) { "没有可用的下载地址" }
         target.parentFile?.mkdirs()

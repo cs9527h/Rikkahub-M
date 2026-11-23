@@ -145,6 +145,16 @@ internal class HistoryMemoryManager(
     suspend fun resumePending() = withContext(Dispatchers.IO) {
         controls.withLock {
             dao.running().forEach { job ->
+                if (!HistoryMemoryWorker.isActive(context, job.scope)) {
+                    dao.put(
+                        job.copy(
+                            status = "paused",
+                            failure = "上次整理被系统中断，已保存进度；可以继续，也可以重新开始整理。",
+                            generation = job.generation + 1,
+                        )
+                    )
+                    return@forEach
+                }
                 if (job.deviceConsent != consentId) {
                     // 从备份恢复的任务不属于这台设备：停下并说明，而不是拿旧授权继续发聊天记录
                     dao.put(
@@ -169,9 +179,18 @@ internal class HistoryMemoryManager(
         }
     }
 
-    internal suspend fun persistConfirmedPlan(plan: Plan): HistoryMemoryJob = database.withTransaction {
+    internal suspend fun persistConfirmedPlan(plan: Plan): HistoryMemoryJob {
+        // 先把“数据库说 running、实际早就没有 worker”的僵尸任务释放掉，
+        // 否则用户会一直被“已有任务正在运行或等待处理”挡住，永远无法重新整理。
+        releaseStaleLock(plan.scope)
+        return database.withTransaction {
         val previous = dao.job(plan.scope)
-        check(previous == null || previous.status in setOf("finished", "cancelled")) { "当前任务仍在运行或等待处理" }
+        check(
+            previous == null ||
+                previous.status in setOf("finished", "cancelled", "failed", "paused", "interrupted"),
+        ) {
+            "当前任务仍在运行或等待处理，请先在记忆页结束或暂停该任务"
+        }
         // 不删除上一任务的候选与批次：候选属于用户的记忆数据，任务行会被替换但候选靠 scope 保留。
         // 旧实现这里 clearCandidates，等于用户误操作或取消后数据直接消失。
         HistoryMemoryJob(
@@ -179,6 +198,21 @@ internal class HistoryMemoryManager(
             Json.encodeToString(plan.sources), plan.sources.size,
             createdAt = System.currentTimeMillis(),
         ).also { dao.put(it) }
+        }
+    }
+
+    /** 运行中但实际没有 WorkManager 任务：标记为暂停，让用户能继续或重新开始。 */
+    private suspend fun releaseStaleLock(scope: String) = withContext(Dispatchers.IO) {
+        val current = dao.job(scope) ?: return@withContext
+        if (current.status != "running") return@withContext
+        if (HistoryMemoryWorker.isActive(context, scope)) return@withContext
+        dao.put(
+            current.copy(
+                status = "paused",
+                failure = "上次整理被系统中断，已保存进度；可以继续，也可以重新开始整理。",
+                generation = current.generation + 1,
+            )
+        )
     }
 
     suspend fun control(scope: String, status: String) = withContext(Dispatchers.IO) {

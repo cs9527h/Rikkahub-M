@@ -166,6 +166,24 @@ class HistoryMemoryBulkTest {
             )
             assertNotEquals(jobId, replacement.id)
             assertEquals(201, history.pendingKeys(scope).size)
+
+            // 僵尸锁：数据库里是 running，但 WorkManager 早已没有对应任务。
+            // 旧实现会让用户永远卡在“已有任务正在运行或等待处理”，无法重新整理。
+            db.historyMemoryDao().put(replacement.copy(status = "running"))
+            val recovered = history.persistConfirmedPlan(
+                HistoryMemoryManager.Plan(
+                    scope = scope,
+                    sources = emptyList(),
+                    modelId = "model",
+                    fingerprint = "fingerprint",
+                    destination = "fixture",
+                    nodes = 0,
+                    serializedChars = 0,
+                )
+            )
+            assertNotEquals(replacement.id, recovered.id)
+            assertEquals("running", db.historyMemoryDao().job(scope)?.status)
+            assertEquals(201, history.pendingKeys(scope).size)
             history.skipSelected(scope, candidates.map { it.key }.toSet())
             assertEquals(200, history.skippedCount(scope))
             assertEquals(200, history.restoreSkipped(scope))

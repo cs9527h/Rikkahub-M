@@ -7,6 +7,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
 import java.security.MessageDigest
@@ -42,7 +44,8 @@ object UpdateInstaller {
         onProgress: (read: Long, total: Long, source: String) -> Unit = { _, _, _ -> },
         onVerifying: (source: String) -> Unit = {},
         isCancelled: () -> Boolean = { false },
-    ): Result<File> = runCatching {
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
         val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
         val apk = UpdateDownloadEngine.download(
             client = client,
@@ -63,6 +66,7 @@ object UpdateInstaller {
             throw e
         }
         apk
+        }
     }
 
     private fun verifyArchive(context: Context, apk: File) {
