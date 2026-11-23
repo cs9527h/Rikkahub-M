@@ -1,12 +1,12 @@
 {
-  "version": "0.8.6",
+  "version": "0.8.7",
   "measured": false,
   "source": "未采集（本版只有 CI 模拟器与自动化门禁，无真机数据）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
   "metrics": {},
-  "note": "0.8.6 重构记忆中心入口与失败诊断，未采集真机指标。",
+  "note": "0.8.7 重构记忆中心与召回注入，未采集真机指标；模拟器数据库微基准沿用 0.8.6 记录。",
   "ciEmulator": {
     "device": "Android SDK built for x86_64 (emu64x, API 35, 2 cores)",
     "buildType": "benchmarkRelease",
