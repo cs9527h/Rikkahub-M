@@ -6,12 +6,13 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import me.rerere.ai.provider.ModelAbility
-import me.rerere.rikkahub.data.ai.memory.RecallExcerpt
-import me.rerere.rikkahub.data.ai.memory.recallExcerpts
+import me.rerere.rikkahub.data.ai.memory.MemoryRecallStore
+import me.rerere.rikkahub.data.ai.memory.RecallInjection
+import me.rerere.rikkahub.data.ai.memory.buildRecallInjection
 import me.rerere.rikkahub.data.ai.memory.recalledFiles
+import me.rerere.rikkahub.data.ai.memory.withRecallInjection
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
-import kotlin.time.TimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -33,7 +34,6 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.ai.prompts.buildRecallPrompt
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
@@ -54,13 +54,11 @@ import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
-import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
-import me.rerere.rikkahub.data.repository.memoryId
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -85,17 +83,11 @@ class ChatTurnContext(
     internal var recall: TurnRecall? = null
 }
 
-internal data class TurnRecall(
-    val userId: Uuid,
-    val matches: List<String>,
-    val excerpts: List<RecallExcerpt>,
-    val elapsedMillis: Long,
-    val query: String = "",
-    val considered: Int = 0,
-    val filtered: Int = 0,
-    val broad: Boolean = false,
-    val filterReasons: Map<String, Int> = emptyMap(),
-)
+/**
+ * 这一轮给哪条用户消息做过召回。[injection] 为 null 表示这轮没有可注入的内容，
+ * 记下来是为了同一轮的多步工具调用不必重复扫描记忆库。
+ */
+internal class TurnRecall(val userId: Uuid, val injection: RecallInjection?)
 
 /** 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里 */
 class ChatRequestFactory(
@@ -123,6 +115,14 @@ class ChatRequestFactory(
         Base64ImageToLocalFileTransformer,
         RegexOutputTransformer,
     )
+
+    /** 注入逻辑只通过这两个方法读记忆库，作用域由调用方给定的助手决定 */
+    private val memoryRecallStore = object : MemoryRecallStore {
+        override suspend fun search(scope: String, query: String) =
+            memoryRepository.searchRecallWithDiagnostics(scope, query)
+
+        override suspend fun file(scope: String, path: String) = memoryRepository.getFile(scope, path)
+    }
 
     /** 解析本轮的助手、模型、记忆和工具；MCP 服务名不合法时抛出 InvalidMcpServerNamesException */
     suspend fun createContext(settings: Settings, conversation: Conversation): ChatTurnContext {
@@ -286,67 +286,51 @@ class ChatRequestFactory(
             workspaceCwd = turn.workspaceCwd,
         ).expandNotices()
         val latestUser = messages.lastOrNull { it.role == MessageRole.USER && !it.isNoticeOnly }
-        val requestMessages = if (assistant.enableMemory && latestUser != null) {
-            val recall = turn.recall?.takeIf { it.userId == latestUser.id } ?: run {
-                val clock = TimeSource.Monotonic.markNow()
-                val recallResult = memoryRepository.searchRecallWithDiagnostics(assistant.memoryId, latestUser.toText())
-                val matches = recallResult.files
-                val preferences = memoryRepository.getFile(assistant.memoryId, MemoryFile.PREFERENCES_PATH)
-                    ?.takeUnless { it.isOutdated }
-                val excerpts = recallExcerpts(
-                    listOfNotNull(preferences) + matches.filter { it.path != preferences?.path },
-                    maxChars = 2 * assistant.memoryRecallTokenBudget.coerceIn(500, 4_000),
+        // 关掉记忆时连检索都不做；打开时同一轮的多步共用一次召回
+        val recall = if (assistant.enableMemory && latestUser != null) {
+            turn.recall?.takeIf { it.userId == latestUser.id } ?: run {
+                val injection = buildRecallInjection(
+                    assistant = assistant,
+                    query = latestUser.toText(),
+                    hasTools = ModelAbility.TOOL in turn.model.abilities,
+                    store = memoryRecallStore,
                 )
-                TurnRecall(
-                    userId = latestUser.id,
-                    matches = matches.map { it.path },
-                    excerpts = excerpts,
-                    elapsedMillis = clock.elapsedNow().inWholeMilliseconds,
-                    query = recallResult.query.take(200),
-                    considered = recallResult.considered,
-                    filtered = recallResult.filtered,
-                    broad = recallResult.broad,
-                    filterReasons = recallResult.filterReasons,
-                ).also { turn.recall = it }
+                TurnRecall(latestUser.id, injection).also { turn.recall = it }
             }
-            val hasTools = ModelAbility.TOOL in turn.model.abilities
-            val prompt = buildRecallPrompt(recall.excerpts, recall.matches, hasTools)
-            val first = baseMessages.firstOrNull()
-            if (recordRecall && assistant.recordMemoryUsage) {
-                val reads = baseMessages.dropWhile { it.id != latestUser.id }.flatMap { message ->
-                    message.getTools().flatMap { it.recalledFiles() }
-                }.distinctBy { it.path }
-                try {
-                    val database = historyDatabase
-                    database.withTransaction {
-                        val dao = database.historyMemoryDao()
-                        dao.recordRecall(MemoryRecallRecord(
-                            "${turn.conversationId}:${latestUser.id}", assistant.memoryId,
-                            turn.conversationId.toString(), System.currentTimeMillis(),
-                            Json.encodeToString(recall.matches), Json.encodeToString(recall.excerpts),
-                            Json.encodeToString(reads.map { it.path }),
-                            (prompt.length + reads.sumOf { it.content.length } + 1) / 2,
-                            recall.elapsedMillis,
-                            query = recall.query,
-                            considered = recall.considered,
-                            filtered = recall.filtered,
-                            broad = recall.broad,
-                            filterReasons = Json.encodeToString(recall.filterReasons),
-                        ))
-                        dao.trimRecalls(assistant.memoryId)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    Log.w(TAG, "Unable to save local memory recall diagnostics")
+        } else {
+            null
+        }
+        val injection = recall?.injection
+        if (injection != null && latestUser != null && recordRecall && assistant.recordMemoryUsage) {
+            val reads = baseMessages.dropWhile { it.id != latestUser.id }.flatMap { message ->
+                message.getTools().flatMap { it.recalledFiles() }
+            }.distinctBy { it.path }
+            try {
+                val database = historyDatabase
+                database.withTransaction {
+                    val dao = database.historyMemoryDao()
+                    dao.recordRecall(MemoryRecallRecord(
+                        "${turn.conversationId}:${latestUser.id}", injection.scope,
+                        turn.conversationId.toString(), System.currentTimeMillis(),
+                        Json.encodeToString(injection.matches), Json.encodeToString(injection.excerpts),
+                        Json.encodeToString(reads.map { it.path }),
+                        (injection.prompt.length + reads.sumOf { it.content.length } + 1) / 2,
+                        injection.elapsedMillis,
+                        query = injection.query,
+                        considered = injection.considered,
+                        filtered = injection.filtered,
+                        broad = injection.broad,
+                        filterReasons = Json.encodeToString(injection.filterReasons),
+                    ))
+                    dao.trimRecalls(injection.scope)
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                Log.w(TAG, "Unable to save local memory recall diagnostics")
             }
-            if (first?.role == MessageRole.SYSTEM) {
-                listOf(first.copy(parts = first.parts + UIMessagePart.Text("\n\n" + prompt))) + baseMessages.drop(1)
-            } else {
-                listOf(UIMessage.system(prompt).copy(isSynthetic = true)) + baseMessages
-            }
-        } else baseMessages
+        }
+        val requestMessages = baseMessages.withRecallInjection(injection)
         val params = TextGenerationParams(
             model = turn.model,
             temperature = assistant.temperature,
