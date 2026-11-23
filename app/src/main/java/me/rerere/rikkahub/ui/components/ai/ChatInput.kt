@@ -217,7 +217,7 @@ fun ChatInput(
         color = Color.Transparent,
         modifier = Modifier.drawWithCache {
             val brush = Brush.verticalGradient(
-                colors = listOf(scrimColor.copy(alpha = 0f), scrimColor),
+                colors = listOf(scrimColor.copy(alpha = 0f), scrimColor.copy(alpha = 0.82f)),
                 startY = 0f,
                 endY = (size.height - imeInsets.getBottom(this)).coerceAtLeast(1f),
             )
@@ -229,8 +229,8 @@ fun ChatInput(
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 8.dp)
-                .padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             MessageQueuePanel(
                 state = messageQueue,
@@ -255,7 +255,7 @@ fun ChatInput(
                 color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else containerColor,
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     if (voiceState.phase != VoicePhase.Off) {
