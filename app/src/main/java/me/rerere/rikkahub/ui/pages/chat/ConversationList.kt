@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.ConversationSortOrder
@@ -148,7 +149,15 @@ fun ColumnScope.ConversationList(
                     is ConversationListItem.PinnedHeader -> "pinned_header"
                     is ConversationListItem.Item -> item.conversation.id.toString()
                 }
-            }
+            },
+            // 日期头/置顶头和会话行结构不同，给出 contentType 让 LazyColumn 按类型复用子组合，滚动时不互相顶掉
+            contentType = conversations.itemContentType { item ->
+                when (item) {
+                    is ConversationListItem.DateHeader -> "date_header"
+                    is ConversationListItem.PinnedHeader -> "pinned_header"
+                    else -> "conversation"
+                }
+            },
         ) { index ->
             when (val item = conversations[index]) {
                 is ConversationListItem.DateHeader -> {

@@ -55,7 +55,7 @@ fun ShareHandlerPage(text: String, image: String?) {
             contentPadding = it + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item {
+            item(key = "shared_content") {
                 Card {
                     Column(
                         modifier = Modifier
@@ -80,7 +80,7 @@ fun ShareHandlerPage(text: String, image: String?) {
                 }
             }
 
-            items(settings.assistants) { assistant ->
+            items(settings.assistants, key = { it.id }) { assistant ->
                 Surface(
                     onClick = {
                         scope.launch {

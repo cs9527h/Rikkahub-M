@@ -352,10 +352,11 @@ class RouteActivity : ComponentActivity() {
                                 slideOutHorizontally { it }
                         },
                         entryProvider = entryProvider {
-                            entry<Screen.Chat>(
-                                metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
-                                    + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
-                            ) { key ->
+                            // 会话页常常就是启动页，root 层的淡入淡出已经由上面 transitionSpec 里
+                            // backStack.size == 1 的分支负责；这里再覆盖一层，等于把「从历史/收藏/
+                            // 助手详情/搜索结果进入会话」的二级跳转也变成淡入淡出，而且原来只覆盖了 pop、
+                            // 漏了 predictivePop，手势返回和按钮返回的动画不一致。改用全局转场后两者同源。
+                            entry<Screen.Chat> { key ->
                                 ChatPage(
                                     id = Uuid.parse(key.id),
                                     text = key.text,

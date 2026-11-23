@@ -16,6 +16,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -80,16 +81,20 @@ fun RikkahubTheme(
     // 更新状态栏图标颜色
     val view = LocalView.current
     val activity = view.context.getActivity()
+    // 系统栏图标应该跟着「栏后面实际是什么颜色」走，而不是跟着深浅色模式开关走：
+    // 自定义主题（settings.customThemes）允许用户把暗色主题的 background 配成浅色，反之亦然，
+    // 那时按 darkTheme 设置就会出现浅色图标压在浅色背景上。
+    val lightSystemBars = colorSchemeConverted.background.luminance() > 0.5f
     // 浮窗可能使用 Application Context，没有可更新系统栏的 Activity。
     if (!view.isInEditMode && activity != null) {
-        DisposableEffect(view, activity, darkTheme) {
+        DisposableEffect(view, activity, lightSystemBars) {
             val window = activity.window
             val controller = WindowCompat.getInsetsController(window, view)
             val previousLightStatusBars = controller.isAppearanceLightStatusBars
             val previousLightNavigationBars = controller.isAppearanceLightNavigationBars
             controller.apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
+                isAppearanceLightStatusBars = lightSystemBars
+                isAppearanceLightNavigationBars = lightSystemBars
             }
             onDispose {
                 // 嵌套主题（如终端的深色主题）退出时恢复原有系统栏图标颜色。

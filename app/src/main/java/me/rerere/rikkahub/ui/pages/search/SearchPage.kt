@@ -229,7 +229,8 @@ fun SearchPage(vm: SearchVM = koinViewModel()) {
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            items(vm.results) { result ->
+                            // 一个 node 下可能命中多条消息，messageId 才是唯一键
+                            items(vm.results, key = { it.messageId }) { result ->
                                 SearchResultItem(
                                     result = result,
                                     onClick = {

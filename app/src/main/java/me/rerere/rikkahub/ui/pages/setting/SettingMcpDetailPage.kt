@@ -660,7 +660,8 @@ private fun McpToolsConfigure(
                 Text(stringResource(R.string.setting_mcp_page_tools_unavailable_message))
             }
         }
-        items(config.commonOptions.tools) { tool ->
+        // 工具名在同一 server 内唯一；每张卡片自带折叠状态，没有 key 时刷新会串状态
+        items(config.commonOptions.tools, key = { it.name }) { tool ->
             McpToolCard(
                 tool = tool,
                 onEnableChange = { onToolChange(tool.copy(enable = it)) },

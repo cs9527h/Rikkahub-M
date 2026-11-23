@@ -354,7 +354,8 @@ private fun CustomThemeItem(
                     Icon(
                         HugeIcons.Tick01,
                         contentDescription = null,
-                        tint = Color.White,
+                        // 勾在 primary 圆点上，用配套的 onPrimary；固定白色在浅色 primary（黄、浅蓝等自建主题）上几乎看不见
+                        tint = scheme.onPrimary,
                         modifier = Modifier.size(16.dp)
                     )
                 }

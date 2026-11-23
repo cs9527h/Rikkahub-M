@@ -30,6 +30,7 @@ import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
 import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
 import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryTaskLog
 import me.rerere.rikkahub.data.db.entity.MemoryScopeState
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.MemoryFile
@@ -38,6 +39,9 @@ import me.rerere.rikkahub.data.repository.MemoryWriteResult
 import me.rerere.rikkahub.utils.JsonInstant
 import java.io.File
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.minutes
@@ -75,6 +79,32 @@ internal class HistoryMemoryManager(
     suspend fun clearRecalls(scope: String) = dao.clearRecalls(scope)
     suspend fun sources(from: Long, until: Long) = conversations.historySources(from, until)
 
+    /** 每一轮整理的历史；任务行被新任务替换后，这些记录仍然按 scope 留下来。 */
+    fun observeTaskLogs(scope: String, limit: Int = TASK_LOG_KEEP) = dao.taskLogs(scope, limit)
+
+    suspend fun taskLog(id: String): HistoryMemoryTaskLog? = withContext(Dispatchers.IO) { dao.taskLog(id) }
+
+    /**
+     * 打开历史页时把候选数字对齐一次：用户事后审核候选会改变 saved/skipped，
+     * 历史里存的必须和候选表现在的事实一致，而不是停在任务结束那一刻。
+     */
+    suspend fun refreshTaskLogs(scope: String) = withContext(Dispatchers.IO) {
+        dao.taskLogIds(scope, TASK_LOG_KEEP).forEach { dao.refreshTaskCounters(it) }
+    }
+
+    /**
+     * 重试某一轮任务。只有“当前任务仍然是这一轮”才能接着跑：
+     * 已被新任务替换的历史轮次只能回看，不能假装点一下就能续上。
+     */
+    suspend fun retryTask(scope: String, id: String): Boolean = withContext(Dispatchers.IO) {
+        val current = dao.job(scope) ?: return@withContext false
+        if (current.id != id || current.status !in setOf("paused", "failed", "interrupted")) {
+            return@withContext false
+        }
+        control(scope, "running")
+        dao.job(scope)?.status == "running"
+    }
+
     data class Plan(
         val scope: String,
         val sources: List<HistorySource>,
@@ -83,6 +113,8 @@ internal class HistoryMemoryManager(
         val destination: String,
         val nodes: Long,
         val serializedChars: Long,
+        /** 任务历史里展示的来源范围；只存文字，回看时不重新查聊天。 */
+        val rangeLabel: String = "",
     )
 
     /**
@@ -119,6 +151,7 @@ internal class HistoryMemoryManager(
             fingerprint(settings, provider, model),
             listOf(provider.name, model.modelId, transport).joinToString(" · "),
             sizes.sumOf { it.nodes }, sizes.sumOf { it.characters },
+            rangeLabel = sourceRangeLabel(sources),
         )
     }
 
@@ -146,7 +179,7 @@ internal class HistoryMemoryManager(
         controls.withLock {
             dao.running().forEach { job ->
                 if (!HistoryMemoryWorker.isActive(context, job.scope)) {
-                    dao.put(
+                    saveJob(
                         job.copy(
                             status = "paused",
                             failure = "上次整理被系统中断，已保存进度；可以继续，也可以重新开始整理。",
@@ -157,7 +190,7 @@ internal class HistoryMemoryManager(
                 }
                 if (job.deviceConsent != consentId) {
                     // 从备份恢复的任务不属于这台设备：停下并说明，而不是拿旧授权继续发聊天记录
-                    dao.put(
+                    saveJob(
                         job.copy(
                             status = "paused",
                             failure = "这份整理任务来自其他设备的备份，需要重新确认整理范围后继续。",
@@ -193,11 +226,25 @@ internal class HistoryMemoryManager(
         }
         // 不删除上一任务的候选与批次：候选属于用户的记忆数据，任务行会被替换但候选靠 scope 保留。
         // 旧实现这里 clearCandidates，等于用户误操作或取消后数据直接消失。
-        HistoryMemoryJob(
+        val job = HistoryMemoryJob(
             plan.scope, Uuid.random().toString(), consentId, plan.modelId, plan.fingerprint,
             Json.encodeToString(plan.sources), plan.sources.size,
             createdAt = System.currentTimeMillis(),
         ).also { dao.put(it) }
+        // 建任务的同时落一条历史：这一轮从开始就有记录，结束/失败只更新同一行。
+        dao.putTaskLog(
+            HistoryMemoryTaskLog(
+                id = job.id,
+                scope = job.scope,
+                jobGeneration = job.generation,
+                createdAt = job.createdAt,
+                status = job.status,
+                sourceCount = plan.sources.size,
+                rangeLabel = plan.rangeLabel,
+            )
+        )
+        dao.trimTaskLogs(plan.scope, TASK_LOG_KEEP)
+        job
         }
     }
 
@@ -206,7 +253,7 @@ internal class HistoryMemoryManager(
         val current = dao.job(scope) ?: return@withContext
         if (current.status != "running") return@withContext
         if (HistoryMemoryWorker.isActive(context, scope)) return@withContext
-        dao.put(
+        saveJob(
             current.copy(
                 status = "paused",
                 failure = "上次整理被系统中断，已保存进度；可以继续，也可以重新开始整理。",
@@ -220,7 +267,7 @@ internal class HistoryMemoryManager(
             val job = database.withTransaction {
                 val current = dao.job(scope) ?: return@withTransaction null
                 val allowed = when (status) {
-                    "running" -> current.status in setOf("paused", "failed", "running")
+                    "running" -> current.status in setOf("paused", "failed", "running", "interrupted")
                     "paused" -> current.status == "running"
                     "cancelled" -> current.status != "cancelled"
                     else -> false
@@ -231,13 +278,15 @@ internal class HistoryMemoryManager(
                     status = status,
                     failure = null,
                     generation = current.generation + 1,
+                    // 取消后 finishedAt 由 saveJob 补上；继续跑的时候清回 0
+                    finishedAt = if (status == "cancelled") System.currentTimeMillis() else 0,
                     // 用户明确继续时重新计算单次预算，避免一点“继续”就又被预算拦住
                     budgetAckTokens = if (status == "running" && current.status == "paused") {
                         current.estimatedTokens
                     } else {
                         current.budgetAckTokens
                     },
-                ).also { dao.put(it) }
+                ).also { saveJob(it) }
             } ?: return@withContext
             if (status == "running") HistoryMemoryWorker.enqueue(context, scope, job.id, job.generation, ExistingWorkPolicy.REPLACE).result.get()
             else HistoryMemoryWorker.cancel(context, scope).result.get()
@@ -299,7 +348,7 @@ internal class HistoryMemoryManager(
                 if (dao.job(scope) != job) return@withContext false
                 // 预算在真正花钱之前检查：超了就暂停，等用户下次明确继续。
                 budgetStop(scope, job, settings)?.let { reason ->
-                    dao.put(job.copy(status = "paused", failure = reason))
+                    saveJob(job.copy(status = "paused", failure = reason))
                     return@withContext false
                 }
                 val payload = Json.encodeToString(excerpts.map { it.text })
@@ -316,6 +365,12 @@ internal class HistoryMemoryManager(
                         params = TextGenerationParams(model = model.copy(tools = emptySet(), customBodies = emptyList()), maxTokens = HISTORY_OUTPUT_TOKENS, privateRequest = true),
                     )
                 }
+                // Token 拆成输入/输出分别记账：历史里要能解释“这轮为什么花了这么多”。
+                // 提供商没给 usage 时按字符数估算，和 estimatedTokens 的兜底口径一致。
+                val inputTokens = result.usage?.promptTokens?.toLong()?.takeIf { it > 0 }
+                    ?: ((payload.length + historyExtractionPrompt.length + 1L) / 2L)
+                val outputTokens = result.usage?.completionTokens?.toLong()?.takeIf { it > 0 }
+                    ?: ((result.message.toText().length + 1L) / 2L)
                 val facts = try {
                     parseHistoryCandidates(result.message.toText(), excerpts, id, source.id)
                 } catch (_: IllegalArgumentException) {
@@ -331,6 +386,8 @@ internal class HistoryMemoryManager(
                     digest,
                     facts,
                     rememberDigest = true,
+                    inputTokens = inputTokens,
+                    outputTokens = outputTokens,
                 )
             }
             true
@@ -351,7 +408,7 @@ internal class HistoryMemoryManager(
         database.withTransaction {
             val current = dao.job(scope)
             if (current?.id == id && current.generation == generation && current.status == "running") {
-                dao.put(current.copy(status = "failed", failure = reason))
+                saveJob(current.copy(status = "failed", failure = reason, finishedAt = System.currentTimeMillis()))
             }
         }
         return false
@@ -363,6 +420,8 @@ internal class HistoryMemoryManager(
         digest: String? = null,
         facts: List<HistoryMemoryCandidate> = emptyList(),
         rememberDigest: Boolean = false,
+        inputTokens: Long = 0,
+        outputTokens: Long = 0,
     ) = database.withTransaction {
         if (dao.job(previous.scope) != previous) return@withTransaction
         if (digest != null) dao.markProcessed(HistoryMemoryBatch(previous.id, digest))
@@ -371,6 +430,10 @@ internal class HistoryMemoryManager(
         }
         if (facts.isNotEmpty()) dao.addCandidates(facts.map { it.copy(scope = previous.scope) })
         dao.put(next)
+        // 历史行跟着游标走：处理进度来自 sourceIndex，候选数字现数库，Token 按批次累加。
+        recordTaskStatus(next)
+        dao.syncTaskCounters(next.id, next.sourceIndex)
+        if (inputTokens > 0 || outputTokens > 0) dao.addTaskTokens(next.id, inputTokens, outputTokens)
         val existing = dao.state(next.scope) ?: MemoryScopeState(next.scope)
         val today = java.time.LocalDate.now().toString()
         val usedToday = (if (existing.dailyDay == today) existing.dailyTokens else 0L) +
@@ -815,8 +878,45 @@ internal class HistoryMemoryManager(
         BulkResult(restoredFiles = restored, skippedFiles = skipped, pending = payload.keys.size)
     }
 
+    /**
+     * 任务行和历史行必须一起写：否则会出现“历史里还写着正在整理、实际任务早就停了”，
+     * 用户按历史判断该不该重试就会被误导。
+     */
+    private suspend fun saveJob(job: HistoryMemoryJob) {
+        dao.put(job)
+        recordTaskStatus(job)
+    }
+
+    private suspend fun recordTaskStatus(job: HistoryMemoryJob) {
+        dao.setTaskStatus(
+            id = job.id,
+            status = job.status,
+            finishedAt = when {
+                job.finishedAt > 0 -> job.finishedAt
+                job.status in FINAL_STATUSES -> System.currentTimeMillis()
+                else -> 0
+            },
+            error = job.failure,
+            generation = job.generation,
+        )
+    }
+
+    /** 来源范围说明：会话数 + 最早/最晚时间，回看时不用再去查聊天。 */
+    private fun sourceRangeLabel(sources: List<HistoryConversationSource>): String {
+        val from = sources.minOf { it.createdAt }.takeIf { it > 0 }
+        val until = sources.maxOf { it.updatedAt }.takeIf { it > 0 }
+        if (from == null || until == null) return "${sources.size} 个会话"
+        val format = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        fun day(millis: Long) =
+            format.format(Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()))
+        return "${sources.size} 个会话 · ${day(from)} ~ ${day(until)}"
+    }
+
     private companion object {
         const val MAX_BULK = 2_000
+        /** 历史只留最近 100 轮：够回看，也不会把库撑大。 */
+        const val TASK_LOG_KEEP = 100
+        val FINAL_STATUSES = setOf("finished", "cancelled", "failed", "interrupted")
         const val MAX_UNDO_CHARS = 3_000_000L
     }
 

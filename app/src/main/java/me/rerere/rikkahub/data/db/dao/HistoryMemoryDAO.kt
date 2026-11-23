@@ -10,6 +10,7 @@ import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
 import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
 import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryTaskLog
 import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
 import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
 import me.rerere.rikkahub.data.db.entity.MemoryScopeState
@@ -27,6 +28,53 @@ interface HistoryMemoryDAO {
 
     @Upsert
     suspend fun put(job: HistoryMemoryJob)
+
+    // ---- 任务历史：每轮整理留一条记录，任务行被替换后仍然可回看 ----
+
+    @Query("SELECT * FROM history_memory_task_log WHERE scope = :scope ORDER BY createdAt DESC LIMIT :limit")
+    fun taskLogs(scope: String, limit: Int): Flow<List<HistoryMemoryTaskLog>>
+
+    @Query("SELECT * FROM history_memory_task_log WHERE id = :id")
+    suspend fun taskLog(id: String): HistoryMemoryTaskLog?
+
+    @Upsert
+    suspend fun putTaskLog(log: HistoryMemoryTaskLog)
+
+    @Query("UPDATE history_memory_task_log SET status = :status, finishedAt = :finishedAt, errorMessage = :error, jobGeneration = :generation WHERE id = :id")
+    suspend fun setTaskStatus(id: String, status: String, finishedAt: Long, error: String?, generation: Long)
+
+    /** Token 按批次累加，避免并发写覆盖掉已经花掉的部分。 */
+    @Query("UPDATE history_memory_task_log SET inputTokens = inputTokens + :input, outputTokens = outputTokens + :output WHERE id = :id")
+    suspend fun addTaskTokens(id: String, input: Long, output: Long)
+
+    /** 处理进度直接来自任务游标，候选计数直接数库，不在这里做任何推算。 */
+    @Query(
+        "UPDATE history_memory_task_log SET processedCount = :processed, " +
+            "candidateCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id), " +
+            "savedCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = 'saved'), " +
+            "skippedCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = 'discarded') " +
+            "WHERE id = :id"
+    )
+    suspend fun syncTaskCounters(id: String, processed: Int)
+
+    /** 用户事后审核候选会改变 saved/skipped，历史页打开时再对齐一次。 */
+    @Query(
+        "UPDATE history_memory_task_log SET " +
+            "candidateCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id), " +
+            "savedCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = 'saved'), " +
+            "skippedCount = (SELECT COUNT(*) FROM history_memory_candidate WHERE jobId = :id AND status = 'discarded') " +
+            "WHERE id = :id"
+    )
+    suspend fun refreshTaskCounters(id: String)
+
+    @Query("SELECT id FROM history_memory_task_log WHERE scope = :scope ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun taskLogIds(scope: String, limit: Int): List<String>
+
+    @Query(
+        "DELETE FROM history_memory_task_log WHERE scope = :scope AND id NOT IN " +
+            "(SELECT id FROM history_memory_task_log WHERE scope = :scope ORDER BY createdAt DESC LIMIT :keep)"
+    )
+    suspend fun trimTaskLogs(scope: String, keep: Int)
 
     @Query("SELECT * FROM history_memory_candidate WHERE jobId = :id AND status = 'pending' ORDER BY key LIMIT 50")
     fun pending(id: String): Flow<List<HistoryMemoryCandidate>>
