@@ -34,6 +34,11 @@ object UpdateInstaller {
     private const val UPDATE_DIR = "updates"
     private const val UPDATE_FILE = "Rikkahub-M-update.apk"
 
+    /**
+     * 下载 + 安装前校验。整段（下载、哈希、PackageManager 解析 APK、签名比对）都在
+     * Dispatchers.IO 上执行；调用方即使从主线程发起，也不会把阻塞调用留在 Main。
+     * 返回 Result 而不是抛异常：调用方只关心「成功拿到可安装的 APK」或「失败原因」。
+     */
     suspend fun downloadAndVerify(
         context: Context,
         client: OkHttpClient,
@@ -43,32 +48,39 @@ object UpdateInstaller {
         version: String? = null,
         onProgress: (read: Long, total: Long, source: String) -> Unit = { _, _, _ -> },
         onVerifying: (source: String) -> Unit = {},
+        onStage: (UpdateStage) -> Unit = {},
         isCancelled: () -> Boolean = { false },
     ): Result<File> = withContext(Dispatchers.IO) {
         runCatching {
-        val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
-        val apk = UpdateDownloadEngine.download(
-            client = client,
-            sources = sources,
-            target = File(dir, UPDATE_FILE),
-            expectedSha256 = expectedSha256,
-            expectedSize = expectedSize,
-            version = version,
-            onProgress = onProgress,
-            onVerifying = onVerifying,
-            isCancelled = isCancelled,
-        )
-        try {
-            verifyArchive(context, apk)
-        } catch (e: UpdateCheckException) {
-            // 包名/版本/签名不对的包不可复用，删除后让用户重试或换浏览器下载
-            apk.delete()
-            throw e
-        }
-        apk
+            val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
+            val apk = UpdateDownloadEngine.download(
+                client = client,
+                sources = sources,
+                target = File(dir, UPDATE_FILE),
+                expectedSha256 = expectedSha256,
+                expectedSize = expectedSize,
+                version = version,
+                onProgress = onProgress,
+                onVerifying = onVerifying,
+                onStage = onStage,
+                isCancelled = isCancelled,
+            )
+            onStage(UpdateStage.VERIFY_ARCHIVE)
+            try {
+                verifyArchive(context, apk)
+            } catch (e: UpdateCheckException) {
+                // 包名/版本/签名不对的包不可复用，删除后让用户重试或换浏览器下载
+                apk.delete()
+                throw e
+            }
+            apk
         }
     }
 
+    /**
+     * 解析 APK 的 manifest 与签名：PackageManager 会真的去读 zip，属于阻塞 IO。
+     * 只能在 [downloadAndVerify] 的 IO 段里调用，不要挪到别的线程上下文。
+     */
     private fun verifyArchive(context: Context, apk: File) {
         val pm = context.packageManager
         val flags = PackageManager.GET_SIGNING_CERTIFICATES
@@ -110,6 +122,11 @@ object UpdateInstaller {
         }
     }
 
+    /**
+     * 交给系统安装器。**故意保持同步、由主线程调用**：它只做 FileProvider 路径解析与
+     * startActivity，没有任何网络或大文件读写；新增任何阻塞逻辑都必须先切到 IO，
+     * 否则会重新踩到 StrictMode 的主线程策略。
+     */
     fun startSystemInstall(context: Context, apk: File) {
         if (!canRequestPackageInstalls(context)) throw InstallPermissionRequiredException(apk)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)

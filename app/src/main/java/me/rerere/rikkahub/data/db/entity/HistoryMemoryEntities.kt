@@ -22,6 +22,20 @@ data class HistoryMemoryJob(
     val estimatedTokens: Long = 0,
     val status: String = "running",
     val failure: String? = null,
+    /**
+     * 失败发生在哪一步（见 MemoryStage.id）。旧版本没有这两列，升级后为 null，
+     * 历史行仍然按老文案显示，不会因为缺阶段而显示错误。
+     */
+    val failureStage: String? = null,
+    val failureCode: String? = null,
+    /** 已脱敏的技术摘要：只含异常类名、状态码、游标，不含聊天正文与密钥。 */
+    val failureDetail: String? = null,
+    /**
+     * 当前批次连续失败次数。同一批连续失败超过上限就跳过这一批，
+     * 避免用户每点一次“继续”都重新调用一次模型、重复付费。
+     */
+    @ColumnInfo(defaultValue = "0")
+    val batchAttempts: Int = 0,
     val generation: Long = 0,
     @ColumnInfo(defaultValue = "0")
     val createdAt: Long = 0,
@@ -75,6 +89,17 @@ data class HistoryMemoryTaskLog(
     @ColumnInfo(defaultValue = "''")
     val rangeLabel: String = "",
     val errorMessage: String? = null,
+    /** 失败阶段与错误码：和 history_memory_job 同名字段一一对应，历史列表据此显示“在哪一步失败”。 */
+    val errorStage: String? = null,
+    val errorCode: String? = null,
+    /** 可复制的诊断摘要（已脱敏），不含聊天正文与密钥。 */
+    val errorDetail: String? = null,
+    /** 因为多次失败被自动跳过的批次数量，让“进度不动”有据可查。 */
+    @ColumnInfo(defaultValue = "0")
+    val skippedBatches: Int = 0,
+    /** 因为来源被修改/删除而跳过的会话数量。 */
+    @ColumnInfo(defaultValue = "0")
+    val skippedSources: Int = 0,
 )
 
 @Entity(

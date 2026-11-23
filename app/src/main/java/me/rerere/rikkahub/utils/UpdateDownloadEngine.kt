@@ -27,9 +27,39 @@ class UpdateSourcesException(val failures: List<UpdateSourceFailure>) : IOExcept
     failures.joinToString("；") { "${it.label}：${it.reason}" }
 )
 
+/** 下载所处的阶段：失败时把阶段写进状态与日志，用户反馈能直接指出卡在哪一步。 */
+enum class UpdateStage(val label: String) {
+    PREPARE("准备下载"),
+    CONNECT("连接下载源"),
+    TRANSFER("接收安装包数据"),
+    VERIFY("校验 SHA-256 与大小"),
+    VERIFY_ARCHIVE("校验包名/版本/签名"),
+}
+
+/**
+ * 真机上 BlockGuard 抛出的 NetworkOnMainThreadException。
+ * 单测（JVM）里既拿不到真实异常也没法构造它，所以类名与文案两条都认，
+ * 这样 0.8.2 那种「网络跑在主线程」的故障在诊断文案与测试里都能被识别。
+ */
+fun isNetworkOnMainThreadError(error: Throwable?): Boolean {
+    if (error == null) return false
+    if (error is android.os.NetworkOnMainThreadException) return true
+    if (error.javaClass.name.endsWith("NetworkOnMainThreadException")) return true
+    return error.message?.contains("NetworkOnMainThread", ignoreCase = true) == true
+}
+
 /** 诊断用：把异常翻译成用户能看懂的一句话。 */
 fun describeDownloadError(error: Throwable?): String = when (error) {
     null -> "未知错误"
+    else -> if (isNetworkOnMainThreadError(error)) {
+        // 更新机制自身的缺陷：网络调用落到了主线程，必须让用户看到并回报，而不是当成网络故障
+        "网络请求误在主线程执行，已被系统拦截（内部错误，请反馈版本号与日志）"
+    } else {
+        describeDownloadErrorWithoutThreadHint(error)
+    }
+}
+
+private fun describeDownloadErrorWithoutThreadHint(error: Throwable): String = when (error) {
     is UpdateHttpException -> when (error.code) {
         403 -> "被服务器拒绝（HTTP 403）"
         404 -> "文件不存在（HTTP 404）"
@@ -55,24 +85,32 @@ object UpdateDownloadEngine {
     private const val MAX_TRIES_PER_SOURCE = 2
     private const val META_FILE_SUFFIX = ".meta"
 
-    @Volatile
-    private var downloadClient: OkHttpClient? = null
+    /**
+     * 下载用客户端缓存。**必须按 base client 分别缓存**：早期实现只缓存「第一次见到的那个」，
+     * 之后无论是设置里换了 OkHttpClient（代理/拦截器/超时），还是测试里注入了带
+     * network interceptor 的客户端，下载都会继续用旧的实例，导致新配置静默失效，
+     * 测试里也看不到任何请求。用 WeakHashMap 跟着 base 的生命周期，不额外泄漏。
+     */
+    private val downloadClients =
+        java.util.Collections.synchronizedMap(java.util.WeakHashMap<OkHttpClient, OkHttpClient>())
 
     /** 大文件不能用聊天用的短超时；取消整体超时，保留连接/读取超时，不改动 TLS 校验。 */
-    fun clientFor(base: OkHttpClient): OkHttpClient =
-        downloadClient ?: base.newBuilder()
-            .callTimeout(0, TimeUnit.MILLISECONDS)
-            // 连接超时压短：主源被墙时要尽快切到备用源，而不是让用户干等一分多钟
-            .connectTimeout(12, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .build()
-            .also { downloadClient = it }
+    fun clientFor(base: OkHttpClient): OkHttpClient = downloadClients[base] ?: base.newBuilder()
+        .callTimeout(0, TimeUnit.MILLISECONDS)
+        // 连接超时压短：主源被墙时要尽快切到备用源，而不是让用户干等一分多钟
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
+        .also { downloadClients[base] = it }
 
     /**
      * 下载入口**必须在 IO 线程执行**：OkHttp 的 execute()、文件写入与哈希计算都是阻塞调用。
-     * 调用方（UpdateChecker.startDownload）运行在 AppScope 的 Main 上，
-     * 0.8.2 少了这层 withContext，真机上直接抛 NetworkOnMainThreadException。
+     * 这里自己再 withContext(IO) 一次是最后一道保险：即使某个调用方忘了切线程，
+     * 也不会把 socket/文件 IO 带到主线程上（0.8.2 的 NetworkOnMainThreadException 就是少了这层）。
+     * 调用方（UpdateChecker.startDownload）由 AppScope 的 Dispatchers.Main 启动，
+     * 必须自己在外面再包一层 IO；这条不变量由 UpdateMainThreadSourceGuardTest 与
+     * UpdateMainThreadTest 两个测试锁死。
      */
     suspend fun download(
         client: OkHttpClient,
@@ -83,6 +121,7 @@ object UpdateDownloadEngine {
         version: String? = null,
         onProgress: (read: Long, total: Long, source: String) -> Unit = { _, _, _ -> },
         onVerifying: (source: String) -> Unit = {},
+        onStage: (UpdateStage) -> Unit = {},
         isCancelled: () -> Boolean = { false },
         retryDelayMillis: (attempt: Int) -> Long = { UpdateTransferPolicy.retryDelayMillis(it) },
     ): File = withContext(Dispatchers.IO) {
@@ -95,6 +134,7 @@ object UpdateDownloadEngine {
             version = version,
             onProgress = onProgress,
             onVerifying = onVerifying,
+            onStage = onStage,
             isCancelled = isCancelled,
             retryDelayMillis = retryDelayMillis,
         )
@@ -109,10 +149,12 @@ object UpdateDownloadEngine {
         version: String?,
         onProgress: (read: Long, total: Long, source: String) -> Unit,
         onVerifying: (source: String) -> Unit,
+        onStage: (UpdateStage) -> Unit,
         isCancelled: () -> Boolean,
         retryDelayMillis: (attempt: Int) -> Long,
     ): File {
         require(sources.isNotEmpty()) { "没有可用的下载地址" }
+        onStage(UpdateStage.PREPARE)
         target.parentFile?.mkdirs()
         val metaFile = File(target.path + META_FILE_SUFFIX)
         val failures = mutableListOf<UpdateSourceFailure>()
@@ -128,6 +170,7 @@ object UpdateDownloadEngine {
                 version = version,
                 onProgress = onProgress,
                 onVerifying = onVerifying,
+                onStage = onStage,
                 isCancelled = isCancelled,
                 retryDelayMillis = retryDelayMillis,
             )
@@ -153,6 +196,7 @@ object UpdateDownloadEngine {
         version: String?,
         onProgress: (Long, Long, String) -> Unit,
         onVerifying: (String) -> Unit,
+        onStage: (UpdateStage) -> Unit,
         isCancelled: () -> Boolean,
         retryDelayMillis: (Int) -> Long,
     ): Result<File> {
@@ -169,9 +213,11 @@ object UpdateDownloadEngine {
                     expectedSize = expectedSize,
                     version = version,
                     onProgress = onProgress,
+                    onStage = onStage,
                     isCancelled = isCancelled,
                 )
                 onVerifying(source.label)
+                onStage(UpdateStage.VERIFY)
                 verifyFile(target, expectedSha256, expectedSize)
                 target
             }
@@ -210,6 +256,7 @@ object UpdateDownloadEngine {
         expectedSize: Long?,
         version: String?,
         onProgress: (Long, Long, String) -> Unit,
+        onStage: (UpdateStage) -> Unit,
         isCancelled: () -> Boolean,
     ) {
         val meta = readMeta(metaFile)
@@ -231,6 +278,7 @@ object UpdateDownloadEngine {
             }
             .build()
 
+        onStage(UpdateStage.CONNECT)
         client.newCall(request).execute().use { response ->
             if (isCancelled()) throw UpdateCancelledException()
             if (response.code == 416 && resumeFrom > 0) {
@@ -266,6 +314,7 @@ object UpdateDownloadEngine {
                 metaFile,
                 DownloadMeta(source.url, response.header("ETag"), response.header("Last-Modified"), version.orEmpty()),
             )
+            onStage(UpdateStage.TRANSFER)
             FileOutputStream(target, append).use { output ->
                 response.body.byteStream().use { input ->
                     var read = resumeFrom

@@ -18,6 +18,7 @@ import me.rerere.rikkahub.ui.pages.history.HistoryVM
 import me.rerere.rikkahub.ui.pages.imggen.ImgGenVM
 import me.rerere.rikkahub.ui.pages.mediacreation.MediaCreationSessionsVM
 import me.rerere.rikkahub.ui.pages.mediacreation.MediaCreationVM
+import me.rerere.rikkahub.ui.pages.memory.MemoryCenterVM
 import me.rerere.rikkahub.ui.pages.memory.MemoryFileVM
 import me.rerere.rikkahub.ui.pages.quickstart.QuickStartVM
 import me.rerere.rikkahub.ui.pages.search.SearchVM
@@ -57,6 +58,16 @@ val viewModelModule = module {
             filesManager = get(),
             skillManager = get(),
             workspaceRepository = get(),
+        )
+    }
+    viewModel<MemoryCenterVM> {
+        MemoryCenterVM(
+            // 从设置/侧边栏进来时不带助手，VM 会跟随当前选中的助手
+            assistantId = it.getOrNull(),
+            settingsStore = get(),
+            memoryRepository = get(),
+            consolidationScheduler = get(),
+            history = get(),
         )
     }
     viewModel<MemoryFileVM> {

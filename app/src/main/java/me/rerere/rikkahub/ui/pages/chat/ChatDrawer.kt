@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Brain02
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Folder01
@@ -345,11 +346,20 @@ fun ChatDrawerContent(
                 }
             )
 
-            if (memoryDreaming) {
-                MemoryDreamingEntry(
-                    onClick = { navController.navigate(Screen.AssistantMemory(settings.assistantId.toString())) },
-                )
-            }
+            // 记忆中心是常驻入口：以前只有开着「自动整理」才显示，关掉这个开关的人就再也找不到
+            // 自己记住了什么。正在整理时只在行尾点一个小转圈，不再单独占一张卡。
+            DrawerEntry(
+                icon = HugeIcons.Brain02,
+                text = "记忆中心",
+                onClick = {
+                    navController.navigate(Screen.MemoryCenter(assistantId = settings.assistantId.toString()))
+                },
+                trailing = if (memoryDreaming) {
+                    { ContainedLoadingIndicator(modifier = Modifier.size(16.dp)) }
+                } else {
+                    null
+                },
+            )
 
             // 助手选择器
             AssistantPicker(
@@ -739,6 +749,8 @@ private fun DrawerEntry(
     trailingIcon: ImageVector? = null,
     trailingDescription: String? = null,
     onTrailingClick: () -> Unit = {},
+    // 自定义行尾（例如“正在整理”的小转圈）：图标表达不了的状态用这个，不必再开一张卡片
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         onClick = onClick,
@@ -768,7 +780,14 @@ private fun DrawerEntry(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            if (trailingIcon != null) {
+            if (trailing != null) {
+                Box(
+                    modifier = Modifier.padding(end = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    trailing()
+                }
+            } else if (trailingIcon != null) {
                 // 不用 IconButton，它的 48dp 最小尺寸会把这一行撑得比其他行高
                 Box(
                     modifier = Modifier
@@ -786,34 +805,6 @@ private fun DrawerEntry(
                     )
                 }
             }
-        }
-    }
-}
-
-// 后台正在整理当前助手的记忆，点开是记忆页
-@Composable
-private fun MemoryDreamingEntry(onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            ContainedLoadingIndicator(modifier = Modifier.size(18.dp))
-            Text(
-                text = stringResource(R.string.memory_dreaming),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
         }
     }
 }

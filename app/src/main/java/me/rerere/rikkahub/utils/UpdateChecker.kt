@@ -2,6 +2,7 @@ package me.rerere.rikkahub.utils
 
 import android.content.Context
 import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,7 +15,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
-import me.rerere.common.http.await
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
@@ -142,6 +142,10 @@ class UpdateChecker(
     @Volatile
     private var cancelRequested = false
 
+    /** 当前下载进行到哪一步；失败时写进状态与日志，便于用户反馈「卡在哪」。 */
+    @Volatile
+    private var lastStage: UpdateStage = UpdateStage.PREPARE
+
     /** 下载/校验的统一状态；界面、通知栏、聊天页卡片都读这一份。 */
     val download: StateFlow<UpdateDownloadState> = downloadState.asStateFlow()
 
@@ -160,12 +164,16 @@ class UpdateChecker(
     private val cacheFile = File(context.filesDir, "update-cache.json")
 
     init {
-        pruneStaleDownloads()
-        partialBytes.value = runCatching {
-            File(File(context.cacheDir, "updates"), "Rikkahub-M-update.apk")
-                .takeIf { it.isFile }?.length() ?: 0L
-        }.getOrDefault(0L)
-        appScope.launch { runCatching { refresh(force = false) } }
+        // 构造发生在 Koin 注入处（可能就是主线程）：清理残留安装包、统计半截文件大小都是文件 IO，
+        // 统一丢到 IO 线程执行，主线程只保留构造本身；检查更新复用同一条后台任务。
+        appScope.launch(Dispatchers.IO) {
+            pruneStaleDownloads()
+            partialBytes.value = runCatching {
+                File(File(context.cacheDir, "updates"), "Rikkahub-M-update.apk")
+                    .takeIf { it.isFile }?.length() ?: 0L
+            }.getOrDefault(0L)
+            runCatching { refresh(force = false) }
+        }
     }
 
     /** 清理上次没下完或校验失败的残留安装包，避免占着缓存却不会被用到。 */
@@ -351,14 +359,29 @@ class UpdateChecker(
             .sortedByDescending { note -> Version(note.version) }
     }
 
-    fun bundledNotes(): List<ReleaseNote> = runCatching {
-        val text = context.assets.open("updates.json").bufferedReader().use { it.readText() }
-        json.decodeFromString(MirrorManifest.serializer(), text).releases
-    }.getOrNull() ?: emptyList()
+    /**
+     * 读 assets 里的内置更新说明：属于文件 IO，因此做成 suspend 并在 IO 上执行，
+     * 避免哪天从 Compose 里直接调用时把磁盘读留在主线程。
+     */
+    suspend fun bundledNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
+        runCatching {
+            val text = context.assets.open("updates.json").bufferedReader().use { it.readText() }
+            json.decodeFromString(MirrorManifest.serializer(), text).releases
+        }.getOrNull() ?: emptyList()
+    }
 
     /**
      * 开始下载更新包。已在下载则不重复开始，避免并发和多份半截文件。
      * 进度与校验都写进 [download]，界面关掉再打开也能接着看。
+     *
+     * 入口本身仍是普通函数（由 Compose 点击回调在主线程调用），但**只做**三件事：
+     * 置状态、启动前台服务、把真正的下载丢进 `withContext(Dispatchers.IO)`。
+     * AppScope 的 dispatcher 是 Dispatchers.Main（见 RikkaHubApp.AppScope），所以
+     * 「构造下载源 → 下载 → 哈希校验 → 记住可用源」必须整段显式切到 IO：
+     *   - downloadSources()/mirrorBase() 读 SharedPreferences（文件 IO）
+     *   - downloadAndVerify() 走 OkHttp 与文件写入
+     * 将来任何新增阻塞调用都要放进 [downloadInBackground] 的 IO 块里；
+     * 放错位置会被 UpdateMainThreadSourceGuardTest 当场判失败。
      */
     fun startDownload(info: UpdateInfo) {
         if (downloadJob?.isActive == true) return
@@ -369,52 +392,92 @@ class UpdateChecker(
         }
         activeInfo = info
         cancelRequested = false
+        lastStage = UpdateStage.PREPARE
         downloadState.value = UpdateDownloadState.Preparing(info.version)
-        // 检查更新与下载分离：无论刚才是从 GitHub、atom 还是备用源拿到的版本信息，
+        // 前台服务必须在用户点击这一刻（应用仍在前台）启动：Android 12+ 从后台启动会被系统拒绝。
+        // 这里只有 binder 调用，没有网络/文件读。
+        if (!UpdateDownloadService.start(context)) {
+            reportNotificationProblem("系统未允许下载通知（前台服务启动失败），进度仅在应用内显示")
+        }
+        downloadJob = appScope.launch {
+            val outcome = try {
+                withContext(Dispatchers.IO) { downloadInBackground(info, download) }
+            } catch (e: CancellationException) {
+                // 用户在下载中被取消：结果由 cancelDownload() 置为 Idle，这里不再覆盖
+                null
+            }
+            publishDownloadOutcome(info, outcome)
+        }
+    }
+
+    /** 只在 Dispatchers.IO 上执行：构造来源、下载、校验、记录可用源，全都不许碰主线程。 */
+    private suspend fun downloadInBackground(info: UpdateInfo, download: UpdateDownload): DownloadOutcome {
+        var lastEmit = 0L
+        var activeSource = ""
+        // 检查更新与下载分离：无论刚才从 GitHub、atom 还是备用源拿到的版本信息，
         // 下载都按「GitHub 正式附件 → 已验证备用源」的顺序尝试，避免检查成功却下载必然失败。
         val sources = downloadSources(info, download)
-        downloadJob = appScope.launch {
-            var lastEmit = 0L
-            var activeSource = ""
-            val result = UpdateInstaller.downloadAndVerify(
-                context = context,
-                client = client,
-                sources = sources,
-                expectedSha256 = download.sha256,
-                expectedSize = download.bytes,
-                version = info.version,
-                onProgress = { read, total, source ->
-                    if (source.isNotBlank() && !source.startsWith("切换")) activeSource = source
-                    val now = SystemClock.elapsedRealtime()
-                    if (now - lastEmit >= 120 || (total > 0 && read >= total)) {
-                        lastEmit = now
-                        downloadState.value = UpdateDownloadState.Running(info.version, read, total, source)
-                    }
-                },
-                onVerifying = { source ->
-                    if (source.isNotBlank()) activeSource = source
-                    downloadState.value = UpdateDownloadState.Verifying(info.version, source)
-                },
-                isCancelled = { cancelRequested },
-            )
-            downloadJob = null
-            if (result.isSuccess) rememberGoodSource(activeSource, downloadSources(info, download).firstOrNull { it.label == activeSource }?.url.orEmpty())
-            downloadState.value = when {
-                result.isSuccess -> UpdateDownloadState.Ready(info.version, result.getOrThrow())
-                cancelRequested -> UpdateDownloadState.Idle
-                result.exceptionOrNull() is CancellationException -> UpdateDownloadState.Idle
-                else -> UpdateDownloadState.Failed(
+        val result = UpdateInstaller.downloadAndVerify(
+            context = context,
+            client = client,
+            sources = sources,
+            expectedSha256 = download.sha256,
+            expectedSize = download.bytes,
+            version = info.version,
+            onProgress = { read, total, source ->
+                if (source.isNotBlank() && !source.startsWith("切换")) activeSource = source
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastEmit >= 120 || (total > 0 && read >= total)) {
+                    lastEmit = now
+                    // StateFlow 赋值线程安全，不需要回主线程
+                    downloadState.value = UpdateDownloadState.Running(info.version, read, total, source)
+                }
+            },
+            onVerifying = { source ->
+                if (source.isNotBlank()) activeSource = source
+                downloadState.value = UpdateDownloadState.Verifying(info.version, source)
+            },
+            onStage = { stage -> lastStage = stage },
+            isCancelled = { cancelRequested },
+        )
+        if (result.isSuccess) {
+            val goodUrl = sources.firstOrNull { it.label == activeSource }?.url
+            if (!goodUrl.isNullOrBlank()) rememberGoodSource(activeSource, goodUrl)
+        }
+        return DownloadOutcome(result.getOrNull(), result.exceptionOrNull())
+    }
+
+    /** 收尾只保留状态发布这一件事，放在 Main 上做，避免 IO 段与界面状态互相覆盖。 */
+    private fun publishDownloadOutcome(info: UpdateInfo, outcome: DownloadOutcome?) {
+        downloadJob = null
+        if (outcome == null) {
+            if (cancelRequested) downloadState.value = UpdateDownloadState.Idle
+            return
+        }
+        val apk = outcome.apk
+        val error = outcome.error
+        downloadState.value = when {
+            apk != null -> UpdateDownloadState.Ready(info.version, apk)
+            cancelRequested -> UpdateDownloadState.Idle
+            error is CancellationException -> UpdateDownloadState.Idle
+            else -> {
+                // 阶段 + 异常类型写进日志：用户反馈「下载失败」时能直接定位是连接、写盘还是校验
+                Log.w(
+                    TAG,
+                    "更新下载失败 阶段=${lastStage.label} 版本=${info.version} " +
+                        "错误=${error?.javaClass?.name}: ${error?.message}",
+                )
+                UpdateDownloadState.Failed(
                     info.version,
-                    describeDownloadFailure(result.exceptionOrNull()),
+                    "${describeDownloadFailure(error)}（失败阶段：${lastStage.label}）",
                     info.pageUrl,
                 )
             }
         }
-        // 前台服务/通知失败不能让下载静默降级成「看不见」的下载：记录下来交给界面提示。
-        if (!UpdateDownloadService.start(context)) {
-            reportNotificationProblem("系统未允许下载通知（前台服务启动失败），进度仅在应用内显示")
-        }
     }
+
+    /** 一次下载的最终结果；apk 非空即成功。 */
+    private data class DownloadOutcome(val apk: File?, val error: Throwable?)
 
     /**
      * 下载顺序：上次成功过的来源 → 已验证的国内备用源 → GitHub 正式附件 → 检查结果里的原地址。
@@ -446,6 +509,10 @@ class UpdateChecker(
     }
 
     private fun describeDownloadFailure(error: Throwable?): String {
+        if (isNetworkOnMainThreadError(error)) {
+            // 更新机制自身的缺陷：网络调用落到了主线程，必须让用户回报，而不是当成网络问题
+            return "更新下载误在主线程发起网络请求，已被系统拦截（内部错误，请反馈版本号与日志）"
+        }
         val raw = error?.message?.takeIf { it.isNotBlank() } ?: return "下载失败，请检查网络后重试"
         return when (error) {
             is UpdateSourcesException -> {
@@ -522,18 +589,27 @@ class UpdateChecker(
     private fun mirrorBase(): String =
         prefs.getString(KEY_MIRROR_BASE, DEFAULT_MIRROR_BASE)?.trimEnd('/') ?: DEFAULT_MIRROR_BASE
 
-    private suspend fun httpGet(url: String, accept: String = "application/vnd.github+json"): String {
-        val request = Request.Builder()
-            .url(url)
-            .header("Accept", accept)
-            .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
-            .build()
-        return client.newCall(request).await().use { response ->
-            val body = response.body.string()
-            if (!response.isSuccessful) throw UpdateHttpException(response.code, body)
-            body
+    /**
+     * 更新检查的所有 HTTP 读取都在 Dispatchers.IO 上完成，且用同步 execute() 拿完整响应。
+     *
+     * 这里**故意不用** `Call.await()`：await 只把 enqueue 交给 OkHttp 线程，协程恢复后
+     * 仍回到调用方调度器，紧接着的 `response.body.string()` 会在那个线程上真正读 socket ——
+     * 调用方是 Main 时就是 NetworkOnMainThreadException（0.8.2/0.8.5 的真机报错）。
+     * 把请求、读正文放在同一个 IO 块里，调用方在哪个线程调用都安全。
+     */
+    private suspend fun httpGet(url: String, accept: String = "application/vnd.github+json"): String =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", accept)
+                .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
+                .build()
+            client.newCall(request).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful) throw UpdateHttpException(response.code, body)
+                body
+            }
         }
-    }
 
     private fun Throwable.describeNetworkFailure(): String = when (this) {
         is UpdateHttpException -> describeHttp(code, body)
@@ -596,6 +672,7 @@ class UpdateChecker(
     }
 
     private companion object {
+        const val TAG = "UpdateChecker"
         const val KEY_LAST_CHECK = "last_check"
         const val KEY_PROMPTED_VERSION = "prompted_version"
         const val KEY_IGNORED_VERSION = "ignored_version"

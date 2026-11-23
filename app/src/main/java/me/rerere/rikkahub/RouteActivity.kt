@@ -97,6 +97,7 @@ import me.rerere.rikkahub.ui.pages.extensions.ExtensionsPage
 import me.rerere.rikkahub.ui.pages.extensions.PromptPage
 import me.rerere.rikkahub.ui.pages.extensions.QuickMessagesPage
 import me.rerere.rikkahub.ui.pages.extensions.skills.SkillDetailPage
+import me.rerere.rikkahub.ui.pages.memory.MemoryCenterPage
 import me.rerere.rikkahub.ui.pages.memory.MemoryFilePage
 import me.rerere.rikkahub.ui.pages.extensions.skills.SkillsPage
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspacePage
@@ -400,6 +401,10 @@ class RouteActivity : ComponentActivity() {
                                 AssistantMemoryPage(key.id)
                             }
 
+                            entry<Screen.MemoryCenter> { key ->
+                                MemoryCenterPage(assistantId = key.assistantId, path = key.path)
+                            }
+
                             entry<Screen.MemoryFile> { key ->
                                 MemoryFilePage(memoryId = key.memoryId, path = key.path)
                             }
@@ -689,6 +694,15 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class AssistantMemory(val id: String) : Screen
+
+    /**
+     * 记忆中心，长期记忆的一级页面。
+     *
+     * [assistantId] 为 null 时跟随当前选中的助手（设置页和侧边栏的入口就是这样进来的）；
+     * [path] 用来直接打开某一篇记忆文件，普通进入时为空。
+     */
+    @Serializable
+    data class MemoryCenter(val assistantId: String? = null, val path: String? = null) : Screen
 
     /** 记忆库 [memoryId] 里的一个文件，[path] 为 null 时新建 */
     @Serializable

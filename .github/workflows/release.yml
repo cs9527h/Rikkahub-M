@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '0.8.5'
+  VERSION: '0.8.6'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -162,7 +162,7 @@ jobs:
           apk=${apks[0]}
           test -x "$APKANALYZER"
           test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
-          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 30
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 31
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -187,6 +187,20 @@ jobs:
           echo "== dist =="
           ls -lh dist
           cat dist/SHA256SUMS.txt
+      - name: "Guard: built APK really is this version's source"
+        run: |
+          set -euo pipefail
+          # 用户反馈过「装了新版本却还是复现老问题」：先证明构建产物来自当前源码，
+          # 再谈修没修好。versionName/versionCode 与版本独有标记都必须能在 dex 里找到。
+          APK=$(ls app/build/outputs/apk/github/release/*.apk)
+          CODE=$(grep -oE 'versionCode = [0-9]+' app/build.gradle.kts | head -1 | grep -oE '[0-9]+')
+          python3 scripts/verify_apk_artifact.py \
+            --apk "$APK" \
+            --version-name "$VERSION" \
+            --version-code "$CODE" \
+            --require-marker "记忆中心" \
+            --require-marker "history_memory_task_log"
+
       - name: Upload verified APKs
         id: signed_apk_upload
         uses: actions/upload-artifact@v4
