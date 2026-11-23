@@ -109,31 +109,26 @@ internal fun MemorySettingsScreen(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            "记忆默认只属于当前助手。改成共享后，所有助手会看到同一份记忆，请确认内容可以共用。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         CardGroup {
             switchItem(
                 checked = assistant.enableMemory,
                 onCheckedChange = { onUpdateAssistant(assistant.copy(enableMemory = it)) },
                 supportingContent = { Text("开启后，聊天会自动带上相关的记忆。") },
-                headlineContent = { Text(stringResource(R.string.assistant_page_memory)) },
+                headlineContent = { Text("启用记忆") },
             )
             switchItem(
                 checked = assistant.useGlobalMemory,
                 onCheckedChange = { onUpdateAssistant(assistant.copy(useGlobalMemory = it)) },
                 enabled = assistant.enableMemory,
-                supportingContent = { Text(if (assistant.useGlobalMemory) "当前：所有助手共享同一份记忆。" else "当前：只有这个助手使用自己的记忆。") },
-                headlineContent = { Text("所有助手共享记忆") },
+                supportingContent = { Text(if (assistant.useGlobalMemory) "当前助手读取共享库；不会自动修改其他助手的选择。" else "当前助手只读取自己的记忆库。") },
+                headlineContent = { Text("使用共享记忆库") },
             )
             switchItem(
                 checked = assistant.autoConsolidateMemory,
                 onCheckedChange = { onUpdateAssistant(assistant.copy(autoConsolidateMemory = it)) },
                 enabled = assistant.enableMemory,
-                supportingContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream_desc)) },
-                headlineContent = { Text(stringResource(R.string.assistant_page_memory_auto_dream)) },
+                supportingContent = { Text("空闲时自动整理聊天；关闭后仍能使用已有记忆。") },
+                headlineContent = { Text("自动做梦") },
             )
         }
         if (showAdvanced) {
