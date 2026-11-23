@@ -799,8 +799,17 @@ internal class HistoryMemoryManager(
         val updatedAt: Long,
     )
 
+    /** 撤销时要把哪一条候选退回待审核：任务 + 键。同一句话可能在两轮任务里各有一条。 */
     @kotlinx.serialization.Serializable
-    private data class UndoPayload(val files: List<UndoFile>, val keys: List<String>)
+    private data class UndoKey(val jobId: String, val key: String)
+
+    @kotlinx.serialization.Serializable
+    private data class UndoPayload(
+        val files: List<UndoFile>,
+        /** 旧记录只有键；新记录同时带 [jobKeys] */
+        val keys: List<String>,
+        val jobKeys: List<UndoKey> = emptyList(),
+    )
 
     /** 审核页需要一次拿到全部建议；不调用模型，纯本地计算。 */
     suspend fun suggestions(scope: String): Map<String, MemoryTriage> = withContext(Dispatchers.Default) {
@@ -834,6 +843,7 @@ internal class HistoryMemoryManager(
         val reasons = mutableListOf<String>()
         val undoFiles = mutableListOf<UndoFile>()
         val undoKeys = mutableListOf<String>()
+        val undoJobKeys = mutableListOf<UndoKey>()
         var undoChars = 0L
         for (candidate in pending) {
             val triage = MemoryTriageEngine.evaluate(candidate, files)
@@ -847,6 +857,7 @@ internal class HistoryMemoryManager(
                 dao.setStatus(candidate.jobId, candidate.key, if (alreadyKnown) "duplicate" else "discarded")
                 if (alreadyKnown) duplicate++ else ignored++
                 undoKeys += candidate.key
+                undoJobKeys += UndoKey(candidate.jobId, candidate.key)
                 continue
             }
             if (mode == BulkMode.SAVE_NEW_ONLY &&
@@ -865,6 +876,7 @@ internal class HistoryMemoryManager(
                     }
                     dao.setStatus(candidate.jobId, candidate.key, "saved")
                     undoKeys += candidate.key
+                    undoJobKeys += UndoKey(candidate.jobId, candidate.key)
                     if (undoChars < MAX_UNDO_CHARS) {
                         undoFiles += outcome.undo
                         undoChars += (outcome.undo.before?.length ?: 0) + outcome.undo.afterHash.length + 96L
@@ -874,6 +886,7 @@ internal class HistoryMemoryManager(
                     dao.setStatus(candidate.jobId, candidate.key, "duplicate")
                     duplicate++
                     undoKeys += candidate.key
+                    undoJobKeys += UndoKey(candidate.jobId, candidate.key)
                 }
                 is WriteOutcome.Failed -> {
                     failed++
@@ -889,7 +902,7 @@ internal class HistoryMemoryManager(
                     jobId = "",
                     createdAt = System.currentTimeMillis(),
                     summary = "新增 $saved 条 · 合并 $merged 条 · 更新 $updated 条 · 忽略 $ignored 条 · 需确认 $pendingCount 条",
-                    payload = Json.encodeToString(UndoPayload(undoFiles, undoKeys)),
+                    payload = Json.encodeToString(UndoPayload(undoFiles, undoKeys, undoJobKeys)),
                 )
             )
             dao.trimUndo(scope)
@@ -924,7 +937,7 @@ internal class HistoryMemoryManager(
         val skipped = dao.snapshotOfStatus(scope, "discarded", MAX_BULK)
             .filter { keys.isEmpty() || it.key in keys }
         if (skipped.isEmpty()) return@withLock 0
-        dao.setStatusesOfScope(scope, skipped.map { it.key }, "pending")
+        setStatusesInJob(skipped, "pending")
         val state = dao.state(scope) ?: MemoryScopeState(scope)
         dao.putState(state.copy(lastResult = "已恢复 ${skipped.size} 条被跳过的候选"))
         skipped.size
@@ -934,7 +947,7 @@ internal class HistoryMemoryManager(
     suspend fun skipSelected(scope: String, keys: Set<String>): Int = controls.withLock {
         val pending = dao.snapshotOfStatus(scope, "pending", MAX_BULK).filter { it.key in keys }
         if (pending.isEmpty()) return@withLock 0
-        dao.setStatusesOfScope(scope, pending.map { it.key }, "discarded")
+        setStatusesInJob(pending, "discarded")
         dao.addUndo(
             MemoryBulkUndo(
                 id = Uuid.random().toString(),
@@ -942,11 +955,29 @@ internal class HistoryMemoryManager(
                 jobId = "",
                 createdAt = System.currentTimeMillis(),
                 summary = "跳过 ${pending.size} 条",
-                payload = Json.encodeToString(UndoPayload(emptyList(), pending.map { it.key })),
+                payload = Json.encodeToString(
+                    UndoPayload(
+                        emptyList(),
+                        pending.map { it.key },
+                        pending.map { UndoKey(it.jobId, it.key) },
+                    )
+                ),
             )
         )
         dao.trimUndo(scope)
         pending.size
+    }
+
+    /**
+     * 只改这一批候选自己的行。
+     *
+     * 候选的主键是 (jobId, key)：同一句话在两轮任务里会各有一条。按记忆库 + key 批量更新会把
+     * 另一轮里已经保存（或刚被跳过）的那条一起改掉——计数、去重判断都跟着错，用户还会被拉回重新审一遍。
+     */
+    private suspend fun setStatusesInJob(candidates: List<HistoryMemoryCandidate>, status: String) {
+        candidates.groupBy { it.jobId }.forEach { (jobId, rows) ->
+            dao.setStatuses(jobId, rows.map { it.key }.distinct(), status)
+        }
     }
 
     private sealed interface WriteOutcome {
@@ -1037,7 +1068,14 @@ internal class HistoryMemoryManager(
             if (ok) restored++ else skipped++
         }
         if (payload.keys.isNotEmpty()) {
-            dao.setStatusesOfScope(scope, payload.keys, "pending")
+            // 旧版本记下的撤销记录没有任务 ID，只能按记忆库整体回退
+            if (payload.jobKeys.isEmpty()) {
+                dao.setStatusesOfScope(scope, payload.keys, "pending")
+            } else {
+                payload.jobKeys.groupBy { it.jobId }.forEach { (jobId, rows) ->
+                    dao.setStatuses(jobId, rows.map { it.key }.distinct(), "pending")
+                }
+            }
         }
         dao.clearUndo(record.id)
         BulkResult(restoredFiles = restored, skippedFiles = skipped, pending = payload.keys.size)
