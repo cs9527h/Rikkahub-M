@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.pages.chat
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -48,6 +49,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -661,15 +664,28 @@ private fun TopBar(
     val context = LocalContext.current
     val resources = LocalResources.current
 
+    // 滚动后需要一层底色，让正文经过时标题仍然清楚。但一块 0.45 的整栏纯色会变成一条白带，
+    // 所以改成向下淡出的渐变：顶部（状态栏与标题之间）最实，到顶栏底部已经完全透明，
+    // 与聊天背景自然接上，不会再出现“白色区域把顶部割成三块”的观感。
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (showCapsuleBackground) 1f else 0f,
+        label = "ChatTopBarScrim",
+    )
+    val scrimColor = MaterialTheme.colorScheme.surface
     TopAppBar(
-        // 滚动到标题栏后，仅使用淡薄的整栏背景保证文字可读，避免独立标题白色胶囊。
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = if (showCapsuleBackground) {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.45f)
-            } else {
-                Color.Transparent
-            },
-        ),
+        modifier = Modifier.drawBehind {
+            if (scrimAlpha <= 0.01f) return@drawBehind
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        scrimColor.copy(alpha = 0.58f * scrimAlpha),
+                        scrimColor.copy(alpha = 0.28f * scrimAlpha),
+                        Color.Transparent,
+                    ),
+                ),
+            )
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
                 ChatTopBarCapsule(
