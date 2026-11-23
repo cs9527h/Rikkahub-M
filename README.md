@@ -30,15 +30,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.8.5**（2026-11-23，commit `515db1a6`）
+> **最新正式版：v0.8.6**（2026-11-23，commit `d2af769a`）
 >
-> 安装包：[Rikkahub-M-0.8.5.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.5/Rikkahub-M-0.8.5.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安装包：[Rikkahub-M-0.8.6.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.8.6/Rikkahub-M-0.8.6.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`99687fe2ed59d883ad977a7722e6213dc596757b79a7c737bb156a7b542d4350`
+> SHA-256：`05ade4217b469d38e232768ac0544abda41cb8fbac61e3a8cf97648f84f7d7bc`
 >
-> 本版摘要：记忆整理留下一轮轮可回看的任务历史，列表与页面转场收尾。
+> 本版摘要：记忆中心升为一级功能，整理失败说清原因，更新下载主线程问题修到根上。
 >
-> 完整说明见 [v0.8.5 更新日志](docs/releases/0.8.5.md)。
+> 完整说明见 [v0.8.6 更新日志](docs/releases/0.8.6.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 这是什么
