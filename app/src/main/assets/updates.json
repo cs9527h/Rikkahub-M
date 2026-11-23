@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-22T17:10:02Z",
+  "updatedAt": "2026-11-22T23:51:59Z",
   "releases": [
+    {
+      "version": "0.8.3",
+      "tag": "v0.8.3",
+      "title": "Rikkahub-M 0.8.3",
+      "summary": "记忆页高级设置改到顶栏菜单，打开即用。",
+      "body": "## 优化\n\n- 记忆首页的「使用记录」和「高级设置」移到顶栏「⋮」菜单，打开即用，不用滚到页面最底部\n- 页面底部不再保留重复入口，记忆列表更短更干净\n\n## 修复\n\n- 修复记忆页入口过深、高级设置需要长距离滚动才能找到的问题\n\n## 其他\n\n- 版本 0.8.3 / versionCode 29，包名与签名不变，可覆盖升级 0.8.2\n- 记忆、聊天、候选与人格设置均未改动",
+      "publishedAt": "2026-11-23T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.8.2",
       "tag": "v0.8.2",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-22T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.8.1",
