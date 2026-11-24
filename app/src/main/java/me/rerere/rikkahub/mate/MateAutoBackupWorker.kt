@@ -15,7 +15,6 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.sync.AutoBackupPolicy
 import me.rerere.rikkahub.data.sync.BackupKind
 import me.rerere.rikkahub.data.sync.BackupPassphraseStore
-import me.rerere.rikkahub.data.sync.EncryptedBackupSession
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import org.koin.core.component.KoinComponent
@@ -46,12 +45,14 @@ class MateAutoBackupWorker(
             return Result.failure()
         }
 
-        var keyAvailable = false
+        var keyAvailable = true
         var hadFailure = false
         try {
-            EncryptedBackupSession.run(passphraseStore::readOrCreate) { passphrase ->
-                keyAvailable = true
-                val includeCredentials = false // 新策略：API Key / OAuth 等凭据一律不进备份
+            // 与上游一致：备份不再加密，不生成也不读取任何口令/密钥。
+            // 数据安全交给传输层（WebDAV/S3 都要求 https）与设备本身。
+            run {
+                val passphrase: CharArray? = null
+                val includeCredentials = false // API Key / OAuth 等凭据一律不进备份
                 for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
                     val hours = when (kind) {
                         BackupKind.SETTINGS -> settings.backupReminderConfig.autoSettingsIntervalHours

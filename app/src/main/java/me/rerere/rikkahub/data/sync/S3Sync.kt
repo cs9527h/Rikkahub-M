@@ -57,12 +57,12 @@ class S3Sync(
     /** Returns null if this destination already holds the same successful content version. */
     suspend fun backupAutomatically(
         config: S3Config,
-        passphrase: CharArray,
+        passphrase: CharArray?,
         includeCredentials: Boolean,
         kind: BackupKind,
         lastSuccess: AutoBackupState?,
     ): String? = withContext(Dispatchers.IO) {
-        require(kind != BackupKind.FULL && passphrase.isNotEmpty())
+        require(kind != BackupKind.FULL)
         val prepared = backupManager.prepareBackup(
             includeDatabase = kind == BackupKind.CHATS,
             includeFiles = false,

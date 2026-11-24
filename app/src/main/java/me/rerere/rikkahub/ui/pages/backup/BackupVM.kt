@@ -157,27 +157,6 @@ class BackupVM(
         }
     }
 
-    /**
-     * 设置自动备份/本机导出使用的口令（至少 6 位）。会替换本机随机密钥；
-     * 已经存在的旧备份仍然用它们各自的口令或旧密钥恢复，不会失效。
-     */
-    suspend fun setBackupPassphrase(passphrase: CharArray) = withContext(Dispatchers.IO) {
-        require(passphrase.size >= 6) { "口令至少 6 位" }
-        try {
-            backupPassphraseStore.save(passphrase)
-        } finally {
-            passphrase.fill('\u0000')
-        }
-        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
-    }
-
-    /** 丢弃自定义口令，重新生成一把只存在于本机 Keystore 的随机密钥。 */
-    suspend fun resetBackupPassphraseToGeneratedKey() = withContext(Dispatchers.IO) {
-        backupPassphraseStore.clear()
-        backupPassphraseStore.readOrCreate().also { it.fill('\u0000') }
-        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
-    }
-
     suspend fun forgetAutomaticBackupPassphrase() {
         settingsStore.update { current ->
             current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupOnAppLifecycle = false))
@@ -224,8 +203,9 @@ class BackupVM(
         webDavSync.testConnection(settings.value.webDavConfig)
     }
 
-    suspend fun backup() = withPassphrase(export = true) { passphrase, includeCredentials ->
-        webDavSync.backup(settings.value.webDavConfig, passphrase, includeCredentials)
+    // 与上游一致：备份不加密、不需要口令或密钥
+    suspend fun backup() {
+        webDavSync.backup(settings.value.webDavConfig, passphrase = null, includeCredentials = false)
         recordBackupTime()
     }
 
@@ -242,29 +222,14 @@ class BackupVM(
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    /**
-     * 导出本机备份。
-     *
-     * [customPassphrase] 为空时用本机密钥（换机恢复需要导入恢复密钥文件）；
-     * 传入自定义口令时用这个口令加密，恢复方只要知道口令即可，不再依赖密钥。
-     */
-    suspend fun exportToFile(customPassphrase: CharArray? = null): File =
-        if (customPassphrase != null) {
-            require(customPassphrase.size >= 6) { "口令至少 6 位" }
-            webDavSync.prepareBackupFile(
-                settings.value.webDavConfig.copy(items = localBackupItems.value),
-                customPassphrase,
-                includeCredentials = false,
-            )
-        } else {
-            withPassphrase(export = true) { passphrase, includeCredentials ->
-                webDavSync.prepareBackupFile(
-                    settings.value.webDavConfig.copy(items = localBackupItems.value),
-                    passphrase,
-                    includeCredentials,
-                )
-            }
-        }
+    /** 导出本机备份：明文 zip，不加密、不需要口令，恢复时也不问任何东西。 */
+    suspend fun exportToFile(): File = withContext(Dispatchers.IO) {
+        webDavSync.prepareBackupFile(
+            settings.value.webDavConfig.copy(items = localBackupItems.value),
+            passphrase = null,
+            includeCredentials = false,
+        )
+    }
 
     suspend fun recordLocalExportSuccess() = recordBackupTime()
 
@@ -416,8 +381,8 @@ class BackupVM(
         s3Sync.testS3(settings.value.s3Config)
     }
 
-    suspend fun backupToS3() = withPassphrase(export = true) { passphrase, includeCredentials ->
-        s3Sync.backupToS3(settings.value.s3Config, passphrase, includeCredentials)
+    suspend fun backupToS3() {
+        s3Sync.backupToS3(settings.value.s3Config, passphrase = null, includeCredentials = false)
         recordBackupTime()
     }
 

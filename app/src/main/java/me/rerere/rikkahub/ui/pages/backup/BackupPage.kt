@@ -122,8 +122,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     var busyLabel by remember { mutableStateOf("备份中…") }
     var restoreFraction by remember { mutableStateOf<Float?>(null) }
     var showProgress by remember { mutableStateOf(false) }
-    var showExportPassphrase by remember { mutableStateOf(false) }
-    var pendingExportPassphrase by remember { mutableStateOf<CharArray?>(null) }
     var showRestart by remember { mutableStateOf(false) }
     var showStorage by remember { mutableStateOf(false) }
     var showRecords by remember { mutableStateOf(false) }
@@ -145,7 +143,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             restoreFraction = null
             busyLabel = "正在打包备份…"
             runCatching {
-                val export = vm.exportToFile(pendingExportPassphrase)
+                val export = vm.exportToFile()
                 try {
                     // 200MB 级的包写到 SAF 上必须离开主线程：原来这段同步 copy 直接把界面冻住，
                     // 用户看到的就是「一直显示备份中，然后不动了」。
@@ -157,8 +155,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     vm.recordLocalExportSuccess()
                 } finally {
                     export.delete()
-                    pendingExportPassphrase?.fill('\u0000')
-                    pendingExportPassphrase = null
                 }
             }.onSuccess { toast("备份已保存") }
                 .onFailure { toast("备份失败：" + (it.message ?: "未知错误"), error = true) }
@@ -215,17 +211,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             } finally {
                 busy = false
             }
-        }
-    }
-
-    val exportKeyLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            vm.exportRecoveryKey(uri)
-                .onSuccess { toast("恢复密钥已导出，请与备份分开保存") }
-                .onFailure { toast("导出失败：" + (it.message ?: "未知错误"), error = true) }
         }
     }
 
@@ -290,7 +275,9 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     onClick = {
                         if (busy) return@Button
                         when (target) {
-                            BackupTarget.LOCAL -> showExportPassphrase = true
+                            BackupTarget.LOCAL -> createLocalBackup.launch(
+                                "Rikkahub-M-backup-${System.currentTimeMillis()}.zip"
+                            )
                             else -> scope.launch {
                                 busy = true
                                 runCatching { vm.backupNow(target) }
@@ -374,17 +361,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
             },
             onDismiss = { showStorage = false },
-        )
-    }
-
-    if (showExportPassphrase) {
-        ExportPassphraseDialog(
-            onDismiss = { showExportPassphrase = false },
-            onConfirm = { passphrase ->
-                showExportPassphrase = false
-                pendingExportPassphrase = passphrase
-                createLocalBackup.launch("Rikkahub-M-backup-${System.currentTimeMillis()}.rkmbak")
-            },
         )
     }
 
@@ -478,7 +454,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     if (showAdvanced) {
         AdvancedSheet(
             vm = vm,
-            onExportKey = { exportKeyLauncher.launch("Rikkahub-M-recovery-key.txt") },
             onImportKey = { importKeyLauncher.launch(arrayOf("text/plain", "*/*")) },
             onDismiss = { showAdvanced = false },
         )
@@ -749,32 +724,16 @@ private fun <T> BackupList(
 @Composable
 private fun AdvancedSheet(
     vm: BackupVM,
-    onExportKey: () -> Unit,
     onImportKey: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val config = settings.backupReminderConfig
     val items by vm.localBackupItems.collectAsStateWithLifecycle()
-    val automaticPassphraseConfigured by vm.automaticPassphraseConfigured.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     fun toast(message: String, error: Boolean = false) {
         toaster.show(message, type = if (error) ToastType.Error else ToastType.Success)
-    }
-    var showSetPassphrase by remember { mutableStateOf(false) }
-    if (showSetPassphrase) {
-        SetPassphraseDialog(
-            onDismiss = { showSetPassphrase = false },
-            onConfirm = { value ->
-                showSetPassphrase = false
-                scope.launch {
-                    runCatching { vm.setBackupPassphrase(value) }
-                        .onSuccess { toast("自动备份口令已设置") }
-                        .onFailure { toast("设置失败：" + (it.message ?: "未知错误"), error = true) }
-                }
-            },
-        )
     }
     fun update(block: (BackupReminderConfig) -> BackupReminderConfig) {
         vm.updateSettings { it.copy(backupReminderConfig = block(it.backupReminderConfig)) }
@@ -800,31 +759,6 @@ private fun AdvancedSheet(
                 ) { item -> if (item == WebDavConfig.BackupItem.DATABASE) "聊天与数据库" else "附件与文件" }
             }
             CardGroup(title = { Text("自动备份") }) {
-                item(
-                    onClick = { showSetPassphrase = true },
-                    leadingContent = { CardGroupIcon(HugeIcons.Settings02) },
-                    headlineContent = { Text("自动备份口令") },
-                    supportingContent = {
-                        Text(
-                            if (automaticPassphraseConfigured) {
-                                "已设置自定义口令：自动备份用它加密，任何设备输入同一口令即可恢复"
-                            } else {
-                                "使用本机随机密钥：同机恢复免输入，换机需要导入恢复密钥文件"
-                            }
-                        )
-                    },
-                    trailingContent = { CardGroupValue("设置") },
-                )
-                item(
-                    onClick = {
-                        scope.launch {
-                            vm.resetBackupPassphraseToGeneratedKey()
-                            toast("已重置为本机随机密钥")
-                        }
-                    },
-                    headlineContent = { Text("重置为本机随机密钥") },
-                    supportingContent = { Text("丢弃自定义口令；已生成的备份不受影响") },
-                )
                 formItem(
                     headlineContent = { Text(stringResource(R.string.backup_page_auto_settings_interval)) },
                     trailingContent = { CardGroupValue("${config.autoSettingsIntervalHours} 小时") },
@@ -864,11 +798,10 @@ private fun AdvancedSheet(
                     headlineContent = { Text("换机或重装时使用") },
                     supportingContent = { Text("密钥文件属于敏感材料，请与备份分开保存，不要截图或分享。") },
                 )
-                item(onClick = onExportKey, headlineContent = { Text("导出恢复密钥文件") })
-                item(onClick = onImportKey, headlineContent = { Text("导入恢复密钥文件") })
+                item(onClick = onImportKey, headlineContent = { Text("导入恢复密钥文件（仅用于打开旧版加密备份）") })
             }
             Text(
-                "旧版口令备份仍然兼容：恢复旧文件时才会要求输入一次原口令；新备份不会出现口令框。",
+                "新备份不再加密、不需要口令或密钥；只有 0.9.9 之前生成的加密备份在恢复时会要求输入原口令（或导入当时的恢复密钥）。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -972,151 +905,6 @@ private fun copyTo(output: java.io.OutputStream, input: java.io.InputStream) {
     }
 }
 
-/**
- * 导出前的可选口令：
- * - 留空 → 用本机密钥加密（同机恢复不需要任何输入；换机需要导入恢复密钥文件）；
- * - 填口令（至少 6 位）→ 用口令加密，任何设备只要知道口令就能恢复，不再依赖密钥。
- */
-@Composable
-private fun ExportPassphraseDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (CharArray?) -> Unit,
-) {
-    var passphrase by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
-    val usingPassphrase = passphrase.isNotEmpty() || confirmation.isNotEmpty()
-    val mismatch = usingPassphrase && passphrase != confirmation
-    val tooShort = usingPassphrase && passphrase.length < MIN_BACKUP_PASSPHRASE
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("设置备份口令（可留空）") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "留空：用本机密钥加密，恢复时不需要输入，但换机必须导入恢复密钥文件。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "填写（至少 $MIN_BACKUP_PASSPHRASE 位）：任何设备只要输入这个口令就能恢复，不再依赖密钥。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(
-                    value = passphrase,
-                    onValueChange = { passphrase = it },
-                    label = { Text("口令") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = tooShort,
-                    supportingText = if (tooShort) {
-                        { Text("至少 $MIN_BACKUP_PASSPHRASE 位") }
-                    } else null,
-                )
-                OutlinedTextField(
-                    value = confirmation,
-                    onValueChange = { confirmation = it },
-                    label = { Text("确认口令") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = mismatch,
-                    supportingText = if (mismatch) {
-                        { Text("两次输入不一致") }
-                    } else null,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !tooShort && !mismatch,
-                onClick = {
-                    val value = runCatching {
-                        me.rerere.rikkahub.data.sync.BackupArchiveFormat
-                            .exportPassphrase(usingPassphrase, passphrase, confirmation, includeCredentials = false)
-                    }.getOrNull()
-                    passphrase = ""
-                    confirmation = ""
-                    onConfirm(value)
-                },
-            ) { Text("导出") }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                passphrase = ""
-                confirmation = ""
-                onDismiss()
-            }) { Text(stringResource(R.string.cancel)) }
-        },
-    )
-}
 
-/** 设置自动备份口令：留空不提交，必须 ≥6 位且两次一致。 */
-@Composable
-private fun SetPassphraseDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (CharArray) -> Unit,
-) {
-    var passphrase by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
-    val tooShort = passphrase.isNotEmpty() && passphrase.length < MIN_BACKUP_PASSPHRASE
-    val mismatch = confirmation.isNotEmpty() && passphrase != confirmation
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("设置自动备份口令") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "自动备份与「立即备份」都会用这个口令加密；任何设备只要输入同一口令即可恢复，不再依赖密钥文件。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "口令至少 $MIN_BACKUP_PASSPHRASE 位。忘记口令后已生成的备份无法恢复。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                OutlinedTextField(
-                    value = passphrase,
-                    onValueChange = { passphrase = it },
-                    label = { Text("口令") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = tooShort,
-                    supportingText = if (tooShort) {
-                        { Text("至少 $MIN_BACKUP_PASSPHRASE 位") }
-                    } else null,
-                )
-                OutlinedTextField(
-                    value = confirmation,
-                    onValueChange = { confirmation = it },
-                    label = { Text("确认口令") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    isError = mismatch,
-                    supportingText = if (mismatch) {
-                        { Text("两次输入不一致") }
-                    } else null,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = passphrase.length >= MIN_BACKUP_PASSPHRASE && passphrase == confirmation,
-                onClick = {
-                    val value = passphrase.toCharArray()
-                    passphrase = ""
-                    confirmation = ""
-                    onConfirm(value)
-                },
-            ) { Text("保存") }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                passphrase = ""
-                confirmation = ""
-                onDismiss()
-            }) { Text(stringResource(R.string.cancel)) }
-        },
-    )
-}
+
+

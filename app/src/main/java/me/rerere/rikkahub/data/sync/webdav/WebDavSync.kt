@@ -60,12 +60,12 @@ class WebDavSync(
     /** Returns null when the verified content equals the last successfully uploaded version. */
     suspend fun backupAutomatically(
         config: WebDavConfig,
-        passphrase: CharArray,
+        passphrase: CharArray?,
         includeCredentials: Boolean,
         kind: BackupKind,
         lastSuccess: AutoBackupState?,
     ): String? = withContext(Dispatchers.IO) {
-        require(kind != BackupKind.FULL && passphrase.isNotEmpty())
+        require(kind != BackupKind.FULL)
         val prepared = backupManager.prepareBackup(
             includeDatabase = kind == BackupKind.CHATS,
             includeFiles = false,

@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T15:54:44Z",
+  "updatedAt": "2026-11-24T16:25:24Z",
   "releases": [
+    {
+      "version": "0.9.10",
+      "tag": "v0.9.10",
+      "title": "Rikkahub-M 0.9.10",
+      "summary": "备份不加密、不要口令与密钥，恢复更快。",
+      "body": "## 优化\n\n- 备份改回上游做法：不加密、不需要口令也不需要密钥，导出就是普通的 zip，恢复直接解压，速度最快\n- 导出不再弹口令框；设置里也去掉了「自动备份口令」「恢复密钥」相关入口\n\n## 其他\n\n- 0.9.9 之前生成的加密备份仍然能恢复，只有恢复那种旧文件时才会要求原口令\n- 备份文件不再加密，请不要放到公共网盘或分享链接里\n- 版本 0.9.10 / versionCode 46，包名与签名不变，可覆盖升级 0.9.9",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.9",
       "tag": "v0.9.9",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.8",

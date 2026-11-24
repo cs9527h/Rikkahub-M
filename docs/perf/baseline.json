@@ -1,12 +1,12 @@
 {
-  "version": "0.9.9",
+  "version": "0.9.10",
   "measured": false,
-  "source": "未采集（本版为备份恢复性能与进度 UI，本机无真机数据）",
+  "source": "未采集（本版为备份去加密 + 进度修复）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
   "metrics": {},
-  "note": "0.9.9 去掉恢复时逐文件 fsync、改为流式解密；未采集真机耗时，建议在 200MB 备份上记录一次导入耗时作为基线。",
+  "note": "0.9.10 备份改为明文 zip，恢复不再解密；建议真机记录一次 200MB 备份的导出/恢复耗时作为基线。",
   "ciEmulator": {
     "device": "Android SDK built for x86_64 (emu64x, API 35, 2 cores)",
     "buildType": "benchmarkRelease",
