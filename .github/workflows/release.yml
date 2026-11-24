@@ -291,6 +291,15 @@ jobs:
               raise SystemExit("Release 正文混入了开发者技术章节")
           PY
           cp "$RUNNER_TEMP/release-notes.md" release-notes.md
+      - name: Diagnose release permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh auth status || true
+          gh api "/repos/$GH_REPO" -q '.permissions' || true
+          gh api "/repos/$GH_REPO/actions/permissions/workflow" || true
+
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -335,9 +344,16 @@ jobs:
                 --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease=true
             fi
           else
-            gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
+            # 偶发 403（Resource not accessible by integration）时重试，最多 3 次
+            for attempt in 1 2 3; do
+              if gh release create "$TAG" dist/*.apk dist/SHA256SUMS.txt dist/APK_SIGNING.txt \
               --repo "$GH_REPO" --target "$GITHUB_SHA" "${flags[@]}" \
-              --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md"
+              --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md"; then
+                break
+              fi
+              echo "::warning::release create 第 $attempt 次失败，5 秒后重试"
+              sleep 5
+            done
           fi
       - name: Publish to domestic update mirror (optional)
         # 备用更新源长期停在 0.8.3 的原因之一：这一步从来没接进流水线，全靠手动。

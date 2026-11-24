@@ -12,6 +12,16 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 发布链路现状（0.9.8 之后）
+
+- GitHub 发布：CI 的 `Publish GitHub Release` 在 0.9.6 / 0.9.8 上连续返回
+  `HTTP 403: Resource not accessible by integration (…/releases)`，但用同一个 `github.token` +
+  相同 `permissions: contents: write` 的临时工作流（同 tag、含附件上传）实测可以创建，说明是偶发或环境态问题。
+  处置：publish 步骤加「诊断权限」前置步骤与 3 次重试；0.9.8 已用本机 `gh` 发布。
+- 备用更新源：`MIRROR_SSH_KEY` / `MIRROR_HOST` 已配进仓库 Secrets，`release.yml` 在 GitHub 发布成功后自动同步
+  （本机模拟 CI 的 ssh 配置验证通过）；0.9.8 已手动同步，线上 `manifest.json` 13 条、latest=0.9.8。
+- 发布脚本：`publish_update_mirror.sh` 的远端 manifest 重建已改为 scp 独立脚本，版本排序改为数值比较。
+
 ## 当前状态（0.9.8）
 
 ### 已完成
