@@ -9,14 +9,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Create release for existing tag with --target
+      - name: Release with asset
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          echo "--- with --target ---"
-          gh release create v0.9.8 --target "$GITHUB_SHA" --title probe3 --notes probe3 2>&1 | tail -3
-          gh release delete v0.9.8 --yes 2>&1 | tail -1
-          echo "--- without --target ---"
-          gh release create v0.9.8 --title probe4 --notes probe4 2>&1 | tail -3
-          gh release delete v0.9.8 --yes 2>&1 | tail -1
+          head -c 200000 /dev/urandom > /tmp/asset.bin
+          echo "--- with asset ---"
+          gh release create v0.9.8 /tmp/asset.bin --target "$GITHUB_SHA" --title probe5 --notes probe5 2>&1 | tail -5
+          gh release view v0.9.8 --json assets -q '.assets[].name' 2>&1 | tail -3
+          gh release delete v0.9.8 --yes --cleanup-tag=false 2>&1 | tail -2
