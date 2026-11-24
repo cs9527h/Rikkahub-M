@@ -30,15 +30,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.9.2**（2026-11-24，commit `master`）
+> **最新正式版：v0.9.3**（2026-11-24，commit `master`）
 >
-> 安装包：[Rikkahub-M-0.9.2.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.2/Rikkahub-M-0.9.2.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安装包：[Rikkahub-M-0.9.3.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.3/Rikkahub-M-0.9.3.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`a091fb49159d58d200548000611d9ae4e08bbf579690d16df46cd4a66c8d61e9`
+> SHA-256：`fbc71c9b7b3c57dfcdb8cfe142d7479c725ca752396412b2fe675cc2e0843183`
 >
-> 本版摘要：安全加固与冷启动提速：本地 Web 服务、工作区与文档解析的漏洞集中修复。
+> 本版摘要：聊天界面回到上游 RikkaHub 的观感。
 >
-> 完整说明见 [v0.9.2 更新日志](docs/releases/0.9.2.md)。
+> 完整说明见 [v0.9.3 更新日志](docs/releases/0.9.3.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 这是什么
