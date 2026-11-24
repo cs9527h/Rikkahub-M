@@ -213,16 +213,14 @@ fun ChatInput(
         }
     }
 
-    // 底部渐变遮罩：从输入区顶部一直过渡到屏幕底部（键盘弹出时到键盘上沿），避免消息透到系统导航栏。
-    // 用输入框自己的 containerColor（surfaceContainerLow），而不是 background：浅色下 background 是
-    // 偏白的 surface，压在淡蓝灰的渐变背景上会浮出一块更白的区域，和输入框胶囊也不是同一种材料。
+    // 底部渐变遮罩：从输入区顶部一直过渡到屏幕底部（键盘弹出时到键盘上沿），避免消息透到系统导航栏
+    val scrimColor = MaterialTheme.colorScheme.background
     val imeInsets = WindowInsets.ime
     Surface(
         color = Color.Transparent,
         modifier = Modifier.drawWithCache {
             val brush = Brush.verticalGradient(
-                // 上限 0.82→0.6：够让消息淡出，又不至于在输入框背后糊成一整块底色
-                colors = listOf(containerColor.copy(alpha = 0f), containerColor.copy(alpha = 0.6f)),
+                colors = listOf(scrimColor.copy(alpha = 0f), scrimColor),
                 startY = 0f,
                 endY = (size.height - imeInsets.getBottom(this)).coerceAtLeast(1f),
             )
@@ -236,8 +234,8 @@ fun ChatInput(
                 // 取两者的并集（各自按较大的一侧）后只会留一段。
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                 .padding(horizontal = 8.dp)
-                .padding(bottom = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             MessageQueuePanel(
                 state = messageQueue,
@@ -262,7 +260,7 @@ fun ChatInput(
                 color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else containerColor,
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     if (voiceState.phase != VoicePhase.Off) {

@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -669,27 +670,8 @@ private fun TopBar(
     val context = LocalContext.current
     val resources = LocalResources.current
 
-    // 滚动后需要一层底色，让正文经过时标题仍然清楚。但一块 0.45 的整栏纯色会变成一条白带，
-    // 所以改成向下淡出的渐变：顶部（状态栏与标题之间）最实，到顶栏底部已经完全透明，
-    // 与聊天背景自然接上，不会再出现“白色区域把顶部割成三块”的观感。
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (showCapsuleBackground) 1f else 0f,
-        label = "ChatTopBarScrim",
-    )
-    val scrimColor = MaterialTheme.colorScheme.surface
+    // 与上游一致：顶栏本身透明，滚动后由胶囊（ChatTopBarCapsule）承担底色，不再整栏铺渐变遮罩。
     TopAppBar(
-        modifier = Modifier.drawBehind {
-            if (scrimAlpha <= 0.01f) return@drawBehind
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        scrimColor.copy(alpha = 0.58f * scrimAlpha),
-                        scrimColor.copy(alpha = 0.28f * scrimAlpha),
-                        Color.Transparent,
-                    ),
-                ),
-            )
-        },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
@@ -735,8 +717,10 @@ private fun TopBar(
                         },
                         overflow = TextOverflow.Ellipsis,
                         maxLines = 1,
-                        color = LocalContentColor.current.copy(alpha = 0.7f),
-                        style = MaterialTheme.typography.labelSmall,
+                        color = LocalContentColor.current.copy(0.65f),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 8.sp,
+                        ),
                     )
                 }
             }

@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T06:07:13Z",
+  "updatedAt": "2026-11-24T07:20:52Z",
   "releases": [
+    {
+      "version": "0.9.3",
+      "tag": "v0.9.3",
+      "title": "Rikkahub-M 0.9.3",
+      "summary": "聊天界面回到上游 RikkaHub 的观感。",
+      "body": "## 修复\n\n- 聊天界面回到上游 RikkaHub 的观感：背景、正文排版、消息间距、顶栏与输入框的尺寸全部恢复上游默认\n- 之前的静态柔光背景、更紧的正文行距、更窄的消息边距都已撤回，聊天页看起来和上游一致\n\n## 其他\n\n- 功能没有减少：记忆入口、附件、工具卡片、语音、翻译、消息操作与 0.9.2 相同\n- 版本 0.9.3 / versionCode 39，包名与签名不变，可覆盖升级 0.9.2\n- 聊天记录、长期记忆、助手人格与 API 配置保持原样；无数据库迁移",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.2",
       "tag": "v0.9.2",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.1",

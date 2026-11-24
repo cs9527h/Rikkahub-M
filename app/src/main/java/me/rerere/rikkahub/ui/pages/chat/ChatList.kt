@@ -192,26 +192,22 @@ fun ChatList(
     }
 }
 
-// 顶部渐隐：消息滚到标题栏下面时完全不显示，出了标题栏再用 [ramp] 淡入。
+// 顶部渐隐：消息滚到标题栏下面时逐渐透明，从状态栏一直淡出到标题栏下沿之外，保证标题可读。
 // 让内容自己变透明而不是盖一层背景色，背景图和动态渐变背景才不会被盖住。
-// 原来的曲线在标题带里还有 15% 的可见度（0.6 处 alpha 0.15），长段落滚过去会和标题文字叠在一起。
-internal fun Modifier.topFadingEdge(hiddenHeight: Dp, ramp: Dp = 24.dp): Modifier = this
+internal fun Modifier.topFadingEdge(height: Dp): Modifier = this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithCache {
-        val hidden = hiddenHeight.toPx()
-        val rampPx = ramp.toPx().coerceAtLeast(1f)
-        val fadeEnd = hidden + rampPx
+        val fadeHeight = height.toPx()
         val brush = Brush.verticalGradient(
-            // 两段同色 stop 让标题带内保持完全透明，后面一段线性淡入，不会出现硬边
             0f to Color.Transparent,
-            (hidden / fadeEnd).coerceIn(0f, 1f) to Color.Transparent,
+            0.6f to Color.Black.copy(alpha = 0.15f),
             1f to Color.Black,
             startY = 0f,
-            endY = fadeEnd,
+            endY = fadeHeight,
         )
         onDrawWithContent {
             drawContent()
-            drawRect(brush, size = Size(size.width, fadeEnd), blendMode = BlendMode.DstIn)
+            drawRect(brush, size = Size(size.width, fadeHeight), blendMode = BlendMode.DstIn)
         }
     }
 
@@ -350,21 +346,15 @@ private fun ChatListNormal(
             LazyColumn(
                 state = state,
                 // 顶部留白放进 contentPadding，让消息可以滚动到透明标题栏下面
-                // 原来先 PaddingValues(16.dp) 再叠加一份 top/bottom，实际底部是 16+32=48dp，
-                // 最后一条消息离输入框有两指高；水平 16dp 在 360dp 窄屏上也偏浪费。
-                contentPadding = PaddingValues(
-                    start = 12.dp,
-                    end = 12.dp,
-                    top = innerPadding.calculateTopPadding() + 12.dp,
-                    bottom = innerPadding.calculateBottomPadding() + 20.dp,
+                contentPadding = PaddingValues(16.dp) + PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = 32.dp + innerPadding.calculateBottomPadding(),
                 ),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                // 12dp→8dp：ChatMessage 内部还有 4dp 的 Column 间距 + 32dp 操作栏 + 28dp 头像行，
-                // 叠加后两条消息之间已经有 70dp 以上的空白，列表这一层不需要再给 12dp。
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .topFadingEdge(innerPadding.calculateTopPadding())
+                    .topFadingEdge(innerPadding.calculateTopPadding() + 24.dp)
                     .hazeSource(state = hazeState),
             ) {
                 itemsIndexed(
