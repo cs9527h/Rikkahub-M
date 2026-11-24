@@ -156,6 +156,27 @@ class BackupVM(
         }
     }
 
+    /**
+     * 设置自动备份/本机导出使用的口令（至少 6 位）。会替换本机随机密钥；
+     * 已经存在的旧备份仍然用它们各自的口令或旧密钥恢复，不会失效。
+     */
+    suspend fun setBackupPassphrase(passphrase: CharArray) = withContext(Dispatchers.IO) {
+        require(passphrase.size >= 6) { "口令至少 6 位" }
+        try {
+            backupPassphraseStore.save(passphrase)
+        } finally {
+            passphrase.fill('\u0000')
+        }
+        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
+    }
+
+    /** 丢弃自定义口令，重新生成一把只存在于本机 Keystore 的随机密钥。 */
+    suspend fun resetBackupPassphraseToGeneratedKey() = withContext(Dispatchers.IO) {
+        backupPassphraseStore.clear()
+        backupPassphraseStore.readOrCreate().also { it.fill('\u0000') }
+        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
+    }
+
     suspend fun forgetAutomaticBackupPassphrase() {
         settingsStore.update { current ->
             current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupOnAppLifecycle = false))

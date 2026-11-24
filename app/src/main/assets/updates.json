@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T14:20:07Z",
+  "updatedAt": "2026-11-24T14:28:43Z",
   "releases": [
+    {
+      "version": "0.9.8",
+      "tag": "v0.9.8",
+      "title": "Rikkahub-M 0.9.8",
+      "summary": "自动备份可设口令，恢复口令不限次数。",
+      "body": "## 新增\n\n- 自动备份也可以设口令了（高级设置 → 自动备份 → 自动备份口令，至少 6 位）：设了口令后，自动备份和立即备份都用它加密，换机时只要输入这个口令就能恢复，不必再找密钥文件\n- 想回到原来的方式，点「重置为本机随机密钥」即可\n\n## 优化\n\n- 恢复时输入口令不再限制次数：输错可以一直重试，只有你自己点取消才结束\n\n## 其他\n\n- 已经生成的备份不会被口令变更影响，各用各的口令/密钥恢复\n- 版本 0.9.8 / versionCode 44，包名与签名不变，可覆盖升级",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.7",
       "tag": "v0.9.7",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.6",
