@@ -8,6 +8,16 @@
 
 # Mate · 更新日志
 
+## 0.9.5 — 备份恢复修不回来、默认助手与去分析 SDK（2026-11-24）
+
+- 修复：恢复加密备份时无法输入口令。`stageRestore` 在「包已加密但没有口令」时抛的是普通 `IllegalArgumentException`，而界面只对 `MissingBackupPassphraseException` 弹口令框，结果用户只会看到「恢复失败：该备份已加密，需要恢复口令」，永远等不到输入框。
+- 修复：口令输错不再一次判死。`BackupCrypto` 解不开时抛 `IllegalStateException`（GCM 校验失败），现在本地恢复最多让用户重输 3 次。
+- 修复：本机导出的备份文件名从 `.zip` 改为 `.rkmbak`——内容本来就是 `RKMENC01` 加密容器，`.zip` 会让人误以为是普通压缩包。
+- 说明：本机备份区新增提示「加密密钥在本机 Keystore，换机/卸载重装/清除应用数据后必须用导出的恢复密钥才能打开」。
+- 调整：内置默认助手名字改回空字符串（界面按 `stringResource` 显示「默认助手 / Default Assistant」），头像回到 `Avatar.Dummy`，不再强制用助手头像；旧版本写入的「李鱼」与 🐟 头像会在下次启动时迁移回默认，用户自己改过的不动。
+- 移除：Firebase Analytics 整块删除（`ai_send_message` / `ai_edit_message` / `ai_regenerate_at_message` / `ai_tool_approval` / `ai_tool_answer` 五个事件、Koin 提供方与依赖声明）。崩溃上报 Crashlytics 保留。
+- 兼容：无数据库迁移；versionCode 41 / 0.9.5，包名与签名不变，可覆盖升级 0.9.4。
+
 ## 0.9.4 — 屏幕适配、依赖瘦身与可读性修正（2026-11-24）
 
 - 适配：大屏判定从「横屏且宽度 ≥1100dp」改成「宽度 ≥840dp」（Material expanded 断点）。竖屏平板不再落回手机布局、抽屉不再是要滑出来的浮层；横屏手机也纳入固定抽屉。
