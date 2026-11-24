@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-23T18:10:09Z",
+  "updatedAt": "2026-11-24T02:56:21Z",
   "releases": [
+    {
+      "version": "0.9.1",
+      "tag": "v0.9.1",
+      "title": "Rikkahub-M 0.9.1",
+      "summary": "动态渐变背景恢复官方观感，开了就能看出来。",
+      "body": "## 修复\n\n- 修复开启「动态渐变背景」后和没开几乎一样、看不出区别的问题：恢复官方原版的顶部淡蓝与光斑浓度，只把最底部从纯白收到极浅蓝灰，避免下半屏刺眼\n\n## 优化\n\n- 「动态渐变背景」现在与默认静态背景有明显区别：开了是顶部淡蓝 + 缓慢漂移的柔光，不开是极淡的静态层次\n- 动态渐变的省电与减少动效逻辑保留（约 22fps 节流、系统「移除动画」时静止）\n\n## 优化\n\n- 聊天输入框提示语从「输入消息与AI聊天」改为「输入消息」\n\n## 其他\n\n- 版本 0.9.1 / versionCode 37，包名与签名不变，可覆盖升级 0.9.0\n- 聊天记录、长期记忆、助手人格与 API 配置保持原样；无数据库迁移",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.0",
       "tag": "v0.9.0",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.8.9",

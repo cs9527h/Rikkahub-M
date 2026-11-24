@@ -130,18 +130,19 @@ private class Blob(
     val periodSeconds: Float,
 )
 
-// ---- 浅色：柔和淡蓝 → 中性蓝灰，两端都不刺眼 ----
+// ---- 浅色：回到官方原版观感（顶部明确的淡蓝，向下渐隐）----
 //
-// 取值的来历：原版（180c2b57）是 #AFD0F2 → … → #FFFFFF，下半屏纯白被反馈刺眼；
-// 0.8.8 改到 #BCD8F0 → … → #E1EBF5，整屏泛蓝又被反馈太蓝。
-// 这里取中间：顶部只比中性白略蓝一点点，底部比纯白暗一档、保留极淡蓝调
-// （#F3F6FA 为 243/246/250，与纯白 255 有可见差别，但不会像 #E1EBF5 那样整屏蓝）。
+// 0.9.0 为了消除「整屏泛蓝」把顶部压到 #D7E7F7、光斑 alpha 降到 0.34，
+// 结果与默认的静态柔光背景几乎看不出差别，用户反馈「开了动态壁纸和没开一样」——
+// 这个开关必须一眼可见才有意义。
+// 现在恢复官方（180c2b57）的顶部蓝 #AFD0F2 → #CBE0F6 与光斑浓度，
+// 只把末段从纯白 #FFFFFF 收到 #F4F8FC，避免重新引入「下半屏刺眼纯白」。
 private val LightBaseStops = arrayOf(
-    0.00f to Color(0xFFD7E7F7),
-    0.30f to Color(0xFFE4EEF8),
-    0.55f to Color(0xFFECF2F9),
-    0.80f to Color(0xFFF0F4FA),
-    1.00f to Color(0xFFF3F6FA),
+    0.00f to Color(0xFFAFD0F2),
+    0.22f to Color(0xFFCBE0F6),
+    0.45f to Color(0xFFEDF4FB),
+    0.65f to Color(0xFFF1F7FD),
+    1.00f to Color(0xFFF4F8FC),
 )
 
 // ---- 暗色：顶部深蓝 → 底部近黑，中间过渡保持蓝调，不发灰 ----
@@ -156,22 +157,22 @@ private val DarkBaseStops = arrayOf(
 // 浅色光斑：低饱和 + 低浓度，只提供层次，不把画面推白；暖色保留但更淡
 private val LightBlobs = listOf(
     Blob(
-        color = Color(0xFF9EC5E8), alpha = 0.34f, radiusFactor = 0.36f,
+        color = Color(0xFF9EC5F0), alpha = 0.72f, radiusFactor = 0.36f,
         anchorX = 0.48f, anchorY = 0.08f, swayX = 0.38f, swayY = 0.18f,
         rateY = 1.15f, phaseShift = 0.90f, periodSeconds = 5.5f,
     ),
     Blob(
-        color = Color(0xFFA9DDD7), alpha = 0.24f, radiusFactor = 0.28f,
+        color = Color(0xFFA8E6E0), alpha = 0.56f, radiusFactor = 0.28f,
         anchorX = 0.18f, anchorY = 0.24f, swayX = 0.30f, swayY = 0.20f,
         rateY = 1.00f, phaseShift = 2.27f, periodSeconds = 7.0f,
     ),
     Blob(
-        color = Color(0xFFB1D3EB), alpha = 0.26f, radiusFactor = 0.30f,
+        color = Color(0xFFB6D7F2), alpha = 0.62f, radiusFactor = 0.30f,
         anchorX = 0.82f, anchorY = 0.12f, swayX = -0.34f, swayY = 0.18f,
         rateY = 0.90f, phaseShift = 4.08f, periodSeconds = 8.5f,
     ),
     Blob(
-        color = Color(0xFFF1D0D9), alpha = 0.16f, radiusFactor = 0.26f,
+        color = Color(0xFFFFC8D2), alpha = 0.42f, radiusFactor = 0.26f,
         anchorX = 0.58f, anchorY = 0.34f, swayX = 0.28f, swayY = 0.16f,
         rateY = 1.10f, phaseShift = 5.50f, periodSeconds = 6.2f,
     ),
