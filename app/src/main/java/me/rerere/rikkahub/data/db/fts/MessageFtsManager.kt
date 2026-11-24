@@ -161,7 +161,8 @@ class MessageFtsManager(private val database: AppDatabase) {
             """.trimIndent(),
             arrayOf(matchQuery, *assistantIds.orEmpty().toTypedArray())
         )
-        Log.i(TAG, "search: $keyword")
+        // 搜索词就是用户私聊内容的检索意图，只记录长度与命中数，别写进 logcat。
+        Log.d(TAG, "search: ${keyword.length} chars")
         cursor.use {
             while (it.moveToNext()) {
                 results.add(

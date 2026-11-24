@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import org.tukaani.xz.XZInputStream
 import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.File
@@ -10,7 +11,6 @@ import java.net.URL
 import java.nio.file.Files
 import java.util.Locale
 import java.util.zip.GZIPInputStream
-import org.tukaani.xz.XZInputStream
 
 class RootfsInstaller(
     private val manager: WorkspaceManager,
@@ -30,11 +30,11 @@ class RootfsInstaller(
         val linuxDir = manager.linuxDir(root)
 
         try {
-            stagingDir.deleteRecursively()
+            deleteTreeNoFollow(stagingDir)
             stagingDir.mkdirs()
             download(url, archive, onProgress)
             extractTar(archive, stagingDir, format, onProgress)
-            linuxDir.deleteRecursively()
+            deleteTreeNoFollow(linuxDir)
             require(stagingDir.renameTo(linuxDir)) {
                 "Failed to move rootfs into workspace"
             }
@@ -42,7 +42,7 @@ class RootfsInstaller(
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {
             archive.delete()
-            stagingDir.deleteRecursively()
+            deleteTreeNoFollow(stagingDir)
         }
     }
 

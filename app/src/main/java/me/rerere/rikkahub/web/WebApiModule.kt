@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.web
 
 import android.content.Context
+import android.util.Log
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
@@ -41,6 +42,13 @@ private const val WEB_JWT_SUBJECT = "web-access"
 private const val WEB_JWT_TTL_MILLIS = 30L * 24 * 60 * 60 * 1000
 private const val WEB_ACCESS_TOKEN_QUERY_KEY = "access_token"
 private const val WEB_AUTH_PROVIDER = "auth-jwt"
+private const val TAG = "WebApi"
+
+/** 同一来源地址在窗口期内最多允许的失败口令次数。 */
+private const val AUTH_MAX_FAILURES = 5
+private const val AUTH_FAILURE_WINDOW_MILLIS = 60_000L
+
+private val authAttemptLimiter = AuthAttemptLimiter()
 
 /**
  * Configure Web API for the Ktor application.
@@ -61,8 +69,8 @@ fun Application.configureWebApi(
     settingsStore: SettingsStore,
     filesManager: FilesManager
 ) {
-    val jwtEnabled = settingsStore.settingsFlow.value.webServerJwtEnabled
-
+    // 鉴权开关不在这里快照：用户可能在服务运行期间才打开 JWT 或改密码，
+    // 因此 provider 每次请求都重新读 settingsStore（见下面的 authenticate 块）。
     install(ContentNegotiation) {
         json(JsonInstant)
     }
@@ -75,48 +83,54 @@ fun Application.configureWebApi(
             call.respond(cause.status, ErrorResponse(cause.message, cause.status.value))
         }
         exception<Throwable> { call, cause ->
+            // 未预期的异常只进 logcat：原样回显 message 会把内部绝对路径、SQL 与底层库细节交给客户端。
+            Log.e(TAG, "Unhandled web api error: ${call.request.local.uri}", cause)
             call.respond(
                 HttpStatusCode.InternalServerError,
-                ErrorResponse(cause.message ?: "Internal server error", 500)
+                ErrorResponse("Internal server error", 500)
             )
         }
     }
 
-    if (jwtEnabled) {
-        install(Authentication) {
-            provider(WEB_AUTH_PROVIDER) {
-                authenticate { context ->
-                    // Dynamically read the current password on each request so that
-                    // tokens signed after a password change are validated correctly.
-                    val currentPassword = settingsStore.settingsFlow.value.webServerAccessPassword
-                    val token = extractAccessToken(
-                        authorizationHeader = context.call.request.headers[HttpHeaders.Authorization],
-                        queryToken = context.call.request.queryParameters[WEB_ACCESS_TOKEN_QUERY_KEY]
-                    )
-                    // Keep protected routes closed when jwt is enabled but password is missing.
-                    if (token != null && currentPassword.isNotBlank() && verifyWebJwt(token, currentPassword)) {
-                        context.principal(WEB_AUTH_PROVIDER, UserIdPrincipal(WEB_JWT_SUBJECT))
-                        return@authenticate
-                    }
-                    val cause = if (token == null) {
-                        AuthenticationFailedCause.NoCredentials
+    install(Authentication) {
+        provider(WEB_AUTH_PROVIDER) {
+            authenticate { context ->
+                val settings = settingsStore.settingsFlow.value
+                // 运行期关闭 JWT 时保持放行（与旧行为一致，用户显式选择了无口令局域网模式）。
+                if (!settings.webServerJwtEnabled) {
+                    context.principal(WEB_AUTH_PROVIDER, UserIdPrincipal(WEB_JWT_SUBJECT))
+                    return@authenticate
+                }
+                // Dynamically read the current password on each request so that
+                // tokens signed after a password change are validated correctly.
+                val currentPassword = settings.webServerAccessPassword
+                val token = extractAccessToken(
+                    authorizationHeader = context.call.request.headers[HttpHeaders.Authorization],
+                    queryToken = context.call.request.queryParameters[WEB_ACCESS_TOKEN_QUERY_KEY]
+                )
+                // Keep protected routes closed when jwt is enabled but password is missing.
+                if (token != null && currentPassword.isNotBlank() && verifyWebJwt(token, currentPassword)) {
+                    context.principal(WEB_AUTH_PROVIDER, UserIdPrincipal(WEB_JWT_SUBJECT))
+                    return@authenticate
+                }
+                val cause = if (token == null) {
+                    AuthenticationFailedCause.NoCredentials
+                } else {
+                    AuthenticationFailedCause.InvalidCredentials
+                }
+                context.challenge(WEB_AUTH_PROVIDER, cause) { challenge, call ->
+                    if (currentPassword.isBlank()) {
+                        call.respond(
+                            HttpStatusCode.Forbidden,
+                            ErrorResponse("Access password is not configured", HttpStatusCode.Forbidden.value)
+                        )
                     } else {
-                        AuthenticationFailedCause.InvalidCredentials
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ErrorResponse("Unauthorized", HttpStatusCode.Unauthorized.value)
+                        )
                     }
-                    context.challenge(WEB_AUTH_PROVIDER, cause) { challenge, call ->
-                        if (currentPassword.isBlank()) {
-                            call.respond(
-                                HttpStatusCode.Forbidden,
-                                ErrorResponse("Access password is not configured", HttpStatusCode.Forbidden.value)
-                            )
-                        } else {
-                            call.respond(
-                                HttpStatusCode.Unauthorized,
-                                ErrorResponse("Unauthorized", HttpStatusCode.Unauthorized.value)
-                            )
-                        }
-                        challenge.complete()
-                    }
+                    challenge.complete()
                 }
             }
         }
@@ -135,10 +149,22 @@ fun Application.configureWebApi(
                     throw BadRequestException("Access password is not configured")
                 }
 
+                // 口令接口是唯一可匿名访问的写路径，按来源地址限速，避免局域网内被离线字典爆破。
+                val clientKey = call.request.local.remoteHost
+                if (authAttemptLimiter.isBlocked(clientKey)) {
+                    call.respond(
+                        HttpStatusCode.TooManyRequests,
+                        ErrorResponse("Too many failed attempts, retry later", HttpStatusCode.TooManyRequests.value)
+                    )
+                    return@post
+                }
+
                 val request = call.receive<WebAuthTokenRequest>()
                 if (!secureEquals(request.password, accessPassword)) {
+                    authAttemptLimiter.recordFailure(clientKey)
                     throw UnauthorizedException("Invalid password")
                 }
+                authAttemptLimiter.clear(clientKey)
 
                 val (token, expiresAt) = createWebJwt(accessPassword)
                 call.respond(
@@ -152,16 +178,7 @@ fun Application.configureWebApi(
 
             aiIconRoutes(context)
 
-            if (jwtEnabled) {
-                authenticate(WEB_AUTH_PROVIDER) {
-                    conversationRoutes(chatService, conversationRepo, folderRepo, settingsStore)
-                    folderRoutes(chatService, folderRepo, settingsStore)
-                    eventsRoutes(chatService, conversationRepo, folderRepo, settingsStore)
-                    settingsRoutes(settingsStore)
-                    filesRoutes(filesManager, context)
-                    assetsRoutes(context)
-                }
-            } else {
+            authenticate(WEB_AUTH_PROVIDER) {
                 conversationRoutes(chatService, conversationRepo, folderRepo, settingsStore)
                 folderRoutes(chatService, folderRepo, settingsStore)
                 eventsRoutes(chatService, conversationRepo, folderRepo, settingsStore)
@@ -211,4 +228,45 @@ private fun extractAccessToken(authorizationHeader: String?, queryToken: String?
 
 private fun secureEquals(left: String, right: String): Boolean {
     return MessageDigest.isEqual(left.toByteArray(Charsets.UTF_8), right.toByteArray(Charsets.UTF_8))
+}
+
+/**
+ * 按来源地址统计口令失败次数。只保留窗口期内的记录，定时清理，避免长期运行时表无限增长。
+ */
+internal class AuthAttemptLimiter(
+    private val maxFailures: Int = AUTH_MAX_FAILURES,
+    private val windowMillis: Long = AUTH_FAILURE_WINDOW_MILLIS,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+    private val failures = mutableMapOf<String, ArrayDeque<Long>>()
+
+    @Synchronized
+    fun isBlocked(key: String): Boolean {
+        val entries = prune(key) ?: return false
+        return entries.size >= maxFailures
+    }
+
+    @Synchronized
+    fun recordFailure(key: String) {
+        val entries = prune(key) ?: ArrayDeque<Long>().also { failures[key] = it }
+        entries.addLast(clock())
+    }
+
+    @Synchronized
+    fun clear(key: String) {
+        failures.remove(key)
+    }
+
+    private fun prune(key: String): ArrayDeque<Long>? {
+        val entries = failures[key] ?: return null
+        val now = clock()
+        while (entries.isNotEmpty() && now - entries.first() > windowMillis) {
+            entries.removeFirst()
+        }
+        if (entries.isEmpty()) {
+            failures.remove(key)
+            return null
+        }
+        return entries
+    }
 }

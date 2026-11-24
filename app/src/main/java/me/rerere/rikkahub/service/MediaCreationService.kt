@@ -35,7 +35,6 @@ import me.rerere.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.MediaCreationFiles
-import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationOutput
 import me.rerere.rikkahub.data.model.MediaCreationParams
@@ -44,6 +43,7 @@ import me.rerere.rikkahub.data.model.MediaCreationStatus
 import me.rerere.rikkahub.data.model.buildMediaGenerationRequest
 import me.rerere.rikkahub.data.model.deriveMediaCreationTitle
 import me.rerere.rikkahub.data.model.supportedBy
+import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.repository.MediaCreationRepository
 import me.rerere.rikkahub.utils.sendNotification
 import okhttp3.Headers.Companion.toHeaders
@@ -149,7 +149,12 @@ class MediaCreationService(
                     record
                 } else {
                     record.copy(
-                        status = if (record.taskId != null) MediaCreationStatus.RUNNING else MediaCreationStatus.PREPARING,
+                        status = if (record.taskId !=
+                            null) {
+                            MediaCreationStatus.RUNNING
+                        } else {
+                            MediaCreationStatus.PREPARING
+                        },
                         error = null,
                         outputs = emptyList(),
                     )
@@ -171,14 +176,16 @@ class MediaCreationService(
      * 停止等待一条记录。已经提交给服务端的任务无法撤回，[MediaCreationRecord.taskId] 会保留，之后可以重试接着查询。
      */
     suspend fun cancel(recordId: Uuid) = inAppScope {
-        jobs[recordId]?.cancelAndJoin()
+        // 先摘表再 join：协程若在进入函数体前就被取消，body 的 finally 不会执行，
+        // 只 cancelAndJoin 会在表里留下死 Job，之后 retry() 会静默失效。
+        jobs.remove(recordId)?.cancelAndJoin()
         repository.updateRecord(recordId) { record ->
             if (record.status.isActive) record.copy(status = MediaCreationStatus.CANCELLED) else record
         }
     }
 
     suspend fun deleteRecord(recordId: Uuid) = inAppScope {
-        jobs[recordId]?.cancelAndJoin()
+        jobs.remove(recordId)?.cancelAndJoin()
         repository.getRecord(recordId)?.let { repository.deleteRecord(it) }
     }
 
@@ -186,14 +193,14 @@ class MediaCreationService(
     suspend fun deleteNodes(sessionId: Uuid, nodeIds: Collection<Uuid>): List<Uuid> = inAppScope {
         nodeIds.flatMap { nodeId ->
             val versions = repository.getVersionIds(nodeId)
-            versions.forEach { jobs[it]?.cancelAndJoin() }
+            versions.forEach { jobs.remove(it)?.cancelAndJoin() }
             repository.deleteNode(sessionId, nodeId)
             versions
         }
     }
 
     suspend fun deleteSession(sessionId: Uuid) = inAppScope {
-        repository.getRecordsOfSession(sessionId).forEach { jobs[it.id]?.cancelAndJoin() }
+        repository.getRecordsOfSession(sessionId).forEach { jobs.remove(it.id)?.cancelAndJoin() }
         repository.deleteSession(sessionId)
     }
 
@@ -237,6 +244,8 @@ class MediaCreationService(
             job.cancel()
             return null
         }
+        // LAZY 协程在 start() 之前被取消时 body 不会执行，finally 也就不会摘表；这里补一条兜底。
+        job.invokeOnCompletion { jobs.remove(recordId, job) }
         return job
     }
 

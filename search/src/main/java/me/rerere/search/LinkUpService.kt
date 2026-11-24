@@ -83,7 +83,7 @@ object LinkUpService : SearchService<SearchServiceOptions.LinkUpOptions> {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            Log.i(TAG, "search: $query")
+            Log.d(TAG, "search requested")
 
             val response = httpClient.newCall(request).await()
             if (response.isSuccessful) {

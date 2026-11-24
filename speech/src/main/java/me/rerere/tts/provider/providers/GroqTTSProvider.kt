@@ -48,8 +48,8 @@ class GroqTTSProvider : TTSProvider<TTSProviderSetting.Groq> {
         val response = httpClient.newCall(httpRequest).execute()
 
         if (!response.isSuccessful) {
+            // 错误体可能回显被合成的原文，只记状态码。
             Log.e(TAG, "generateSpeech: ${response.code} ${response.message}")
-            Log.e(TAG, "generateSpeech: ${response.body?.string()}")
             throw TTSProviderException(
                 message = "Groq TTS request failed: ${response.code} ${response.message}",
                 statusCode = response.code

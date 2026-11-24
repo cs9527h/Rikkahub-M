@@ -66,7 +66,9 @@ import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessagePart
@@ -178,9 +180,12 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     // 初始化输入状态（处理传入的 files 和 text 参数）
     LaunchedEffect(files, text) {
         if (files.isNotEmpty()) {
-            val localFiles = filesManager.createChatFilesByContents(files)
-            val contentTypes = files.mapNotNull { file ->
-                filesManager.getFileMimeType(file)
+            // LaunchedEffect 默认跑在主线程，复制分享进来的附件必须切到 IO，否则大视频会卡住首帧。
+            val localFiles = withContext(Dispatchers.IO) {
+                filesManager.createChatFilesByContents(files)
+            }
+            val contentTypes = withContext(Dispatchers.IO) {
+                files.mapNotNull { file -> filesManager.getFileMimeType(file) }
             }
             val parts = buildList {
                 localFiles.forEachIndexed { index, file ->

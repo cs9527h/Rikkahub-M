@@ -1,5 +1,6 @@
 package me.rerere.search
 
+import android.util.Log
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,6 +28,8 @@ import me.rerere.search.SearchService.Companion.keyRoulette
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+
+private const val TAG = "ExaSearch"
 
 object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
     private const val MAX_EVIDENCE_TEXT_CHARACTERS = 8_000
@@ -56,7 +59,10 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 })
                 put("type", buildJsonObject {
                     put("type", "string")
-                    put("description", "Search type: fast (quick results), auto (default, balanced), deep (synthesized answer with citations)")
+                    put(
+                        "description",
+                        "Search type: fast (quick results), auto (default, balanced), deep (synthesized answer with citations)"
+                    )
                     put("enum", buildJsonArray {
                         add("fast")
                         add("auto")
@@ -65,17 +71,26 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 })
                 put("startPublishedDate", buildJsonObject {
                     put("type", "string")
-                    put("description", "Optional ISO-8601 publication date lower bound; results are published after this date")
+                    put(
+                        "description",
+                        "Optional ISO-8601 publication date lower bound; results are published after this date"
+                    )
                 })
                 put("endPublishedDate", buildJsonObject {
                     put("type", "string")
-                    put("description", "Optional ISO-8601 publication date upper bound; results are published before this date")
+                    put(
+                        "description",
+                        "Optional ISO-8601 publication date upper bound; results are published before this date"
+                    )
                 })
                 put("includeDomains", domainArraySchema("Optional domains to include"))
                 put("excludeDomains", domainArraySchema("Optional domains to exclude"))
                 put("maxAgeHours", buildJsonObject {
                     put("type", "integer")
-                    put("description", "Optional maximum age in hours for fetched page content; use only when content freshness matters")
+                    put(
+                        "description",
+                        "Optional maximum age in hours for fetched page content; use only when content freshness matters"
+                    )
                     put("minimum", MIN_MAX_AGE_HOURS)
                     put("maximum", MAX_MAX_AGE_HOURS)
                 })
@@ -121,14 +136,13 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 val response = runCatching {
                     json.decodeFromString<ExaData>(bodyRaw)
                 }.onFailure {
-                    it.printStackTrace()
-                    println(bodyRaw)
-                    error("Failed to decode response: $bodyRaw")
+                    Log.w(TAG, "decode response failed", it)
+                    error("Failed to decode response: ${bodyRaw.take(500)}")
                 }.getOrThrow()
 
                 return@withContext Result.success(mapSearchResult(response))
             } else {
-                println(response.body.string())
+                Log.w(TAG, "request failed #${response.code}")
                 error("response failed #${response.code}")
             }
         }
@@ -155,14 +169,13 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 val data = runCatching {
                     json.decodeFromString<ExaData>(bodyRaw)
                 }.onFailure {
-                    it.printStackTrace()
-                    println(bodyRaw)
-                    error("Failed to decode response: $bodyRaw")
+                    Log.w(TAG, "decode response failed", it)
+                    error("Failed to decode response: ${bodyRaw.take(500)}")
                 }.getOrThrow()
 
                 return@withContext Result.success(mapScrapedResult(data))
             } else {
-                println(response.body.string())
+                Log.w(TAG, "request failed #${response.code}")
                 error("response failed #${response.code}")
             }
         }

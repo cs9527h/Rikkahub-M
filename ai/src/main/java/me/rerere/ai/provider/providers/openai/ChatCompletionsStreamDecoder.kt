@@ -41,8 +41,10 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
 
         val chunks = buildList {
             event.data.trim().split("\n").filter(String::isNotBlank).forEach { line ->
-                // 部分中转会在流中夹杂 `data: null` 之类的非对象行，直接跳过
-                val payload = json.parseToJsonElement(line).jsonObjectOrNull ?: return@forEach
+                // 部分中转会在流中夹杂 `data: null`、`data: ping` 之类的非 JSON 行，解析失败就跳过，
+                // 否则一条心跳行会把整条回复判死（上层 catch 会 close(e)）。
+                val payload = runCatching { json.parseToJsonElement(line) }.getOrNull()
+                    ?.jsonObjectOrNull ?: return@forEach
                 payload["error"]?.let { throw it.parseErrorDetail() }
                 responseId = payload["id"]?.jsonPrimitive?.contentOrNull ?: responseId
                 responseModel = payload["model"]?.jsonPrimitive?.contentOrNull ?: responseModel
@@ -154,15 +156,15 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
 
     private fun parseAnnotations(array: JsonArray): List<UIMessageAnnotation> = array.mapNotNull { element ->
         val annotation = element.jsonObjectOrNull ?: return@mapNotNull null
-        val type = annotation["type"]?.jsonPrimitive?.contentOrNull ?: error("type is null")
-        when (type) {
+        // 未知/缺失 type 的注解直接丢弃：中转与厂商扩展会不断新增类型，不能让它中断整段回复。
+        when (annotation["type"]?.jsonPrimitive?.contentOrNull) {
             "url_citation" -> UIMessageAnnotation.UrlCitation(
                 title = annotation["url_citation"]?.jsonObjectOrNull
                     ?.get("title")?.jsonPrimitive?.contentOrNull ?: "",
                 url = annotation["url_citation"]?.jsonObjectOrNull
                     ?.get("url")?.jsonPrimitive?.contentOrNull ?: "",
             )
-            else -> error("unknown annotation type: $type")
+            else -> null
         }
     }
 

@@ -1,5 +1,6 @@
 package me.rerere.search
 
+import android.util.Log
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -21,6 +22,8 @@ import me.rerere.search.SearchService.Companion.json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+
+private const val TAG = "ZhipuSearch"
 
 object ZhipuSearchService : SearchService<SearchServiceOptions.ZhipuOptions> {
     override val name: String = "Zhipu"
@@ -76,23 +79,21 @@ object ZhipuSearchService : SearchService<SearchServiceOptions.ZhipuOptions> {
                 val response = runCatching {
                     json.decodeFromString<ZhipuDto>(bodyRaw)
                 }.onFailure {
-                    it.printStackTrace()
-                    println(bodyRaw)
-                    error("Failed to decode response: $bodyRaw")
+                    Log.w(TAG, "decode response failed", it)
+                    error("Failed to decode response: ${bodyRaw.take(500)}")
                 }.getOrThrow()
 
-                return@withContext Result.success(
-                    SearchResult(
-                        items = response.searchResult.map {
-                            SearchResultItem(
-                                title = it.title,
-                                url = it.link,
-                                text = it.content,
-                            )
-                        }
-                    ))
+                return@withContext Result.success(SearchResult(
+                    items = response.searchResult.map {
+                        SearchResultItem(
+                            title = it.title,
+                            url = it.link,
+                            text = it.content,
+                        )
+                    }
+                ))
             } else {
-                println(response.body?.string())
+                Log.w(TAG, "request failed #${response.code}")
                 error("response failed #${response.code}")
             }
         }

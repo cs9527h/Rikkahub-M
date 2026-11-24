@@ -32,6 +32,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
@@ -245,17 +246,35 @@ class RouteActivity : ComponentActivity() {
             }
             Intent.ACTION_SEND -> Screen.ShareHandler(
                 text = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty(),
-                streamUri = intent.getStringExtra(Intent.EXTRA_STREAM),
+                streamUri = intent.shareStreamUri(),
             )
             Intent.ACTION_PROCESS_TEXT -> Screen.ShareHandler(
                 text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty(),
             )
             else -> mediaCreationDestination(intent)
-                ?: intent.getStringExtra(EXTRA_CONVERSATION_ID)?.let { Screen.Chat(it) }
+                // 外部 Intent 里的会话 ID 不可信：先解析成 Uuid，解析失败就当没有这个参数，
+                // 不能把裸字符串带进导航栈（entry<Screen.Chat> 里 Uuid.parse 会直接抛异常）。
+                ?: intent.getStringExtra(EXTRA_CONVERSATION_ID)
+                    ?.let { raw -> runCatching { Uuid.parse(raw) }.getOrNull() }
+                    ?.let { Screen.Chat(it.toString()) }
         }
         if (destination != null && backStack.lastOrNull() != destination) {
             backStack.add(destination)
         }
+    }
+
+    /**
+     * 分享进来的附件只接受 content:// 与 file://：外部 Intent 可以塞任意字符串，
+     * 直接交给图片加载器等于让应用替调用方发任意 URL 请求。
+     */
+    private fun Intent.shareStreamUri(): String? {
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(Intent.EXTRA_STREAM)
+        } ?: getStringExtra(Intent.EXTRA_STREAM)?.let { runCatching { it.toUri() }.getOrNull() }
+        return uri?.takeIf { it.scheme == "content" || it.scheme == "file" }?.toString()
     }
 
     // 快捷方式没有指定会话，打开一个空会话
@@ -292,16 +311,20 @@ class RouteActivity : ComponentActivity() {
         }
         val migrationState by DatabaseMigrationTracker.state.collectAsStateWithLifecycle()
 
-        val startScreen = Screen.Chat(
-            id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
-                Uuid.random().toString()
-            } else {
-                readStringPreference(
-                    "lastConversationId",
+        // 起始页只该算一次：这段在组合体里，每次重组都现算会重新生成随机 UUID 并在主线程读两次
+        // SharedPreferences；随机 id 还会让 rememberNavBackStack 的入参每帧变化。
+        val startScreen = remember {
+            Screen.Chat(
+                id = if (readBooleanPreference("create_new_conversation_on_start", true)) {
                     Uuid.random().toString()
-                ) ?: Uuid.random().toString()
-            }
-        )
+                } else {
+                    readStringPreference(
+                        "lastConversationId",
+                        Uuid.random().toString()
+                    ) ?: Uuid.random().toString()
+                }
+            )
+        }
 
         val backStack = rememberNavBackStack(startScreen)
         SideEffect {
@@ -357,11 +380,14 @@ class RouteActivity : ComponentActivity() {
                             // 助手详情/搜索结果进入会话」的二级跳转也变成淡入淡出，而且原来只覆盖了 pop、
                             // 漏了 predictivePop，手势返回和按钮返回的动画不一致。改用全局转场后两者同源。
                             entry<Screen.Chat> { key ->
+                                // 恢复的导航栈可能带着无效 ID（外部 Intent / 旧版本数据），这里兜住不进页面。
+                                val chatId = runCatching { Uuid.parse(key.id) }.getOrNull()
+                                    ?: return@entry
                                 ChatPage(
-                                    id = Uuid.parse(key.id),
+                                    id = chatId,
                                     text = key.text,
                                     files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) }
+                                    nodeId = key.nodeId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
                                 )
                             }
 

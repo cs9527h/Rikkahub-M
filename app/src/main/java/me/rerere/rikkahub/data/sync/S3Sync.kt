@@ -22,7 +22,9 @@ class S3Sync(
     private val httpClient: HttpClient,
 ) {
     private fun getS3Client(config: S3Config): S3Client {
-        return S3Client(config, httpClient)
+        // 备份包里有聊天库与（可选的）凭据，endpoint 没写协议时必须补 https，
+        // 否则凭据与整包内容会走明文 http（RemoteFileStore 已经这么做，这里保持一致）。
+        return S3Client(config.withHttpsByDefault(), httpClient)
     }
 
     suspend fun testS3(config: S3Config) = withContext(Dispatchers.IO) {

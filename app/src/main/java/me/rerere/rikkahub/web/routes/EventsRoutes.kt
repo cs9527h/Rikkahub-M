@@ -8,11 +8,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.utils.JsonInstant
+import me.rerere.rikkahub.web.WebSettingsSanitizer
 import me.rerere.rikkahub.web.dto.ConversationListInvalidateEvent
 import me.rerere.rikkahub.web.dto.FolderListEvent
 import me.rerere.rikkahub.web.dto.toDto
@@ -42,8 +44,14 @@ fun Route.eventsRoutes(
         }
 
         // Full settings snapshot; StateFlow emits the current value immediately on connect.
+        // 凭据类字段先脱敏再下发：字段名与结构不变，值置空，见 WebSettingsSanitizer。
         val settingsEvents = settingsStore.settingsFlow.map { settings ->
-            EventPayload(event = "settings", json = JsonInstant.encodeToString(settings))
+            EventPayload(
+                event = "settings",
+                json = WebSettingsSanitizer
+                    .sanitize(JsonInstant.encodeToJsonElement(Settings.serializer(), settings))
+                    .toString()
+            )
         }
 
         // Conversation list invalidation, scoped to the currently selected assistant.

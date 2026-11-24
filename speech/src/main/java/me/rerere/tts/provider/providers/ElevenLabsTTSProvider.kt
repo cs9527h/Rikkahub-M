@@ -50,9 +50,8 @@ class ElevenLabsTTSProvider : TTSProvider<TTSProviderSetting.ElevenLabs> {
         val response = httpClient.newCall(httpRequest).execute()
 
         if (!response.isSuccessful) {
-            val errorBody = response.body?.string()
+            // 错误体里常常回显被合成的原文，只记状态码，不把用户内容写进 logcat。
             Log.e(TAG, "generateSpeech: ${response.code} ${response.message}")
-            Log.e(TAG, "generateSpeech: $errorBody")
             throw TTSProviderException(
                 message = "ElevenLabs TTS request failed: ${response.code} ${response.message}",
                 statusCode = response.code

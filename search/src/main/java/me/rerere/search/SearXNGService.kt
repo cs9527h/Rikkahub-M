@@ -85,7 +85,7 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
                 }
                 .build()
 
-            Log.i(TAG, "search: $url")
+            Log.d(TAG, "search requested")
 
             val response = httpClient.newCall(request).await()
             if (response.isSuccessful) {
@@ -93,8 +93,7 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
                 val searchResponse = runCatching {
                     json.decodeFromString<SearXNGResponse>(bodyRaw)
                 }.onFailure {
-                    it.printStackTrace()
-                    println("SearXNG response body: $bodyRaw")
+                    Log.w(TAG, "decode SearXNG response failed", it)
                     error("Failed to decode SearXNG response: ${it.message}")
                 }.getOrThrow()
 
@@ -111,8 +110,7 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
 
                 return@withContext Result.success(SearchResult(items = items))
             } else {
-                val errorBody = response.body?.string()
-                println("SearXNG API error: ${response.code} - $errorBody")
+                Log.w(TAG, "SearXNG API error: ${response.code}")
                 error("SearXNG request failed with status ${response.code}")
             }
         }
@@ -125,7 +123,6 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
     ): Result<ScrapedResult> {
         return Result.failure(Exception("Scraping is not supported for SearXNG"))
     }
-
 
     @Serializable
     data class SearXNGResponse(

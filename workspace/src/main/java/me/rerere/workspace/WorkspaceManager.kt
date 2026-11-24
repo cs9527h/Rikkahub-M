@@ -77,7 +77,7 @@ class WorkspaceManager(
 
     fun rootfsShell(root: String): String = rootfsShell(linuxDir(root))
 
-    fun deleteWorkspace(root: String): Boolean = workspaceDir(root).deleteRecursively()
+    fun deleteWorkspace(root: String): Boolean = deleteTreeNoFollow(workspaceDir(root))
 
     fun listFiles(
         root: String,
@@ -218,22 +218,6 @@ class WorkspaceManager(
     ): Boolean =
         fileSystem.delete(areaDir(root, area), path, recursive)
 
-    fun moveFile(root: String, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry =
-        fileSystem.move(filesDir(root), source, target, overwrite)
-
-    fun glob(root: String, pattern: String, path: String = ""): List<WorkspaceFileEntry> =
-        fileSystem.glob(filesDir(root), pattern, path)
-
-    fun grep(
-        root: String,
-        query: String,
-        path: String = "",
-        regex: Boolean = false,
-        ignoreCase: Boolean = true,
-        includeGlob: String? = null,
-    ): List<WorkspaceSearchMatch> =
-        fileSystem.grep(filesDir(root), query, path, regex, ignoreCase, includeGlob)
-
     fun executeCommand(
         root: String,
         command: String,
@@ -329,10 +313,10 @@ class WorkspaceManager(
             val root = dir.name
             if (!root.matches(ROOT_NAME_REGEX)) continue
             // PRoot temp files
-            tempDir(root).let { if (it.exists()) it.deleteRecursively() }
+            tempDir(root).let { if (it.exists()) deleteTreeNoFollow(it) }
             // Rootfs /tmp and /var/tmp
-            File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
-            File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+            File(linuxDir(root), "tmp").let { if (it.exists()) deleteTreeNoFollow(it) }
+            File(linuxDir(root), "var/tmp").let { if (it.exists()) deleteTreeNoFollow(it) }
         }
     }
 

@@ -59,13 +59,12 @@ class QwenTTSProvider : TTSProvider<TTSProviderSetting.Qwen> {
 
         httpClient.newCall(httpRequest).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body.string()
-                Log.e(
-                    TAG,
-                    "Qwen TTS request failed: ${response.code} ${response.message}, body: $errorBody"
-                )
+                // 错误体可能回显被合成的原文：只把截断后的摘要进异常消息（给界面看），不写 logcat。
+                val errorBody = runCatching { response.body.string() }.getOrDefault("")
+                Log.e(TAG, "Qwen TTS request failed: ${response.code} ${response.message}")
                 throw TTSProviderException(
-                    message = "Qwen TTS request failed: ${response.code} ${response.message}",
+                    message = "Qwen TTS request failed: ${response.code} ${response.message}" +
+                        errorBody.take(200).let { if (it.isBlank()) "" else ", body: $it" },
                     statusCode = response.code
                 )
             }

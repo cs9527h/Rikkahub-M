@@ -32,18 +32,23 @@ object PptxParser {
 
                 // Parse each slide
                 slideEntries.forEachIndexed { index, entry ->
+                    if (entry.size > DocumentLimits.MAX_XML_BYTES) {
+                        return "Document content too large"
+                    }
                     val slideNumber = index + 1
                     val slideContent = zipFile.getInputStream(entry).use { stream ->
-                        parseSlideXml(stream)
+                        parseSlideXml(LimitedInputStream(stream, DocumentLimits.MAX_XML_BYTES))
                     }
 
                     // Try to get notes for this slide
-                    val notesEntry = zipFile.getEntry("ppt/notesSlides/notesSlide${slideNumber}.xml")
-                    val notes = if (notesEntry != null) {
+                    val notesEntry = zipFile.getEntry("ppt/notesSlides/notesSlide$slideNumber.xml")
+                    val notes = if (notesEntry != null && notesEntry.size <= DocumentLimits.MAX_XML_BYTES) {
                         zipFile.getInputStream(notesEntry).use { stream ->
-                            parseNotesXml(stream)
+                            parseNotesXml(LimitedInputStream(stream, DocumentLimits.MAX_XML_BYTES))
                         }
-                    } else ""
+                    } else {
+                        ""
+                    }
 
                     slides.add(SlideContent(slideNumber, slideContent, notes))
                 }
@@ -87,8 +92,8 @@ object PptxParser {
                 when (parser.eventType) {
                     XmlPullParser.START_TAG -> {
                         when (parser.name) {
-                            "sp" -> processShape(parser, result)  // Text box/shape
-                            "graphicFrame" -> processGraphicFrame(parser, result)  // Table
+                            "sp" -> processShape(parser, result) // Text box/shape
+                            "graphicFrame" -> processGraphicFrame(parser, result) // Table
                         }
                     }
                 }
@@ -206,8 +211,9 @@ object PptxParser {
                         }
 
                         "lvl" -> {
+                            // 层级来自演示文稿，必须限幅，见 DocxParser 的 ilvl 处理。
                             parser.getAttributeValue(null, "val")?.let {
-                                level = it.toIntOrNull() ?: 0
+                                level = (it.toIntOrNull() ?: 0).coerceIn(0, 8)
                             }
                         }
                     }

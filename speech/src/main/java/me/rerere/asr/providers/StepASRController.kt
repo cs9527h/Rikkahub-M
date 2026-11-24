@@ -33,9 +33,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSource
 import org.json.JSONArray
 import org.json.JSONObject
-import okio.BufferedSource
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.Collections
@@ -286,13 +286,16 @@ class StepASRController(
                 return withContext(Dispatchers.IO) {
                     httpClient.newCall(request).execute().use { resp ->
                         if (!resp.isSuccessful) {
-                            throw IOException("Step ASR HTTP ${resp.code}: ${resp.body.string()}")
+                            // 只保留状态码：响应体可能回显识别文本或音频元数据，不进异常消息与日志。
+                            throw StepAsrHttpException(resp.code)
                         }
                         parseSseTranscript(resp.body.source())
                     }
                 }
             } catch (e: IOException) {
                 lastError = e
+                // 4xx 是鉴权/参数问题，重试没有意义，直接上抛。
+                if (e is StepAsrHttpException && e.code in 400..499) throw e
                 Log.w(TAG, "flushSegment attempt $attempt/$MAX_RETRY failed: ${e.message}")
                 if (attempt < MAX_RETRY) {
                     kotlinx.coroutines.delay(300L * attempt) // 指数退避: 300ms, 600ms
@@ -301,6 +304,8 @@ class StepASRController(
         }
         throw lastError ?: IOException("Step ASR request failed")
     }
+
+    private class StepAsrHttpException(val code: Int) : IOException("Step ASR HTTP $code")
 
     private fun parseSseTranscript(source: BufferedSource): String {
         val transcript = StringBuilder()

@@ -67,6 +67,8 @@ import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.removeElements
 import me.rerere.ai.util.stringSafe
 import me.rerere.common.http.await
+import me.rerere.common.http.jsonArrayOrNull
+import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.sse.newEventSource
 import okhttp3.HttpUrl
@@ -152,20 +154,25 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 val body = response.body?.string() ?: error("empty body")
                 Log.d(TAG, "listModels: $body")
                 val bodyObject = json.parseToJsonElement(body).jsonObject
-                val models = bodyObject["models"]?.jsonArray ?: return@withContext emptyList()
+                val models = bodyObject["models"]?.jsonArrayOrNull ?: return@withContext emptyList()
 
                 models.mapNotNull {
-                    val modelObject = it.jsonObject
+                    // 单个条目畸形只丢自己：兼容接口普遍少字段，用 !! 会让整个模型列表加载失败。
+                    val modelObject = it.jsonObjectOrNull ?: return@mapNotNull null
 
                     // 忽略非chat/embedding模型
                     val supportedGenerationMethods =
-                        modelObject["supportedGenerationMethods"]!!.jsonArray
-                            .map { method -> method.jsonPrimitive.content }
+                        modelObject["supportedGenerationMethods"]?.jsonArrayOrNull
+                            ?.mapNotNull { method -> method.jsonPrimitiveOrNull?.contentOrNull }
+                            .orEmpty()
                     if ("generateContent" !in supportedGenerationMethods && "embedContent" !in supportedGenerationMethods) {
                         return@mapNotNull null
                     }
 
-                    val modelId = modelObject["name"]!!.jsonPrimitive.content.substringAfter("/")
+                    val modelId = modelObject["name"]?.jsonPrimitiveOrNull?.contentOrNull
+                        ?.substringAfter("/")
+                        ?.takeIf { it.isNotBlank() }
+                        ?: return@mapNotNull null
                     Model(
                         modelId = modelId,
                         // 部分兼容接口不返回 displayName，回退到 modelId
@@ -175,6 +182,8 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     )
                 }
             } else {
+                // 必须消费/关闭 body，否则连接一直被占住（await() 只负责取回 Response）。
+                response.close()
                 emptyList()
             }
         }
@@ -270,7 +279,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 .build()
         )
 
-        logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
+        if (!params.privateRequest) logRequestBody(TAG, "streamText") { json.encodeToString(requestBody) }
 
         val responseId = Uuid.random().toString()
         val decoder = GoogleStreamDecoder(responseId, params.model.modelId)

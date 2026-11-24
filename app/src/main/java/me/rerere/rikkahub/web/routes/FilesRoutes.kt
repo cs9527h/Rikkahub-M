@@ -17,6 +17,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.utils.io.readAvailable
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
+import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.web.BadRequestException
@@ -27,6 +28,19 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 private const val MAX_UPLOAD_FILE_SIZE_BYTES = 20 * 1024 * 1024 // 20 MB
+private const val MAX_UPLOAD_FILES = 20
+private const val MAX_UPLOAD_TOTAL_BYTES = 64L * 1024 * 1024 // 64 MB
+
+/**
+ * `/api/files/path/{...}` 允许读取的 filesDir 顶层目录。
+ * 这里刻意只列用户内容目录：filesDir 根下还有 datastore（设置，含 API Key 与 Web 访问口令）等私有数据。
+ */
+private val WEB_READABLE_FOLDERS = setOf(
+    FileFolders.UPLOAD,
+    FileFolders.MEDIA_CREATION,
+    FileFolders.TOOL_OUTPUTS,
+    "images",
+)
 
 fun Route.filesRoutes(
     filesManager: FilesManager,
@@ -35,12 +49,18 @@ fun Route.filesRoutes(
     route("/files") {
         // POST /api/files/upload - Upload files
         post("/upload") {
-            val multipart = call.receiveMultipart()
+            val multipart = call.receiveMultipart(formFieldLimit = 1024L * 1024)
             val uploadedFiles = mutableListOf<UploadedFileDto>()
+            var totalBytes = 0L
+            var partCount = 0
 
             while (true) {
                 val part = multipart.readPart() ?: break
+                partCount += 1
                 try {
+                    if (partCount > MAX_UPLOAD_FILES) {
+                        throw BadRequestException("Too many files: max $MAX_UPLOAD_FILES")
+                    }
                     when (part) {
                         is PartData.FileItem -> {
                             val originalFileName = part.originalFileName
@@ -48,7 +68,18 @@ fun Route.filesRoutes(
                                 ?: "file"
                             val displayName = sanitizeDisplayName(originalFileName)
                             val mimeType = part.contentType?.toString() ?: "application/octet-stream"
-                            val bytes = readPartBytes(part, MAX_UPLOAD_FILE_SIZE_BYTES)
+                            // 单片 20MB 之外还要有总量上限，否则一次请求多片就能把堆内存打满。
+                            val remaining = MAX_UPLOAD_TOTAL_BYTES - totalBytes
+                            if (remaining <= 0) {
+                                throw BadRequestException(
+                                    "Upload too large: max ${MAX_UPLOAD_TOTAL_BYTES / (1024 * 1024)} MB"
+                                )
+                            }
+                            val bytes = readPartBytes(
+                                part,
+                                remaining.coerceAtMost(MAX_UPLOAD_FILE_SIZE_BYTES.toLong()).toInt(),
+                            )
+                            totalBytes += bytes.size
                             if (bytes.isEmpty()) {
                                 throw BadRequestException("Uploaded file is empty")
                             }
@@ -124,11 +155,19 @@ fun Route.filesRoutes(
                 throw BadRequestException("Invalid file path")
             }
 
+            // 只开放附件/图片这类用户内容目录：filesDir 根下还有 datastore 设置（含 API Key 与 Web 口令），
+            // 仅靠 canonicalPath 前缀校验等于把整个私有目录挂到 HTTP 上。
+            val rootSegment = relativePath.substringBefore('/')
+            if (rootSegment !in WEB_READABLE_FOLDERS) {
+                throw BadRequestException("Invalid file path")
+            }
+
             val filesDir = context.filesDir
             val file = File(filesDir, relativePath)
 
             // Ensure the file is within the app's files directory
-            if (!file.canonicalPath.startsWith(filesDir.canonicalPath)) {
+            val filesRoot = filesDir.canonicalPath + File.separator
+            if (!file.canonicalPath.startsWith(filesRoot)) {
                 throw BadRequestException("Invalid file path")
             }
 

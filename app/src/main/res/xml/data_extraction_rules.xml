@@ -1,19 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+  云备份规则：不把任何应用数据放进 Google 云端备份。
+
+  原因：settings 的 DataStore（各 provider 的 apiKey、WebDAV/S3 口令、Web 访问密码）与聊天数据库
+  都在 files/ 与 databases/ 下，自动云备份会把它们上传到用户账号。应用自带加密备份（本地 / WebDAV / S3），
+  换机与恢复走那条路径即可，不需要系统云备份。
+  设备到设备迁移（device-transfer）由用户主动发起且点对点，保持默认全量，方便换机。
+  See https://developer.android.com/guide/topics/data/backup-restore#xml-changes
 -->
 <data-extraction-rules>
   <cloud-backup>
-    <!-- TODO: Use <include> and <exclude> to control what is backed up.
-    <include .../>
-    <exclude .../>
-    -->
+    <exclude
+      domain="root"
+      path="." />
+    <exclude
+      domain="file"
+      path="." />
+    <exclude
+      domain="database"
+      path="." />
+    <exclude
+      domain="sharedpref"
+      path="." />
+    <exclude
+      domain="external"
+      path="." />
+    <exclude
+      domain="device_root"
+      path="." />
+    <exclude
+      domain="device_file"
+      path="." />
+    <exclude
+      domain="device_database"
+      path="." />
+    <exclude
+      domain="device_sharedpref"
+      path="." />
   </cloud-backup>
-  <!--
-  <device-transfer>
-      <include .../>
-      <exclude .../>
-  </device-transfer>
-  -->
 </data-extraction-rules>

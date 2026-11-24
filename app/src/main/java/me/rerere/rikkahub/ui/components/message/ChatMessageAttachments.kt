@@ -48,10 +48,22 @@ internal fun animatePressProgress(interactionSource: InteractionSource): State<F
 }
 
 internal fun Context.openLocalFile(url: String) {
-    val intent = Intent(Intent.ACTION_VIEW)
-    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    intent.data = FileProvider.getUriForFile(this, "$packageName.fileprovider", url.toUri().toFile())
-    startActivity(Intent.createChooser(intent, null))
+    val uri = runCatching { url.toUri() }.getOrNull() ?: return
+    // 只有 file:// 才需要包一层 FileProvider；其它 scheme 直接用，别把非文件 URI 交给 getUriForFile
+    // （它会抛 IllegalArgumentException，点击附件就崩）。
+    val target = if (uri.scheme == "file") {
+        val file = runCatching { uri.toFile() }.getOrNull() ?: return
+        runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        }.getOrNull() ?: return
+    } else {
+        uri
+    }
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        data = target
+    }
+    runCatching { startActivity(Intent.createChooser(intent, null)) }
 }
 
 // 视频、音频附件：和图片缩略图等高的色块

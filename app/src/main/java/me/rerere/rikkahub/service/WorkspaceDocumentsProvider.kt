@@ -14,6 +14,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.deleteTreeNoFollow
 import org.koin.core.context.GlobalContext
 import java.io.File
 
@@ -146,7 +147,8 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         val target = parseDocId(documentId)
         require(!target.isRoot && target.relPath.isNotEmpty()) { "Cannot delete this document" }
         val file = resolveFile(target.root, target.relPath)
-        val ok = if (file.isDirectory) file.deleteRecursively() else file.delete()
+        // 工作区里可能有指向私有数据的软链，递归删除不能跟随。
+        val ok = if (file.isDirectory) deleteTreeNoFollow(file) else file.delete()
         require(ok) { "Failed to delete: $documentId" }
         notifyChange(buildDocId(target.root, target.relPath.substringBeforeLast('/', "")))
     }
@@ -200,7 +202,7 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         if (!srcFile.renameTo(dest)) {
             // 所有 workspace 都在应用私有目录下，renameTo 一般可行；失败则回退为复制+删除
             require(srcFile.copyRecursively(dest)) { "Failed to move: $sourceDocumentId" }
-            require(if (srcFile.isDirectory) srcFile.deleteRecursively() else srcFile.delete()) {
+            require(if (srcFile.isDirectory) deleteTreeNoFollow(srcFile) else srcFile.delete()) {
                 "Failed to remove source after move: $sourceDocumentId"
             }
         }

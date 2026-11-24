@@ -116,7 +116,9 @@ class ChatCompletionsAPI(
         // 从 JsonObject 中提取必要的信息
         val id = bodyJson["id"]?.jsonPrimitive?.contentOrNull ?: ""
         val model = bodyJson["model"]?.jsonPrimitive?.contentOrNull ?: ""
-        val choice = bodyJson["choices"]?.jsonArray?.get(0)?.jsonObject ?: error("choices is null")
+        // choices 可能是空数组或显式 null（部分中转在内容审核时这么返回），两种都要给出可读错误。
+        val choice = bodyJson["choices"]?.jsonArrayOrNull?.firstOrNull()?.jsonObjectOrNull
+            ?: throw IllegalStateException("choices 缺失或为空: ${bodyStr.take(500)}")
 
         val message = choice["message"]?.jsonObject ?: throw Exception("message is null")
         val finishReason = choice["finish_reason"]
@@ -809,21 +811,18 @@ class ChatCompletionsAPI(
     }
 
     private fun parseAnnotations(jsonArray: JsonArray): List<UIMessageAnnotation> {
-        return jsonArray.map { element ->
-            val type =
-                element.jsonObject["type"]?.jsonPrimitive?.contentOrNull ?: error("type is null")
-            when (type) {
-                "url_citation" -> {
-                    UIMessageAnnotation.UrlCitation(
-                        title =
-                        element.jsonObject["url_citation"]?.jsonObject?.get("title")?.jsonPrimitive?.contentOrNull
-                            ?: "",
-                        url = element.jsonObject["url_citation"]?.jsonObject?.get("url")?.jsonPrimitive?.contentOrNull
-                            ?: "",
-                    )
-                }
+        // 与流式解码保持一致：畸形或未知类型的注解丢弃，不抛异常（否则一条注解会毁掉整条回复）。
+        return jsonArray.mapNotNull { element ->
+            val annotation = element.jsonObjectOrNull ?: return@mapNotNull null
+            when (annotation["type"]?.jsonPrimitive?.contentOrNull) {
+                "url_citation" -> UIMessageAnnotation.UrlCitation(
+                    title = annotation["url_citation"]?.jsonObjectOrNull
+                        ?.get("title")?.jsonPrimitive?.contentOrNull ?: "",
+                    url = annotation["url_citation"]?.jsonObjectOrNull
+                        ?.get("url")?.jsonPrimitive?.contentOrNull ?: "",
+                )
 
-                else -> error("unknown annotation type: $type")
+                else -> null
             }
         }
     }

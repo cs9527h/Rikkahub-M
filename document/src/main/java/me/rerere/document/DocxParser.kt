@@ -25,7 +25,12 @@ object DocxParser {
                     var entry = zipStream.nextEntry
                     while (entry != null) {
                         if (entry.name == "word/document.xml") {
-                            return parseDocumentXml(zipStream)
+                            if (entry.size > DocumentLimits.MAX_XML_BYTES) {
+                                return "Document content too large"
+                            }
+                            return parseDocumentXml(
+                                LimitedInputStream(zipStream, DocumentLimits.MAX_XML_BYTES)
+                            )
                         }
                         entry = zipStream.nextEntry
                     }
@@ -48,6 +53,9 @@ object DocxParser {
             var inBody = false
 
             while (parser.eventType != XmlPullParser.END_DOCUMENT) {
+                if (result.length > DocumentLimits.MAX_OUTPUT_CHARS) {
+                    return result.append("\n[truncated]").toString()
+                }
                 when (parser.eventType) {
                     XmlPullParser.START_TAG -> {
                         when (parser.name) {
@@ -313,7 +321,7 @@ object DocxParser {
                         "pStyle" -> {
                             val styleVal = parser.getAttributeValue(null, "val")
                             if (styleVal?.startsWith("Heading") == true || styleVal?.startsWith("heading") == true) {
-                                headingLevel = styleVal.lastOrNull()?.digitToIntOrNull() ?: 1
+                                headingLevel = (styleVal.lastOrNull()?.digitToIntOrNull() ?: 1).coerceIn(1, 6)
                             }
                         }
                         "numPr" -> {
@@ -321,7 +329,9 @@ object DocxParser {
                             while (parser.next() != XmlPullParser.END_DOCUMENT) {
                                 when (parser.eventType) {
                                     XmlPullParser.START_TAG -> when (parser.name) {
-                                        "ilvl" -> listLevel = parser.getAttributeValue(null, "val")?.toIntOrNull() ?: 0
+                                        // ilvl 直接来自文档，必须限幅：畸形文档写 100000 会让 "  ".repeat() 撑爆内存。
+                                        "ilvl" -> listLevel =
+                                            (parser.getAttributeValue(null, "val")?.toIntOrNull() ?: 0).coerceIn(0, 8)
                                         "numId" -> isNumbered = parser.getAttributeValue(null, "val") != null
                                     }
                                     XmlPullParser.END_TAG -> {
@@ -342,7 +352,9 @@ object DocxParser {
 
         val listInfo = if (listLevel > 0 || isNumbered) {
             ListInfo(level = listLevel, isNumbered = isNumbered, number = 1)
-        } else null
+        } else {
+            null
+        }
 
         return ParagraphProperties(listInfo = listInfo, headingLevel = headingLevel)
     }

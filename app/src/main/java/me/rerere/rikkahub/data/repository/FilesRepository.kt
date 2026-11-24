@@ -12,10 +12,6 @@ class FilesRepository(
         return file.copy(id = id)
     }
 
-    suspend fun update(file: ManagedFileEntity) {
-        dao.update(file)
-    }
-
     suspend fun getById(id: Long): ManagedFileEntity? = dao.getById(id)
 
     suspend fun getByPath(relativePath: String): ManagedFileEntity? = dao.getByPath(relativePath)

@@ -35,17 +35,18 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.skills.SkillManager
 import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.data.sync.RestoreFailedException
-import me.rerere.rikkahub.mate.MateAutoBackupWorker
 import me.rerere.rikkahub.di.appModule
 import me.rerere.rikkahub.di.dataSourceModule
 import me.rerere.rikkahub.di.repositoryModule
 import me.rerere.rikkahub.di.viewModelModule
+import me.rerere.rikkahub.mate.MateAutoBackupWorker
 import me.rerere.rikkahub.service.MediaCreationService
 import me.rerere.rikkahub.service.WebServerService
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.workspace.WorkspaceManager
+import me.rerere.workspace.deleteTreeNoFollow
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -54,6 +55,9 @@ import org.koin.core.context.startKoin
 import java.io.File
 
 private const val TAG = "RikkaHubApp"
+
+/** 首帧之后再开始清理类维护，避免冷启动时与首屏抢 IO。 */
+private const val STARTUP_MAINTENANCE_DELAY_MS = 1_200L
 
 const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
@@ -65,16 +69,21 @@ class RikkaHubApp : Application() {
     override fun onCreate() {
         super.onCreate()
         // Restore files and settings before eager Koin singletons or workers can access them.
-        try {
-            val restored = runBlocking(Dispatchers.IO) {
-                BackupManager.applyPendingRestore(this@RikkaHubApp, JsonInstant)
+        // 没有 backup-restore 目录时（绝大多数启动）直接跳过：这里在主线程上 runBlocking，
+        // 哪怕只是两次 stat，也会在冷启动阶段和白屏抢时间片。
+        val restoreRoot = File(noBackupFilesDir, "backup-restore")
+        if (restoreRoot.isDirectory) {
+            try {
+                val restored = runBlocking(Dispatchers.IO) {
+                    BackupManager.applyPendingRestore(this@RikkaHubApp, JsonInstant)
+                }
+                if (restored) {
+                    Toast.makeText(this, R.string.backup_page_restore_success, Toast.LENGTH_LONG).show()
+                }
+            } catch (e: RestoreFailedException) {
+                Log.e(TAG, "Backup restore rolled back", e)
+                Toast.makeText(this, "备份恢复失败，已保留原数据。请重新导入备份。", Toast.LENGTH_LONG).show()
             }
-            if (restored) {
-                Toast.makeText(this, R.string.backup_page_restore_success, Toast.LENGTH_LONG).show()
-            }
-        } catch (e: RestoreFailedException) {
-            Log.e(TAG, "Backup restore rolled back", e)
-            Toast.makeText(this, "备份恢复失败，已保留原数据。请重新导入备份。", Toast.LENGTH_LONG).show()
         }
         startKoin {
             androidLogger()
@@ -93,23 +102,9 @@ class RikkaHubApp : Application() {
         // install crash handler
         CrashHandler.install(this)
 
-        // delete temp files
-        deleteTempFiles()
-
-        // cleanup stale tool output files
-        cleanupToolOutputs()
-
-        // cleanup workspace temp dirs (proot + rootfs /tmp)
-        cleanupWorkspaceTempDirs()
-
-        // check workspace integrity (mark workspaces with missing files as broken after backup restore)
-        checkWorkspaceIntegrity()
-
-        // sync upload files to DB
-        syncManagedFiles()
-
-        // Extract builtin skills from assets after install/update
-        extractBuiltinSkills()
+        // 冷启动阶段只做必须抢在首帧之前的事；清理类任务统一推迟到首帧之后串行执行，
+        // 否则十几个协程同时读写磁盘/数据库，会把白屏和首屏列表都拖慢。
+        startDeferredMaintenance()
 
         // Load models.dev data for model capability matching, then refresh it in background
         updateModelsDev()
@@ -130,9 +125,6 @@ class RikkaHubApp : Application() {
             }
         }
         observeMateAutoBackup()
-
-        // Increment launch count
-        incrementLaunchCount()
 
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
     }
@@ -191,65 +183,43 @@ class RikkaHubApp : Application() {
         }
     }
 
-    private fun cleanupWorkspaceTempDirs() {
+    /** 首帧之后串行执行的启动维护：清理临时文件、校准文件表、解压内置技能。 */
+    private fun startDeferredMaintenance() {
         get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
-                get<WorkspaceManager>().cleanupAllTempDirs()
-            }.onFailure {
-                Log.e(TAG, "cleanupWorkspaceTempDirs failed", it)
-            }
+            delay(STARTUP_MAINTENANCE_DELAY_MS)
+            runMaintenanceStep("incrementLaunchCount") { get<SettingsStore>().incrementLaunchCount() }
+            runMaintenanceStep("deleteTempFiles") { deleteTempFilesNow() }
+            runMaintenanceStep("cleanupToolOutputs") { cleanupToolOutputsNow() }
+            runMaintenanceStep("cleanupWorkspaceTempDirs") { get<WorkspaceManager>().cleanupAllTempDirs() }
+            runMaintenanceStep("checkWorkspaceIntegrity") { get<WorkspaceRepository>().checkIntegrity() }
+            runMaintenanceStep("syncManagedFiles") { get<FilesManager>().syncFolder() }
+            runMaintenanceStep("extractBuiltinSkills") { get<SkillManager>().ensureBuiltinSkillsExtracted() }
         }
     }
 
-    private fun checkWorkspaceIntegrity() {
-        get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
-                get<WorkspaceRepository>().checkIntegrity()
-            }.onFailure {
-                Log.e(TAG, "checkWorkspaceIntegrity failed", it)
-            }
+    /** 单个维护步骤失败不影响后续步骤，也不应该把异常抛到 AppScope。 */
+    private suspend fun runMaintenanceStep(name: String, block: suspend () -> Unit) {
+        runCatching { block() }.onFailure { Log.w(TAG, "startup maintenance step $name failed", it) }
+    }
+
+    private fun deleteTempFilesNow() {
+        val dir = appTempFolder
+        if (dir.exists()) {
+            deleteTreeNoFollow(dir)
         }
     }
 
-    private fun deleteTempFiles() {
-        get<AppScope>().launch(Dispatchers.IO) {
-            val dir = appTempFolder
-            if (dir.exists()) {
-                dir.deleteRecursively()
-            }
-        }
-    }
-
-    private fun cleanupToolOutputs() {
-        get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
-                val dir = File(filesDir, FileFolders.TOOL_OUTPUTS)
-                if (dir.exists()) {
-                    dir.deleteRecursively()
-                }
-            }
-        }
-    }
-
-    private fun extractBuiltinSkills() {
-        get<AppScope>().launch(Dispatchers.IO) {
-            get<SkillManager>().ensureBuiltinSkillsExtracted()
+    private fun cleanupToolOutputsNow() {
+        val dir = File(filesDir, FileFolders.TOOL_OUTPUTS)
+        if (dir.exists()) {
+            // 工具输出目录里可能有指向私有数据的软链，递归删除不能跟随。
+            deleteTreeNoFollow(dir)
         }
     }
 
     private fun updateModelsDev() {
         get<AppScope>().launch {
             get<ModelsDevUpdater>().start()
-        }
-    }
-
-    private fun syncManagedFiles() {
-        get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
-                get<FilesManager>().syncFolder()
-            }.onFailure {
-                Log.e(TAG, "syncManagedFiles failed", it)
-            }
         }
     }
 

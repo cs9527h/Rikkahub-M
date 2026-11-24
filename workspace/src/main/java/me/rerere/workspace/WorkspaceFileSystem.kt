@@ -66,7 +66,10 @@ class WorkspaceFileSystem(
         val ext = file.extension.let { if (it.isNotEmpty()) ".$it" else "" }
         var n = 1
         var candidate: File
-        do { candidate = File(file.parentFile, "$stem ($n)$ext"); n++ } while (candidate.exists())
+        do {
+            candidate = File(file.parentFile, "$stem ($n)$ext")
+            n++
+        } while (candidate.exists())
         return candidate
     }
 
@@ -76,7 +79,8 @@ class WorkspaceFileSystem(
         if (!file.exists()) return false
         return if (file.isDirectory) {
             require(recursive) { "Directory delete requires recursive = true" }
-            file.deleteRecursively()
+            // 不能跟随软链：工作区里 ln -s <app 私有目录> 的子目录被删时会连带清空目标。
+            deleteTreeNoFollow(file)
         } else {
             file.delete()
         }
@@ -90,7 +94,7 @@ class WorkspaceFileSystem(
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }
             if (targetFile.isDirectory) {
-                targetFile.deleteRecursively()
+                deleteTreeNoFollow(targetFile)
             } else {
                 targetFile.delete()
             }
