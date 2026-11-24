@@ -291,32 +291,6 @@ jobs:
               raise SystemExit("Release 正文混入了开发者技术章节")
           PY
           cp "$RUNNER_TEMP/release-notes.md" release-notes.md
-      - name: Publish to domestic update mirror (optional)
-        # 备用更新源长期停在 0.8.3 的原因之一：这一步从来没接进流水线，全靠手动。
-        # 配好 MIRROR_SSH_KEY 后每次正式发布都会同步 APK + 重建 manifest。
-        env:
-          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
-          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
-        run: |
-          set -euo pipefail
-          if [ -z "${MIRROR_SSH_KEY:-}" ]; then
-            echo "未配置 MIRROR_SSH_KEY，跳过备用源更新（不影响 GitHub 发布）"
-            exit 0
-          fi
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$MIRROR_SSH_KEY" > ~/.ssh/id_mirror && chmod 600 ~/.ssh/id_mirror
-          HOST="${MIRROR_HOST:-root@8.133.167.195}"
-          {
-            echo "Host ${HOST#*@}"
-            echo "  IdentityFile ~/.ssh/id_mirror"
-            echo "  StrictHostKeyChecking accept-new"
-            echo "  UserKnownHostsFile ~/.ssh/known_hosts_mirror"
-            echo "  ConnectTimeout 20"
-          } >> ~/.ssh/config
-          bash scripts/publish_update_mirror.sh "$VERSION" "dist/Rikkahub-M-${VERSION}.apk" --deploy
-          curl -fsSk "https://${HOST#*@}/updates/manifest.json" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); v=d['releases'][-1]['version']; print('mirror latest:', v); sys.exit(0 if v=='$VERSION' else 1)"
-
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -365,3 +339,28 @@ jobs:
               --repo "$GH_REPO" --target "$GITHUB_SHA" "${flags[@]}" \
               --title "Rikkahub-M ${VERSION}" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
+      - name: Publish to domestic update mirror (optional)
+        # 备用更新源长期停在 0.8.3 的原因之一：这一步从来没接进流水线，全靠手动。
+        # 配好 MIRROR_SSH_KEY 后每次正式发布都会同步 APK + 重建 manifest。
+        env:
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MIRROR_SSH_KEY:-}" ]; then
+            echo "未配置 MIRROR_SSH_KEY，跳过备用源更新（不影响 GitHub 发布）"
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MIRROR_SSH_KEY" > ~/.ssh/id_mirror && chmod 600 ~/.ssh/id_mirror
+          HOST="${MIRROR_HOST:-root@8.133.167.195}"
+          {
+            echo "Host ${HOST#*@}"
+            echo "  IdentityFile ~/.ssh/id_mirror"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts_mirror"
+            echo "  ConnectTimeout 20"
+          } >> ~/.ssh/config
+          bash scripts/publish_update_mirror.sh "$VERSION" "dist/Rikkahub-M-${VERSION}.apk" --deploy
+          curl -fsSk "https://${HOST#*@}/updates/manifest.json" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); v=d['releases'][-1]['version']; print('mirror latest:', v); sys.exit(0 if v=='$VERSION' else 1)"
