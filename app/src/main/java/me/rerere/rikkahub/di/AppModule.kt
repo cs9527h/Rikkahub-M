@@ -1,18 +1,14 @@
 package me.rerere.rikkahub.di
 
 import android.content.Context
-import me.rerere.ai.provider.ProviderManager
-import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
-import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import java.io.IOException
 import com.google.firebase.Firebase
-import com.google.firebase.analytics.analytics
 import com.google.firebase.crashlytics.crashlytics
 import kotlinx.serialization.json.Json
+import me.rerere.ai.provider.ProviderManager
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.ai.ChatRequestFactory
+import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
+import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.event.AppEventBus
@@ -31,8 +27,11 @@ import me.rerere.rikkahub.utils.SoundEffectPlayer
 import me.rerere.rikkahub.utils.UpdateChecker
 import me.rerere.rikkahub.web.WebServerManager
 import me.rerere.tts.provider.TTSManager
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import java.io.IOException
 
 val appModule = module {
     single<Json> { JsonInstant }
@@ -71,10 +70,6 @@ val appModule = module {
 
     single {
         Firebase.crashlytics
-    }
-
-    single {
-        Firebase.analytics
     }
 
     single {
@@ -151,7 +146,9 @@ val appModule = module {
             retryOnConnectionFailure(false)
         }.build()
         HistoryMemoryManager(
-            context, get(), get(),
+            context,
+            get(),
+            get(),
             ProviderManager(privateClient, context, get<ProviderAccountManager>()),
             get(),
         )

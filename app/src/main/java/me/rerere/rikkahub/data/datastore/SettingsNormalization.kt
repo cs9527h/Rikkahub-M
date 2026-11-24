@@ -70,7 +70,18 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         .map { assistant ->
             when {
                 assistant.chatModelId == LEGACY_MATE_MODEL_ID -> assistant.copy(chatModelId = null)
-                assistant.id == DEFAULT_ASSISTANT_ID && assistant.name.isBlank() -> assistant.copy(name = "李鱼")
+                // 内置助手回到上游默认：名字留空（界面显示「默认助手」）、头像用 Avatar.Dummy。
+                // 只迁移旧版本写进去的固定值，用户自己改过的名字/头像不动。
+                assistant.id == DEFAULT_ASSISTANT_ID &&
+                    (assistant.name == "李鱼" || assistant.avatar == me.rerere.rikkahub.data.model.Avatar.Emoji("🐟")) ->
+                    assistant.copy(
+                        name = if (assistant.name == "李鱼") "" else assistant.name,
+                        avatar = if (assistant.avatar == me.rerere.rikkahub.data.model.Avatar.Emoji("🐟")) {
+                            me.rerere.rikkahub.data.model.Avatar.Dummy
+                        } else {
+                            assistant.avatar
+                        },
+                    )
                 else -> assistant
             }
         }

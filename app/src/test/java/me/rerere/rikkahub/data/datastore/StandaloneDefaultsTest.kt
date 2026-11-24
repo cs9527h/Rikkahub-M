@@ -11,7 +11,9 @@ import org.junit.Test
 class StandaloneDefaultsTest {
     @Test fun defaultAssistantHasNoServerModel() {
         assertEquals(1, DEFAULT_ASSISTANTS.size)
-        assertEquals("李鱼", DEFAULT_ASSISTANTS.single().name)
+        // 与上游一致：内置助手名字留空，界面按 stringResource 显示「默认助手 / Default Assistant」
+        assertEquals("", DEFAULT_ASSISTANTS.single().name)
+        assertEquals(me.rerere.rikkahub.data.model.Avatar.Dummy, DEFAULT_ASSISTANTS.single().avatar)
         assertNull(DEFAULT_ASSISTANTS.single().chatModelId)
         assertFalse(DEFAULT_PROVIDERS.any { it.id == LEGACY_MATE_PROVIDER_ID })
     }

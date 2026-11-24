@@ -184,7 +184,9 @@ class BackupManager(
                     val readable = if (!BackupCrypto.isEncrypted(archive)) {
                         archive
                     } else {
-                        requireNotNull(passphrase) { "该备份已加密，需要恢复口令" }
+                        // 用专用异常而不是 require：界面只对这个异常弹「输入恢复口令」，
+                        // 之前的 IllegalArgumentException 会被当成普通失败，用户永远等不到输入框。
+                        passphrase ?: throw MissingBackupPassphraseException()
                         File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
                             decrypted = temp
                             BackupCrypto.decrypt(archive, temp, passphrase)

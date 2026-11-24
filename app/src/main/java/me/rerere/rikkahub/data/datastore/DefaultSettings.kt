@@ -11,10 +11,8 @@ internal val DEFAULT_ASSISTANT_ID = Uuid.parse("0950e2dc-9bd5-4801-afa3-aa887aa3
 internal val DEFAULT_ASSISTANTS = listOf(
     Assistant(
         id = DEFAULT_ASSISTANT_ID,
-        name = "李鱼",
+        name = "",
         chatModelId = null,
-        avatar = me.rerere.rikkahub.data.model.Avatar.Emoji("🐟"),
-        useAssistantAvatar = true,
         systemPrompt = ""
     ),
 )

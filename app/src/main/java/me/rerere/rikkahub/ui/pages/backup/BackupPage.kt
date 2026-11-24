@@ -92,6 +92,8 @@ private fun BackupTarget.label(): String = when (this) {
  * 单页「备份与恢复」：状态、立即备份、恢复、自动备份开关、存储位置、备份记录、高级设置。
  * 日常流程不出现任何备份口令输入框；旧口令归档只在恢复旧文件时弹一次。
  */
+private const val MAX_PASSPHRASE_ATTEMPTS = 3
+
 @Composable
 fun BackupPage(vm: BackupVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -149,11 +151,25 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             try {
                 requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取备份文件" }
                     .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
+                var attempts = 0
                 while (true) {
                     try {
                         vm.restoreFromLocalFile(temp, oneTimePassphrase)
                         break
                     } catch (_: MissingBackupPassphraseException) {
+                        if (++attempts > MAX_PASSPHRASE_ATTEMPTS) {
+                            toast("多次未输入正确口令，已取消恢复", error = true)
+                            return@launch
+                        }
+                        oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
+                    } catch (e: IllegalStateException) {
+                        // 口令错误时 BackupCrypto 抛的是 IllegalStateException（GCM 校验失败），
+                        // 之前会被当成普通失败直接退出，用户没有第二次输入机会。
+                        if (e.message?.contains("口令") != true) throw e
+                        if (++attempts > MAX_PASSPHRASE_ATTEMPTS) {
+                            toast("多次未输入正确口令，已取消恢复", error = true)
+                            return@launch
+                        }
                         oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
                     }
                 }
@@ -242,7 +258,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                         if (busy) return@Button
                         when (target) {
                             BackupTarget.LOCAL -> createLocalBackup.launch(
-                                "Rikkahub-M-backup-${System.currentTimeMillis()}.zip"
+                                "Rikkahub-M-backup-${System.currentTimeMillis()}.rkmbak"
                             )
                             else -> scope.launch {
                                 busy = true
@@ -460,7 +476,12 @@ private fun StorageSheet(
 
             when (target) {
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("本机备份保存为你选择的文件，文件本身已加密。换机时请同时带上恢复密钥。")
+                    Text("本机备份保存为你选择的文件，文件本身已加密。")
+                    Text(
+                        "加密密钥保存在本机（Android Keystore）。换机、卸载重装或清除应用数据后，必须先用「导出恢复密钥文件」拿到的密钥才能打开这份备份；密钥丢了，备份无法恢复。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     FilledTonalButton(onClick = onRestoreLocal) { Text("从本机文件恢复") }
                 }
                 BackupTarget.WEBDAV -> CardGroup(title = { Text("WebDAV") }) {
