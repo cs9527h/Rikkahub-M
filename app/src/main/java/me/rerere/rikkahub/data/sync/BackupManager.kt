@@ -214,7 +214,10 @@ class BackupManager(
                                 // 0 means the platform cannot report free space.
                                 if (needed > 0 && available > 0 && !BackupSpace.fits(needed, available)) {
                                     val required = BackupSpace.requiredBytes(needed) / (1024 * 1024)
-                                    error("设备存储空间不足，至少还需要 $required MB")
+                                    error(
+                                        "设备存储空间不足：这份备份需要约 $required MB，当前可用约 " +
+                                            "${available / (1024 * 1024)} MB。清理后再试。"
+                                    )
                                 }
                             }
                             when (verified.kind) {

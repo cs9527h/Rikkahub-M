@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.backup
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,10 +70,10 @@ import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.s3ConnectionItems
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
-import me.rerere.rikkahub.ui.pages.backup.components.BackupDialog
 import me.rerere.rikkahub.ui.pages.backup.components.RestorePassphraseDialog
-import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 import me.rerere.rikkahub.ui.pages.backup.components.rememberRestorePassphrasePrompt
+import me.rerere.rikkahub.ui.pages.backup.components.BackupDialog
+import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.fileSizeToString
@@ -83,6 +84,11 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.time.Instant
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+
+private const val MIN_BACKUP_PASSPHRASE = 6
+private const val MAX_PASSPHRASE_ATTEMPTS = 3
 
 private val IntervalOptions = listOf(6, 12, 24, 72)
 private val RetentionOptions = listOf(0, 5, 10, 20)
@@ -98,8 +104,6 @@ private fun BackupTarget.label(): String = when (this) {
  * 单页「备份与恢复」：状态、立即备份、恢复、自动备份开关、存储位置、备份记录、高级设置。
  * 日常流程不出现任何备份口令输入框；旧口令归档只在恢复旧文件时弹一次。
  */
-private const val MAX_PASSPHRASE_ATTEMPTS = 3
-
 @Composable
 fun BackupPage(vm: BackupVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -116,6 +120,8 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
 
     var busy by remember { mutableStateOf(false) }
     var busyLabel by remember { mutableStateOf("备份中…") }
+    var showExportPassphrase by remember { mutableStateOf(false) }
+    var pendingExportPassphrase by remember { mutableStateOf<CharArray?>(null) }
     var showRestart by remember { mutableStateOf(false) }
     var showStorage by remember { mutableStateOf(false) }
     var showRecords by remember { mutableStateOf(false) }
@@ -136,7 +142,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             busy = true
             busyLabel = "正在打包备份…"
             runCatching {
-                val export = vm.exportToFile()
+                val export = vm.exportToFile(pendingExportPassphrase)
                 try {
                     // 200MB 级的包写到 SAF 上必须离开主线程：原来这段同步 copy 直接把界面冻住，
                     // 用户看到的就是「一直显示备份中，然后不动了」。
@@ -148,6 +154,8 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     vm.recordLocalExportSuccess()
                 } finally {
                     export.delete()
+                    pendingExportPassphrase?.fill('\u0000')
+                    pendingExportPassphrase = null
                 }
             }.onSuccess { toast("备份已保存") }
                 .onFailure { toast("备份失败：" + (it.message ?: "未知错误"), error = true) }
@@ -161,7 +169,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         scope.launch {
             busy = true
             busyLabel = "正在读取备份文件…"
-            var oneTimePassphrase: CharArray? = null
             try {
                 // 同上：几十到几百 MB 的读取不能压在主线程上
                 withContext(Dispatchers.IO) {
@@ -169,34 +176,41 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                         .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
                 }
                 busyLabel = "正在解密并校验备份…"
+                // 双模式：先用本机密钥；本机没有密钥或密钥不匹配时，允许输入备份口令（至少 6 位）
+                var typed: CharArray? = null
                 var attempts = 0
                 while (true) {
                     try {
-                        vm.restoreFromLocalFile(temp, oneTimePassphrase)
+                        vm.restoreFromLocalFile(temp, typed)
                         break
                     } catch (_: MissingBackupPassphraseException) {
-                        if (++attempts > MAX_PASSPHRASE_ATTEMPTS) {
-                            toast("多次未输入正确口令，已取消恢复", error = true)
+                        typed = passphrasePrompt.ask() ?: run {
+                            toast("这台设备没有备份密钥，也没有输入口令：请导入恢复密钥文件，或输入备份口令", error = true)
+                            showRecords = true
                             return@launch
                         }
-                        oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
+                        if (typed.size < MIN_BACKUP_PASSPHRASE) {
+                            toast("口令至少 $MIN_BACKUP_PASSPHRASE 位", error = true)
+                            return@launch
+                        }
                     } catch (e: IllegalStateException) {
-                        // 口令错误时 BackupCrypto 抛的是 IllegalStateException（GCM 校验失败），
-                        // 之前会被当成普通失败直接退出，用户没有第二次输入机会。
                         if (e.message?.contains("口令") != true) throw e
                         if (++attempts > MAX_PASSPHRASE_ATTEMPTS) {
-                            toast("多次未输入正确口令，已取消恢复", error = true)
+                            toast("多次口令不正确，已取消恢复", error = true)
                             return@launch
                         }
-                        oneTimePassphrase = passphrasePrompt.ask() ?: return@launch
+                        typed = passphrasePrompt.ask() ?: run {
+                            toast("备份与本机密钥不匹配：请导入对应的恢复密钥文件，或输入备份口令", error = true)
+                            return@launch
+                        }
                     }
                 }
+                typed?.fill('\u0000')
                 toast("恢复完成")
                 showRestart = true
             } catch (e: Exception) {
                 toast("恢复失败：" + (e.message ?: "未知错误"), error = true)
             } finally {
-                oneTimePassphrase?.fill('\u0000')
                 temp.delete()
                 busy = false
             }
@@ -275,9 +289,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     onClick = {
                         if (busy) return@Button
                         when (target) {
-                            BackupTarget.LOCAL -> createLocalBackup.launch(
-                                "Rikkahub-M-backup-${System.currentTimeMillis()}.rkmbak"
-                            )
+                            BackupTarget.LOCAL -> showExportPassphrase = true
                             else -> scope.launch {
                                 busy = true
                                 runCatching { vm.backupNow(target) }
@@ -364,6 +376,17 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         )
     }
 
+    if (showExportPassphrase) {
+        ExportPassphraseDialog(
+            onDismiss = { showExportPassphrase = false },
+            onConfirm = { passphrase ->
+                showExportPassphrase = false
+                pendingExportPassphrase = passphrase
+                createLocalBackup.launch("Rikkahub-M-backup-${System.currentTimeMillis()}.rkmbak")
+            },
+        )
+    }
+
     if (busy) {
         // 恢复大备份可能要几十秒到几分钟：原来只有按钮文字变化（而且文案还是"备份中…"），
         // 用户看到的就是"卡住不动"。这里给一条明确的进度提示。
@@ -402,28 +425,46 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 showRecords = false
                 pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
             },
+            onImportKey = {
+                showRecords = false
+                importKeyLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
+            },
             onRestore = { action ->
                 restoringName = "restoring"
                 scope.launch {
                     busy = true
                     busyLabel = "正在下载并校验备份…"
-                    var passphrase: CharArray? = null
+                    var typed: CharArray? = null
+                    var attempts = 0
                     try {
                         while (true) {
                             try {
-                                action(passphrase)
+                                action(typed)
                                 break
                             } catch (_: MissingBackupPassphraseException) {
-                                passphrase = passphrasePrompt.ask() ?: return@launch
+                                typed = passphrasePrompt.ask() ?: run {
+                                    toast("这台设备没有备份密钥，也没有输入口令：请先导入恢复密钥文件", error = true)
+                                    return@launch
+                                }
+                            } catch (e: IllegalStateException) {
+                                if (e.message?.contains("口令") != true) throw e
+                                if (++attempts > MAX_PASSPHRASE_ATTEMPTS) {
+                                    toast("多次口令不正确，已取消恢复", error = true)
+                                    return@launch
+                                }
+                                typed = passphrasePrompt.ask() ?: run {
+                                    toast("备份与本机密钥不匹配：请导入对应的恢复密钥文件，或输入备份口令", error = true)
+                                    return@launch
+                                }
                             }
                         }
+                        typed?.fill('\u0000')
                         toast("恢复完成")
                         showRecords = false
                         showRestart = true
                     } catch (e: Exception) {
                         toast("恢复失败：" + (e.message ?: "未知错误"), error = true)
                     } finally {
-                        passphrase?.fill('\u0000')
                         restoringName = null
                         busy = false
                     }
@@ -620,6 +661,7 @@ private fun RecordsSheet(
     s3Items: UiState<List<S3BackupItem>>,
     restoringName: String?,
     onLocalRestore: () -> Unit,
+    onImportKey: () -> Unit,
     onRestore: (suspend (CharArray?) -> Unit) -> Unit,
     onDelete: (String, suspend () -> Unit) -> Unit,
     onDismiss: () -> Unit,
@@ -647,8 +689,13 @@ private fun RecordsSheet(
             }
             when (section) {
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("选择本机保存的备份文件。文件已加密；如果当前设备没有对应密钥，需要先导入恢复密钥。")
-                    Button(onClick = onLocalRestore, enabled = restoringName == null) { Text("选择文件") }
+                    Text("选择本机保存的备份文件。备份用密钥加密，不再需要记口令：同机恢复直接用本机密钥；换机后先导入恢复密钥文件再恢复。")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onLocalRestore, enabled = restoringName == null) { Text("选择文件") }
+                        FilledTonalButton(onClick = onImportKey, enabled = restoringName == null) {
+                            Text("导入恢复密钥文件")
+                        }
+                    }
                 }
                 BackupTarget.WEBDAV -> BackupList(
                     state = webDavItems,
@@ -880,4 +927,82 @@ private fun copyTo(output: java.io.OutputStream, input: java.io.InputStream) {
         if (read < 0) break
         output.write(buffer, 0, read)
     }
+}
+
+/**
+ * 导出前的可选口令：
+ * - 留空 → 用本机密钥加密（同机恢复不需要任何输入；换机需要导入恢复密钥文件）；
+ * - 填口令（至少 6 位）→ 用口令加密，任何设备只要知道口令就能恢复，不再依赖密钥。
+ */
+@Composable
+private fun ExportPassphraseDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (CharArray?) -> Unit,
+) {
+    var passphrase by remember { mutableStateOf("") }
+    var confirmation by remember { mutableStateOf("") }
+    val usingPassphrase = passphrase.isNotEmpty() || confirmation.isNotEmpty()
+    val mismatch = usingPassphrase && passphrase != confirmation
+    val tooShort = usingPassphrase && passphrase.length < MIN_BACKUP_PASSPHRASE
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设置备份口令（可留空）") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "留空：用本机密钥加密，恢复时不需要输入，但换机必须导入恢复密钥文件。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "填写（至少 $MIN_BACKUP_PASSPHRASE 位）：任何设备只要输入这个口令就能恢复，不再依赖密钥。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = passphrase,
+                    onValueChange = { passphrase = it },
+                    label = { Text("口令") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = tooShort,
+                    supportingText = if (tooShort) {
+                        { Text("至少 $MIN_BACKUP_PASSPHRASE 位") }
+                    } else null,
+                )
+                OutlinedTextField(
+                    value = confirmation,
+                    onValueChange = { confirmation = it },
+                    label = { Text("确认口令") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = mismatch,
+                    supportingText = if (mismatch) {
+                        { Text("两次输入不一致") }
+                    } else null,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !tooShort && !mismatch,
+                onClick = {
+                    val value = runCatching {
+                        me.rerere.rikkahub.data.sync.BackupArchiveFormat
+                            .exportPassphrase(usingPassphrase, passphrase, confirmation, includeCredentials = false)
+                    }.getOrNull()
+                    passphrase = ""
+                    confirmation = ""
+                    onConfirm(value)
+                },
+            ) { Text("导出") }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                passphrase = ""
+                confirmation = ""
+                onDismiss()
+            }) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }

@@ -7,8 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -114,7 +114,9 @@ class BackupVM(
             val secret = me.rerere.rikkahub.data.sync.BackupRecoveryKey.decode(text)
             try {
                 settingsStore.update { current ->
-                    current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap()))
+                    current.copy(
+                        backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap())
+                    )
                 }
                 backupPassphraseStore.save(secret)
                 automaticPassphraseConfigured.value = true
@@ -208,21 +210,39 @@ class BackupVM(
     suspend fun restore(item: WebDavBackupItem, oneTimePassphrase: CharArray? = null) =
         if (oneTimePassphrase != null) {
             webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = oneTimePassphrase)
-        } else withPassphrase(export = false) { passphrase, _ ->
-        webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = passphrase)
-    }
+        } else {
+            withPassphrase(export = false) { passphrase, _ ->
+                webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = passphrase)
+            }
+        }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    suspend fun exportToFile(): File = withPassphrase(export = true) { passphrase, includeCredentials ->
-        webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = localBackupItems.value),
-            passphrase,
-            includeCredentials,
-        )
-    }
+    /**
+     * 导出本机备份。
+     *
+     * [customPassphrase] 为空时用本机密钥（换机恢复需要导入恢复密钥文件）；
+     * 传入自定义口令时用这个口令加密，恢复方只要知道口令即可，不再依赖密钥。
+     */
+    suspend fun exportToFile(customPassphrase: CharArray? = null): File =
+        if (customPassphrase != null) {
+            require(customPassphrase.size >= 6) { "口令至少 6 位" }
+            webDavSync.prepareBackupFile(
+                settings.value.webDavConfig.copy(items = localBackupItems.value),
+                customPassphrase,
+                includeCredentials = false,
+            )
+        } else {
+            withPassphrase(export = true) { passphrase, includeCredentials ->
+                webDavSync.prepareBackupFile(
+                    settings.value.webDavConfig.copy(items = localBackupItems.value),
+                    passphrase,
+                    includeCredentials,
+                )
+            }
+        }
 
     suspend fun recordLocalExportSuccess() = recordBackupTime()
 
@@ -233,13 +253,15 @@ class BackupVM(
                 settings.value.webDavConfig.copy(items = localBackupItems.value),
                 oneTimePassphrase,
             )
-        } else withPassphrase(export = false) { passphrase, _ ->
-        webDavSync.restoreFromLocalFile(
-            file,
-            settings.value.webDavConfig.copy(items = localBackupItems.value),
-            passphrase,
-        )
-    }
+        } else {
+            withPassphrase(export = false) { passphrase, _ ->
+                webDavSync.restoreFromLocalFile(
+                    file,
+                    settings.value.webDavConfig.copy(items = localBackupItems.value),
+                    passphrase,
+                )
+            }
+        }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult = withContext(Dispatchers.IO) {
         val currentSettings = settings.value
@@ -351,8 +373,10 @@ class BackupVM(
     suspend fun restoreFromS3(item: S3BackupItem, oneTimePassphrase: CharArray? = null) =
         if (oneTimePassphrase != null) {
             s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = oneTimePassphrase)
-        } else withPassphrase(export = false) { passphrase, _ ->
-            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
+        } else {
+            withPassphrase(export = false) { passphrase, _ ->
+                s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
+            }
         }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {

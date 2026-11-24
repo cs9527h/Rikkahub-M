@@ -37,7 +37,7 @@ class BackupPassphraseStore(
 
     suspend fun save(passphrase: CharArray) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            require(passphrase.size in 8..1024) { "自动备份口令需为 8 至 1024 位" }
+            require(passphrase.size in 6..1024) { "备份口令需为 6 至 1024 位" }
             val encoded = Charsets.UTF_8.encode(CharBuffer.wrap(passphrase))
             val plain = ByteArray(encoded.remaining()).also(encoded::get)
             if (encoded.hasArray()) encoded.array().fill(0)

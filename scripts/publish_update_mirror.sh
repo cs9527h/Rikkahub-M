@@ -102,8 +102,11 @@ PYNOTES
   scp "$OUT_DIR/Rikkahub-M-${VERSION}.apk" "$OUT_DIR/notes-$VERSION.md" "$HOST:/var/www/updates/"
   # scp 落盘是 600，nginx worker 读不到会返回 403（0.8.0 首次上传就踩到了）
   ssh "$HOST" "chmod 644 /var/www/updates/Rikkahub-M-${VERSION}.apk /var/www/updates/manifest.json"
-  ssh "$HOST" "mv /var/www/updates/notes-$VERSION.md /var/www/updates/notes/$VERSION.md && python3 - <<'PYREMOTE'
+  ssh "$HOST" "mv /var/www/updates/notes-$VERSION.md /var/www/updates/notes/$VERSION.md"
+  # 远端重建清单用独立脚本文件，避免 heredoc 经 ssh 传输时被去引号
+  cat > "$OUT_DIR/rebuild-manifest.py" <<'PYREMOTE'
 import datetime, hashlib, json, pathlib
+
 base = pathlib.Path('/var/www/updates')
 manifest_path = base / 'manifest.json'
 old = {}
@@ -112,8 +115,16 @@ if manifest_path.exists():
         old = {r.get('version'): r for r in json.loads(manifest_path.read_text(encoding='utf-8')).get('releases', [])}
     except Exception:
         old = {}
+
+def sort_key(name):
+    parts = name.removeprefix('Rikkahub-M-').removesuffix('.apk').split('.')
+    nums = [int(p) if p.isdigit() else -1 for p in parts]
+    while len(nums) < 4:
+        nums.append(0)
+    return nums
+
 releases = []
-for apk in sorted(base.glob('Rikkahub-M-*.apk')):
+for apk in sorted(base.glob('Rikkahub-M-*.apk'), key=lambda p: sort_key(p.name)):
     v = apk.stem.removeprefix('Rikkahub-M-')
     notes = base / 'notes' / f'{v}.md'
     prev = old.get(v, {})
@@ -124,7 +135,8 @@ for apk in sorted(base.glob('Rikkahub-M-*.apk')):
         'title': prev.get('title') or f'Rikkahub-M {v}',
         'summary': prev.get('summary', ''),
         'body': body,
-        'publishedAt': prev.get('publishedAt') or datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'publishedAt': prev.get('publishedAt') or datetime.datetime.fromtimestamp(
+            apk.stat().st_mtime, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'prerelease': '-' in v,
         'source': 'mirror',
         'apkUrl': f'https://8.133.167.195/updates/{apk.name}',
@@ -132,18 +144,22 @@ for apk in sorted(base.glob('Rikkahub-M-*.apk')):
         'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
         'pageUrl': f'https://github.com/cs9527h/Rikkahub-M/releases/tag/v{v}',
     })
+
 for release in releases:
     expected = f"Rikkahub-M-{release['version']}.apk"
     if release['apkUrl'].rsplit('/', 1)[-1] != expected:
         raise SystemExit(f"manifest 自检失败：{release['version']} 指向 {release['apkUrl']}")
+
 manifest_path.write_text(json.dumps({
     'format': 1,
     'updatedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'releases': releases,
 }, ensure_ascii=False, indent=2), encoding='utf-8')
-latest = max(releases, key=lambda r: r['version'])
-print('deployed latest:', latest['version'], latest['apkSize'], latest['sha256'][:16])
-PYREMOTE"
+latest = releases[-1] if releases else {}
+print('deployed latest:', latest.get('version'), latest.get('apkSize'), str(latest.get('sha256'))[:16])
+PYREMOTE
+  scp "$OUT_DIR/rebuild-manifest.py" "$HOST:/tmp/rebuild-manifest.py"
+  ssh "$HOST" "python3 /tmp/rebuild-manifest.py && chown www-data:www-data /var/www/updates/manifest.json && chmod 644 /var/www/updates/manifest.json"
   echo "已上传到 $HOST:/var/www/updates 并重建 manifest。"
 else
   echo "生成完毕，未部署。部署：bash scripts/publish_update_mirror.sh $VERSION dist/Rikkahub-M-$VERSION.apk --deploy"

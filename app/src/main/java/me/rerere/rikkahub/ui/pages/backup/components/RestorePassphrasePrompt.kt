@@ -20,8 +20,8 @@ import kotlinx.coroutines.CompletableDeferred
 import me.rerere.rikkahub.R
 
 /**
- * 旧加密备份需要原口令时才会出现的一次性输入框。
- * 新备份走本机保存的恢复口令，日常备份、恢复都不再要求输入。
+ * 恢复加密备份时可选的输入框：不填就走本机保存的密钥；
+ * 填了就用这个口令解密（适合「有口令、但没有本机密钥」的跨设备恢复）。
  */
 class RestorePassphrasePromptState {
     var visible by mutableStateOf(false)
@@ -79,7 +79,7 @@ fun RestorePassphraseDialog(prompt: RestorePassphrasePromptState) {
         },
         confirmButton = {
             TextButton(
-                enabled = value.length >= 8,
+                enabled = value.length >= 6,
                 onClick = {
                     prompt.submit(value.toCharArray())
                     value = ""
