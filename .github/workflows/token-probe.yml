@@ -1,0 +1,18 @@
+name: Token probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe release creation with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -x
+          gh api /repos/$GH_REPO -q '.permissions' || true
+          gh release create v0.0.0-probe --target "$GITHUB_SHA" --title probe --notes probe 2>&1 | tail -5 || true
+          gh release delete v0.0.0-probe --yes 2>&1 | tail -2 || true
