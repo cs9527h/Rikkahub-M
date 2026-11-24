@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.9.1**（2026-11-24，commit `ee69e473`）
+> **最新正式版：v0.9.2**（2026-11-24，commit `master`）
 >
-> 安裝包：[Rikkahub-M-0.9.1.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.1/Rikkahub-M-0.9.1.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-0.9.2.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.2/Rikkahub-M-0.9.2.apk) · 18.6 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`661ff8abd9456a9e4c48254c48996306b199257f28185ed6a31568c8e3d67571`
+> SHA-256：`a091fb49159d58d200548000611d9ae4e08bbf579690d16df46cd4a66c8d61e9`
 >
-> 本版摘要：动态渐变背景恢复官方观感，开了就能看出来。
+> 本版摘要：安全加固与冷启动提速：本地 Web 服务、工作区与文档解析的漏洞集中修复。
 >
-> 完整說明見 [v0.9.1 更新日誌](docs/releases/0.9.1.md)。
+> 完整說明見 [v0.9.2 更新日誌](docs/releases/0.9.2.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
