@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v0.9.8**（2026-11-24，commit `master`）
+> **最新正式版：v0.9.10**（2026-11-24，commit `60796463`）
 >
-> 安裝包：[Rikkahub-M-0.9.8.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.8/Rikkahub-M-0.9.8.apk) · 17.9 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-0.9.10.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v0.9.10/Rikkahub-M-0.9.10.apk) · 17.9 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`84628f122463bc5a1a0ac55e903ac6e8fdd3e317b625f916f1934b51dbeb4b41`
+> SHA-256：`f669a598828caaaee50d3652f16700c20a42b4b391a986b73eb660c3ae72cecf`
 >
-> 本版摘要：自动备份可设口令，恢复口令不限次数。
+> 本版摘要：备份不加密、不要口令与密钥，恢复更快。
 >
-> 完整說明見 [v0.9.8 更新日誌](docs/releases/0.9.8.md)。
+> 完整說明見 [v0.9.10 更新日誌](docs/releases/0.9.10.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
