@@ -483,7 +483,7 @@ class BackupManager(
         private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
         private const val TAG = "BackupManager"
 
-        private val ATTACHMENT_FOLDERS =
+        internal val ATTACHMENT_FOLDERS =
             listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
 
         /** Backed up with their subdirectories; the other folders only contain top-level files. */
