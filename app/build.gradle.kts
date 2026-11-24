@@ -100,6 +100,14 @@ android {
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")
     }
+    lint {
+        // 只查本模块，不递归检查依赖：CI 上少跑一大批第三方库的分析，本机也更容易跑完
+        checkDependencies = false
+        abortOnError = true
+        warningsAsErrors = false
+        // 版本更新类检查在 CI 上没有意义，且会随依赖发布不停变动
+        disable += listOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
+    }
     androidResources {
         generateLocaleConfig = true
         // 只保留 app 自己翻译过的语言，依赖库（AndroidX、GMS 等）带的其他语言资源不打包
@@ -199,7 +207,6 @@ dependencies {
         // terminal-emulator 由仓库内的 :terminal 模块提供, 不再引入上游 aar
         exclude(group = "com.termux.termux-app", module = "terminal-emulator")
     }
-    implementation(libs.guava.listenablefuture)
 
     // Compose
     implementation(libs.androidx.activity.compose)
@@ -228,10 +235,6 @@ dependencies {
     // EXIF orientation for picked images
     implementation(libs.androidx.exifinterface)
 
-    // Image metadata extractor
-    // https://github.com/drewnoakes/metadata-extractor
-    implementation(libs.metadata.extractor)
-
     // Haze (background blur and glass)
     implementation(libs.haze)
     implementation(libs.haze.blur)
@@ -248,8 +251,6 @@ dependencies {
     // okhttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
-    implementation(libs.retrofit)
-    implementation(libs.retrofit.serialization.json)
 
     // ktor client
     implementation(libs.ktor.client.core)

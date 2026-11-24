@@ -15,6 +15,16 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 
+private const val PREFS_NAME = "rikkahub.preferences"
+
+/**
+ * 预热偏好文件：SharedPreferences 的第一次读取会在调用线程上做磁盘 IO，
+ * 冷启动时在 IO 线程先打开一次，首屏读取就只命中内存。
+ */
+fun Context.warmUpRikahubPreferences() {
+    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+}
+
 @Composable
 fun rememberSharedPreferenceString(
     keyForString: String,
@@ -22,7 +32,7 @@ fun rememberSharedPreferenceString(
 ): MutableState<String?> {
     val context = LocalContext.current
     val prefs = remember {
-        context.getSharedPreferences("rikkahub.preferences", Context.MODE_PRIVATE)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
     val stateFlow =
         remember(keyForString, defaultValue) { prefs.getStringFlowForKey(keyForString, defaultValue) }
@@ -49,7 +59,7 @@ fun rememberSharedPreferenceBoolean(
 ): MutableState<Boolean> {
     val context = LocalContext.current
     val prefs = remember {
-        context.getSharedPreferences("rikkahub.preferences", Context.MODE_PRIVATE)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
     val stateFlow =
         remember(keyForBoolean, defaultValue) { prefs.getBooleanFlowForKey(keyForBoolean, defaultValue) }
@@ -70,17 +80,17 @@ fun rememberSharedPreferenceBoolean(
 }
 
 fun Context.writeStringPreference(key: String, value: String?) {
-    getSharedPreferences("rikkahub.preferences", Context.MODE_PRIVATE).edit {
+    getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit {
         putString(key, value)
     }
 }
 
 fun Context.readStringPreference(key: String, defaultValue: String? = null): String? {
-    return getSharedPreferences("rikkahub.preferences", Context.MODE_PRIVATE).getString(key, defaultValue)
+    return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(key, defaultValue)
 }
 
 fun Context.readBooleanPreference(key: String, defaultValue: Boolean = false): Boolean {
-    return getSharedPreferences("rikkahub.preferences", Context.MODE_PRIVATE).getBoolean(key, defaultValue)
+    return getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(key, defaultValue)
 }
 
 fun SharedPreferences.getStringFlowForKey(keyForString: String, defaultValue: String? = null) =

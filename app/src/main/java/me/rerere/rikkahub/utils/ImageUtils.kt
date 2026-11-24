@@ -8,9 +8,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
-import com.drew.imaging.ImageMetadataReader
-import com.drew.imaging.png.PngChunkType
-import com.drew.metadata.png.PngDirectory
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.RGBLuminanceSource
@@ -237,24 +234,17 @@ object ImageUtils {
      * @return Result<String> 包含角色元数据的Result对象
      */
     fun getTavernCharacterMeta(context: Context, uri: Uri): Result<String> = runCatching {
-        val metadata = context.contentResolver.openInputStream(uri)?.use { ImageMetadataReader.readMetadata(it) }
-        if (metadata == null) error("Metadata is null, please check if the image is a character card")
-        if (!metadata.containsDirectoryOfType(
-                PngDirectory::class.java
-            )) {
-            error("No PNG directory found, please check if the image is a character card")
+        // 只读 PNG 文本块，不再为这点功能依赖完整的 metadata-extractor
+        val chunks = context.contentResolver.openInputStream(uri)?.use { input ->
+            PngTextChunkReader.readTextChunks(input)
+        } ?: error("Cannot open image, please check if the image is a character card")
+        if (chunks.isEmpty()) {
+            error("No PNG text chunk found, please check if the image is a character card")
         }
 
-        val pngDirectory = metadata.getDirectoriesOfType(PngDirectory::class.java)
-            .firstOrNull { directory ->
-                directory.pngChunkType == PngChunkType.tEXt &&
-                    directory.getString(PngDirectory.TAG_TEXTUAL_DATA).startsWith("[chara:")
-            } ?: error("No tEXt chunk found, please check if the image is a character card")
-
-        val value = pngDirectory.getString(PngDirectory.TAG_TEXTUAL_DATA)
-
         val regex = Regex("""\[chara:\s*(.+?)]""")
-        return Result.success(regex.find(value)?.groupValues?.get(1) ?: error("No character data found"))
+        val value = chunks.firstNotNullOfOrNull { regex.find(it)?.groupValues?.get(1) }
+        return Result.success(value ?: error("No character data found"))
     }
 
     data class ImageInfo(

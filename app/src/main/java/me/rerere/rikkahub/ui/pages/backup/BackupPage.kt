@@ -464,14 +464,27 @@ private fun StorageSheet(
                     FilledTonalButton(onClick = onRestoreLocal) { Text("从本机文件恢复") }
                 }
                 BackupTarget.WEBDAV -> CardGroup(title = { Text("WebDAV") }) {
+                    // 明文地址 + Basic 认证 = 口令在局域网上裸奔，这里显式提示而不是静默拦下
+                    val webDavUrl = settings.webDavConfig.url
+                    val plaintextWarning = webDavUrl.startsWith("http://", ignoreCase = true) &&
+                        settings.webDavConfig.password.isNotBlank()
                     formItem(headlineContent = { Text("地址") }) {
                         OutlinedTextField(
-                            value = settings.webDavConfig.url,
+                            value = webDavUrl,
                             onValueChange = { value -> vm.updateSettings { it.copy(webDavConfig = it.webDavConfig.copy(url = value.trim())) } },
                             singleLine = true,
                             placeholder = { Text("https://dav.example.com") },
                             modifier = Modifier.fillMaxWidth(),
                         )
+                    }
+                    if (plaintextWarning) {
+                        item(headlineContent = {
+                            Text(
+                                text = "当前地址是 http://，用户名与密码会以明文传输。建议改用 https:// 地址。",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        })
                     }
                     formItem(headlineContent = { Text("用户名") }) {
                         OutlinedTextField(

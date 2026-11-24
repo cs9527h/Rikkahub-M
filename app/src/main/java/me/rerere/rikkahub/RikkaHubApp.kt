@@ -42,6 +42,7 @@ import me.rerere.rikkahub.di.viewModelModule
 import me.rerere.rikkahub.mate.MateAutoBackupWorker
 import me.rerere.rikkahub.service.MediaCreationService
 import me.rerere.rikkahub.service.WebServerService
+import me.rerere.rikkahub.ui.hooks.warmUpRikahubPreferences
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.DatabaseUtil
 import me.rerere.rikkahub.utils.JsonInstant
@@ -105,6 +106,9 @@ class RikkaHubApp : Application() {
         // 冷启动阶段只做必须抢在首帧之前的事；清理类任务统一推迟到首帧之后串行执行，
         // 否则十几个协程同时读写磁盘/数据库，会把白屏和首屏列表都拖慢。
         startDeferredMaintenance()
+
+        // 预热 SharedPreferences，避免首屏读偏好时在主线程做第一次磁盘读
+        get<AppScope>().launch(Dispatchers.IO) { warmUpRikahubPreferences() }
 
         // Load models.dev data for model capability matching, then refresh it in background
         updateModelsDev()
