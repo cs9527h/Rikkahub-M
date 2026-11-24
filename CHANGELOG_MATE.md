@@ -8,6 +8,23 @@
 
 # Mate · 更新日志
 
+## 0.9.2 — 安全加固、冷启动提速与发布前全量体检（2026-11-24）
+
+- 安全：本地 Web 服务鉴权改为每次请求实时判断。0.9.1 及以前只在服务启动时读一次开关，运行中再打开「访问密码」实际不生效，同一局域网的任何设备都能免口令读写聊天与设置。
+- 安全：`/api/files/path/...` 收敛到 `upload` / `images` / `media_creation` / `tool_outputs` 四个用户目录。此前只校验「在 filesDir 内」，等于把 `files/datastore` 下含全部 provider apiKey 与 Web 访问口令的设置文件挂到 HTTP 上。
+- 安全：`/api/events` 下发设置前先做字段级脱敏（apiKey、WebDAV/S3 口令、MCP 令牌、Web 访问密码），结构与字段名保持不变，Web 前端不受影响。
+- 安全：CORS 从 `anyHost()+anyMethod()` 收紧到本机回环；`/api/auth/token` 增加按来源地址的失败限速（60 秒 5 次）；上传增加 64 MB 总量与 20 个文件上限；500 兜底不再回显内部异常消息。
+- 安全：工作区、文件管理、DocumentsProvider、rootfs 安装/清理的递归删除改为不跟随符号链接。此前 `ln -s` 指向应用私有目录后删除父目录，会连带删掉真实数据。
+- 安全：导出的快捷方式拍照入口先校验 `rikkahub://shortcut` 深链再弹确认；外部分享的会话 ID 与附件 URI 做解析与协议白名单，避免闪退，也避免应用代调用方请求任意 URL。
+- 修复：DOCX/PPTX 的列表层级（`ilvl`/`lvl`）与 OOXML 解压体积加了上限，畸形文档不再能把内存打满；Pptx 单页 XML 超限直接判超限。
+- 修复：流式回复遇到中转插入的 `data: ping` 或其它非 JSON 行不再整条中断；`choices` 为空、注解 type 未知/缺失、Google 兼容接口缺字段都不再让整次请求失败；`listModels` 失败分支不再泄漏连接。
+- 修复：生图任务在「尚未进入任务体就被取消」后不再残留死 Job（此前 `retry()` 会静默失效）；点击非本地附件不再因为 `FileProvider` 抛异常而崩溃。
+- 优化：冷启动。没有待恢复备份时跳过主线程上的 `runBlocking`；临时文件清理、工具输出清理、工作区校准、上传文件同步、内置技能解压与启动计数写入统一推迟到首帧之后串行执行，不再十几个协程同时抢磁盘与 DataStore 锁。
+- 优化：会话页起始页 ID 与两项偏好读取改为 `remember`，重组时不再重新生成 UUID、不再重复读 SharedPreferences（此前每次重组都会现算，并让 `rememberNavBackStack` 的入参每帧变化）。
+- 隐私：搜索关键词、搜索响应体、TTS 错误体、ASR 响应体不再整段写进 logcat（改为状态码/长度）；无痕会话在 Google 通道也不再打印请求体。
+- 移除：两张从未引用的捐赠图标资源；`WorkspaceManager.moveFile/glob/grep`、`FilesManager.listImageFiles`、`FilesRepository.update` 与对应 DAO 方法（全部 grep 证明零引用）。
+- 兼容：无数据库迁移；versionCode 38 / 0.9.2，包名与签名不变，可覆盖升级 0.9.1。
+
 ## 0.9.1 — 动态渐变背景恢复官方观感（2026-11-24）
 
 - 修复：0.9.0 把浅色动态渐变的顶部压到 `#D7E7F7`、光斑 alpha 降到 0.34，结果与默认静态柔光背景几乎无法区分，用户反馈「开了动态壁纸和没开一样」。
