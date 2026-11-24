@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T12:52:14Z",
+  "updatedAt": "2026-11-24T13:52:37Z",
   "releases": [
+    {
+      "version": "0.9.6",
+      "tag": "v0.9.6",
+      "title": "Rikkahub-M 0.9.6",
+      "summary": "备份与恢复不再卡死，过程看得见。",
+      "body": "## 修复\n\n- 修复本机备份导出 / 恢复时界面卡死：之前几十到几百 MB 的文件读写跑在主线程上，进度不会动、界面点不动，跨设备恢复时最明显\n- 现在备份和恢复都改为后台执行，页面顶部会显示当前阶段，大包恢复知道它还在干活\n\n## 其他\n\n- 版本 0.9.6 / versionCode 42，包名与签名不变，可覆盖升级 0.9.5\n- 聊天记录、长期记忆、助手人格与 API 配置保持原样；无数据库迁移",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.5",
       "tag": "v0.9.5",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.4",

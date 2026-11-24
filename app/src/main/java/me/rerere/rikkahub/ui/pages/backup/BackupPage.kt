@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -39,7 +43,9 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clock01
 import me.rerere.hugeicons.stroke.FileExport
@@ -109,6 +115,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     val s3Items by vm.s3BackupItems.collectAsStateWithLifecycle()
 
     var busy by remember { mutableStateOf(false) }
+    var busyLabel by remember { mutableStateOf("备份中…") }
     var showRestart by remember { mutableStateOf(false) }
     var showStorage by remember { mutableStateOf(false) }
     var showRecords by remember { mutableStateOf(false) }
@@ -127,11 +134,17 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             busy = true
+            busyLabel = "正在打包备份…"
             runCatching {
                 val export = vm.exportToFile()
                 try {
-                    requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
-                        .use { out -> FileInputStream(export).use { copyTo(out, it) } }
+                    // 200MB 级的包写到 SAF 上必须离开主线程：原来这段同步 copy 直接把界面冻住，
+                    // 用户看到的就是「一直显示备份中，然后不动了」。
+                    busyLabel = "正在写入文件…"
+                    withContext(Dispatchers.IO) {
+                        requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
+                            .use { out -> FileInputStream(export).use { copyTo(out, it) } }
+                    }
                     vm.recordLocalExportSuccess()
                 } finally {
                     export.delete()
@@ -147,10 +160,15 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         val temp = File(context.cacheDir, "restore_${System.currentTimeMillis()}.zip")
         scope.launch {
             busy = true
+            busyLabel = "正在读取备份文件…"
             var oneTimePassphrase: CharArray? = null
             try {
-                requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取备份文件" }
-                    .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
+                // 同上：几十到几百 MB 的读取不能压在主线程上
+                withContext(Dispatchers.IO) {
+                    requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取备份文件" }
+                        .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
+                }
+                busyLabel = "正在解密并校验备份…"
                 var attempts = 0
                 while (true) {
                     try {
@@ -275,7 +293,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     },
                     enabled = !busy,
                     modifier = Modifier.weight(1f),
-                ) { Text(if (busy) "备份中…" else "立即备份") }
+                ) { Text(if (busy) busyLabel else "立即备份") }
                 FilledTonalButton(
                     onClick = {
                         vm.loadBackupFileItems()
@@ -346,6 +364,33 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         )
     }
 
+    if (busy) {
+        // 恢复大备份可能要几十秒到几分钟：原来只有按钮文字变化（而且文案还是"备份中…"），
+        // 用户看到的就是"卡住不动"。这里给一条明确的进度提示。
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(busyLabel, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "大备份需要几十秒到几分钟，请不要退出页面",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                    )
+                }
+            }
+        }
+    }
+
     if (showRecords) {
         RecordsSheet(
             vm = vm,
@@ -360,6 +405,8 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             onRestore = { action ->
                 restoringName = "restoring"
                 scope.launch {
+                    busy = true
+                    busyLabel = "正在下载并校验备份…"
                     var passphrase: CharArray? = null
                     try {
                         while (true) {
@@ -378,6 +425,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     } finally {
                         passphrase?.fill('\u0000')
                         restoringName = null
+                        busy = false
                     }
                 }
             },
@@ -749,6 +797,7 @@ private fun ImportSheet(
     val toaster = LocalToaster.current
     var type by remember { mutableStateOf("chatbox") }
     var busy by remember { mutableStateOf(false) }
+    var busyLabel by remember { mutableStateOf("备份中…") }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
@@ -758,8 +807,10 @@ private fun ImportSheet(
                     "chatbox" -> {
                         val temp = File(context.cacheDir, "chatbox_${System.currentTimeMillis()}.zip")
                         try {
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(temp).use { copyTo(it, input) }
+                            withContext(Dispatchers.IO) {
+                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                    FileOutputStream(temp).use { copyTo(it, input) }
+                                }
                             }
                             vm.restoreFromChatBox(temp)
                         } finally {
@@ -770,8 +821,10 @@ private fun ImportSheet(
                     else -> {
                         val temp = File(context.cacheDir, "cherry_${System.currentTimeMillis()}.zip")
                         try {
-                            context.contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(temp).use { copyTo(it, input) }
+                            withContext(Dispatchers.IO) {
+                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                    FileOutputStream(temp).use { copyTo(it, input) }
+                                }
                             }
                             vm.restoreFromCherryStudio(temp)
                         } finally {
