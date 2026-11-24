@@ -8,6 +8,13 @@
 
 # Mate · 更新日志
 
+## 0.9.1 — 动态渐变背景恢复官方观感（2026-11-24）
+
+- 修复：0.9.0 把浅色动态渐变的顶部压到 `#D7E7F7`、光斑 alpha 降到 0.34，结果与默认静态柔光背景几乎无法区分，用户反馈「开了动态壁纸和没开一样」。
+- 现在恢复官方原版（提交 180c2b57）的顶部 `#AFD0F2` → `#CBE0F6` 与光斑浓度（0.72 / 0.56 / 0.62 / 0.42），只把末段从纯白 `#FFFFFF` 收到 `#F4F8FC`，避免重新引入下半屏刺眼纯白。
+- 保留 0.9.0 的性能改动：`drawWithCache` 复用光斑 brush、共享时钟只在绘制阶段读取（0 重组）、约 22fps 节流、系统「移除动画」时完全静止。
+- 兼容：无数据库迁移；versionCode 37 / 0.9.1，签名与包名不变，可覆盖升级 0.9.0。
+
 ## 0.9.0 — 聊天页不再死白、正文排版收紧（2026-11-24）
 
 - 新增：默认背景。`Assistant.useGradientBackground` 默认 false 且壁纸为空时，`AssistantBackground` 原来什么都不画，聊天页露出的就是 `colorScheme.surface`（浅色近 #FFFBFE）——整屏死白，顶栏/消息/输入框全糊成一片。现在补一层 `SoftBackground`：纵向 `lerp(surface, primary, 3%)` → `surface` → `lerp(surface, onSurface, 3%)`，加左上主色光晕 5%、右上暖色光晕 2.5%，全静态绘制（`drawWithCache`，零动画、零重组）。
