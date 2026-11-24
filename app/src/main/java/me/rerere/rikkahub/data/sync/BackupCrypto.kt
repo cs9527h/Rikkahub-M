@@ -63,6 +63,33 @@ object BackupCrypto {
         }
     }
 
+    /**
+     * 从任意输入流解密到文件：界面从 SAF 拿到的就是 InputStream，
+     * 先整包复制到 cache 再解密等于多读写一遍 200MB。
+     */
+    fun decrypt(input: java.io.InputStream, output: File, passphrase: CharArray) {
+        require(passphrase.isNotEmpty()) { "备份口令不能为空" }
+        val magic = ByteArray(8)
+        require(input.read(magic) == 8 && String(magic, Charsets.US_ASCII) == MAGIC) {
+            "不是 Rikkahub-M 加密备份文件"
+        }
+        val iterations = readInt(input)
+        require(iterations in 50_000..2_000_000) { "备份迭代次数异常" }
+        val salt = ByteArray(SALT_BYTES).also { require(input.read(it) == SALT_BYTES) }
+        val iv = ByteArray(IV_BYTES).also { require(input.read(it) == IV_BYTES) }
+        val key = deriveKey(passphrase, salt, iterations)
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, iv))
+            FileOutputStream(output).use { fileOut ->
+                CipherInputStream(input, cipher).use { it.copyTo(fileOut) }
+            }
+        } catch (e: Throwable) {
+            output.delete()
+            throw IllegalStateException("备份口令错误或文件已损坏", e)
+        }
+    }
+
     fun decrypt(input: File, output: File, passphrase: CharArray) {
         require(passphrase.isNotEmpty()) { "备份口令不能为空" }
         require(input.canonicalFile != output.canonicalFile) { "备份输入与输出不能是同一文件" }
@@ -103,7 +130,7 @@ object BackupCrypto {
         ((value shr (24 - index * 8)) and 0xFF).toByte()
     }
 
-    private fun readInt(input: FileInputStream): Int {
+    private fun readInt(input: java.io.InputStream): Int {
         val bytes = ByteArray(4).also { require(input.read(it) == 4) { "加密备份头不完整" } }
         return bytes.fold(0) { acc, byte -> (acc shl 8) or (byte.toInt() and 0xFF) }
     }

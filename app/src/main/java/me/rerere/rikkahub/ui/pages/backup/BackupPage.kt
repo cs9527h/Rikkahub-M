@@ -21,6 +21,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -119,6 +120,8 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
 
     var busy by remember { mutableStateOf(false) }
     var busyLabel by remember { mutableStateOf("备份中…") }
+    var restoreFraction by remember { mutableStateOf<Float?>(null) }
+    var showProgress by remember { mutableStateOf(false) }
     var showExportPassphrase by remember { mutableStateOf(false) }
     var pendingExportPassphrase by remember { mutableStateOf<CharArray?>(null) }
     var showRestart by remember { mutableStateOf(false) }
@@ -139,6 +142,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             busy = true
+            restoreFraction = null
             busyLabel = "正在打包备份…"
             runCatching {
                 val export = vm.exportToFile(pendingExportPassphrase)
@@ -164,22 +168,25 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
 
     val pickLocalBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val temp = File(context.cacheDir, "restore_${System.currentTimeMillis()}.zip")
         scope.launch {
             busy = true
+            restoreFraction = null
             busyLabel = "正在读取备份文件…"
             try {
-                // 同上：几十到几百 MB 的读取不能压在主线程上
-                withContext(Dispatchers.IO) {
-                    requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取备份文件" }
-                        .use { input -> FileOutputStream(temp).use { copyTo(it, input) } }
-                }
                 busyLabel = "正在解密并校验备份…"
                 // 双模式：先用本机密钥；本机没有密钥或密钥不匹配时，允许输入备份口令（至少 6 位）
                 var typed: CharArray? = null
                 while (true) {
                     try {
-                        vm.restoreFromLocalFile(temp, typed)
+                        vm.restoreFromStream({ context.contentResolver.openInputStream(uri) }, typed) { done, total ->
+                            if (total > 0) {
+                                val next = (done.toFloat() / total).coerceIn(0f, 1f)
+                                // 只在变化 >=1% 时更新，避免每 64KB 触发一次重组
+                                if (restoreFraction == null || kotlin.math.abs(next - restoreFraction!!) >= 0.01f) {
+                                    restoreFraction = next
+                                }
+                            }
+                        }
                         break
                     } catch (_: MissingBackupPassphraseException) {
                         typed = passphrasePrompt.ask() ?: run {
@@ -206,7 +213,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             } catch (e: Exception) {
                 toast("恢复失败：" + (e.message ?: "未知错误"), error = true)
             } finally {
-                temp.delete()
                 busy = false
             }
         }
@@ -383,30 +389,31 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     }
 
     if (busy) {
-        // 恢复大备份可能要几十秒到几分钟：原来只有按钮文字变化（而且文案还是"备份中…"），
-        // 用户看到的就是"卡住不动"。这里给一条明确的进度提示。
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(busyLabel, style = MaterialTheme.typography.bodyMedium)
+        // 不用整屏铺色：一个带百分比的小对话框，背景页面保持可见
+        AlertDialog(
+            onDismissRequest = { /* 进行中不可点掉，避免半成品 */ },
+            title = { Text(busyLabel) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val fraction = restoreFraction
+                    if (fraction != null) {
+                        LinearProgressIndicator(
+                            progress = { fraction },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("${(fraction * 100).toInt()}%", style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                     Text(
-                        "大备份需要几十秒到几分钟，请不要退出页面",
+                        "大备份（几百 MB）需要几十秒到几分钟，请不要退出本页面。",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-        }
+            },
+            confirmButton = {},
+        )
     }
 
     if (showRecords) {
@@ -426,6 +433,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             },
             onRestore = { action ->
                 restoringName = "restoring"
+                showRecords = false
                 scope.launch {
                     busy = true
                     busyLabel = "正在下载并校验备份…"

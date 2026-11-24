@@ -41,6 +41,7 @@ class BackupVM(
     private val filesManager: FilesManager,
     private val deepSeekMigrator: DeepSeekMigrator,
     private val backupPassphraseStore: me.rerere.rikkahub.data.sync.BackupPassphraseStore,
+    private val backupManager: me.rerere.rikkahub.data.sync.BackupManager,
     private val context: android.content.Context,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
@@ -267,12 +268,17 @@ class BackupVM(
 
     suspend fun recordLocalExportSuccess() = recordBackupTime()
 
-    suspend fun restoreFromLocalFile(file: File, oneTimePassphrase: CharArray? = null) =
+    suspend fun restoreFromLocalFile(
+        file: File,
+        oneTimePassphrase: CharArray? = null,
+        onProgress: ((Long, Long) -> Unit)? = null,
+    ) =
         if (oneTimePassphrase != null) {
             webDavSync.restoreFromLocalFile(
                 file,
                 settings.value.webDavConfig.copy(items = localBackupItems.value),
                 oneTimePassphrase,
+                onProgress,
             )
         } else {
             withPassphrase(export = false) { passphrase, _ ->
@@ -280,9 +286,33 @@ class BackupVM(
                     file,
                     settings.value.webDavConfig.copy(items = localBackupItems.value),
                     passphrase,
+                    onProgress,
                 )
             }
         }
+
+    /** 从 SAF/网络流直接恢复：加密包边读边解密，省掉一次整包复制。 */
+    suspend fun restoreFromStream(
+        openStream: () -> java.io.InputStream?,
+        oneTimePassphrase: CharArray? = null,
+        onProgress: ((Long, Long) -> Unit)? = null,
+    ) = withContext(Dispatchers.IO) {
+        val items = localBackupItems.value
+        val stream = requireNotNull(openStream()) { "无法读取备份文件" }
+        val key = oneTimePassphrase ?: backupPassphraseStore.read()
+        try {
+            backupManager.stageRestoreFromStream(
+                input = stream,
+                includeDatabase = me.rerere.rikkahub.data.datastore.WebDavConfig.BackupItem.DATABASE in items,
+                includeFiles = me.rerere.rikkahub.data.datastore.WebDavConfig.BackupItem.FILES in items,
+                passphrase = key,
+                onProgress = onProgress,
+            )
+        } finally {
+            key?.fill('\u0000')
+            runCatching { stream.close() }
+        }
+    }
 
     suspend fun restoreFromChatBox(file: File): ChatboxRestoreResult = withContext(Dispatchers.IO) {
         val currentSettings = settings.value

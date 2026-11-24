@@ -171,11 +171,51 @@ class BackupManager(
         }
     }
 
+    /**
+     * 从输入流直接恢复：加密包边读边解密到临时文件，避免「先整包复制到 cache 再解密」多读写一遍。
+     * 明文 zip 仍会落到临时文件（ZipFile 需要随机访问）。
+     */
+    suspend fun stageRestoreFromStream(
+        input: java.io.InputStream,
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        passphrase: CharArray? = null,
+        onProgress: ((Long, Long) -> Unit)? = null,
+    ) = withContext(Dispatchers.IO) {
+        val buffered = java.io.BufferedInputStream(input, 64 * 1024)
+        buffered.mark(8)
+        val magic = ByteArray(8)
+        val read = buffered.read(magic)
+        buffered.reset()
+        val encrypted = read == 8 && String(magic, Charsets.US_ASCII) == "RKMENC01"
+        val staged = File.createTempFile("restore_input_", ".zip", context.cacheDir)
+        try {
+            buffered.use { stream ->
+                if (encrypted) {
+                    val key = passphrase ?: throw MissingBackupPassphraseException()
+                    BackupCrypto.decrypt(stream, staged, key)
+                } else {
+                    java.io.FileOutputStream(staged).use { out -> stream.copyTo(out) }
+                }
+            }
+            stageRestore(
+                archive = staged,
+                includeDatabase = includeDatabase,
+                includeFiles = includeFiles,
+                passphrase = passphrase,
+                onProgress = onProgress,
+            )
+        } finally {
+            staged.delete()
+        }
+    }
+
     suspend fun stageRestore(
         archive: File,
         includeDatabase: Boolean,
         includeFiles: Boolean,
         passphrase: CharArray? = null,
+        onProgress: ((Long, Long) -> Unit)? = null,
     ) =
         withContext(Dispatchers.IO) {
             restoreMutex.withLock {
@@ -220,6 +260,14 @@ class BackupManager(
                                     )
                                 }
                             }
+                            // 进度总量：清单里的条目大小之和（未知大小按 0 计），用于百分比
+                            var progressTotal = zip.entries().asSequence().sumOf { entry ->
+                                if (entry.size > 0) entry.size else 0L
+                            }
+                            if (progressTotal <= 0L) progressTotal = 1L
+                            var progressDone = 0L
+                            onProgress?.invoke(0L, progressTotal)
+
                             when (verified.kind) {
                                 BackupKind.SETTINGS -> require(
                                     zip.getEntry("settings.json") != null &&
@@ -278,10 +326,21 @@ class BackupManager(
                                 check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
                                     "Cannot create backup staging directory"
                                 }
+                                // 暂存区是中间产物：进程被杀会由 PendingRestore 清理重做，
+                                // 因此不做逐文件 fsync —— 一个 200MB 的备份要 sync 上千个文件，
+                                // 在中低端机上就是几分钟的纯等待。
+                                var copiedForEntry = 0L
                                 zip.getInputStream(entry).use { input ->
                                     FileOutputStream(target).use { output ->
-                                        input.copyTo(output)
-                                        output.fd.sync()
+                                        val buffer = ByteArray(64 * 1024)
+                                        while (true) {
+                                            val read = input.read(buffer)
+                                            if (read < 0) break
+                                            output.write(buffer, 0, read)
+                                            copiedForEntry += read
+                                            progressDone += read
+                                            onProgress?.invoke(progressDone, progressTotal)
+                                        }
                                     }
                                 }
                                 restoredEntries++

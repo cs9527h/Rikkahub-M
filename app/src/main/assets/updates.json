@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T14:28:43Z",
+  "updatedAt": "2026-11-24T15:54:44Z",
   "releases": [
+    {
+      "version": "0.9.9",
+      "tag": "v0.9.9",
+      "title": "Rikkahub-M 0.9.9",
+      "summary": "备份恢复有进度条和百分比，速度更快。",
+      "body": "## 修复\n\n- 备份 / 恢复时不再整屏铺一块纯色面板：改成一个小对话框，带进度条、百分比和当前阶段说明，背景页面还能看见\n- 恢复 WebDAV / S3 备份时列表会自动收起，不再整块盖住屏幕\n\n## 优化\n\n- 恢复速度明显提升：加密包改成边读边解密（少一整遍 200MB 读写），并去掉逐个文件的强制刷盘\n- 进度按真实字节计算，能看到 0% → 100%\n\n## 其他\n\n- 版本 0.9.9 / versionCode 45，包名与签名不变，可覆盖升级 0.9.8",
+      "publishedAt": "2026-11-24T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.8",
       "tag": "v0.9.8",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.7",
