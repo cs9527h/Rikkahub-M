@@ -12,6 +12,23 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.3）
+
+### 已完成（代码 + 单元测试/编译覆盖）
+
+- 0.9.3：聊天界面视觉整体回退上游 RikkaHub——背景（`Background.kt`/`MeshGradientBackground.kt` 整文件对齐，删除 `SoftBackground`）、
+  正文排版（回到 `LocalTextStyle` 缩放）、列表 padding 与间距（16dp/32dp/12dp）、顶部渐隐曲线、顶栏（去掉整栏渐变遮罩）、
+  输入框尺寸（8/8/4dp 与 `background` 遮罩）。
+- 0.9.3：功能面零变化，0.9.2 的安全与启动改动全部保留；无数据库迁移，versionCode 39。
+
+### 未完成（延续）
+
+| 项 | 现状 | 下一步 |
+|---|---|---|
+| 视觉截图证据 | 本机无模拟器，回退后的界面没有截图 | 用 CI `ui-screenshots` 工作流或真机确认与上游一致 |
+| 动态渐变耗电 | 上游无限动画版无节流 | 真机测耗电，必要时在不改观感前提下加回节流 |
+| CI 发布步骤 403 | `gh release create` 返回 `Resource not accessible by integration`，0.9.2/0.9.3 由本机 `gh` 手动发布 | 仓库 Settings → Actions → Workflow permissions 改为 Read and write，或改用 PAT |
+
 ## 当前状态（0.9.2）
 
 ### 已完成（代码 + 单元测试/编译覆盖）
