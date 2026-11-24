@@ -116,6 +116,7 @@ import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalASRState
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.pages.chat.CHAT_CONTENT_MAX_WIDTH
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
@@ -227,162 +228,167 @@ fun ChatInput(
             onDrawBehind { drawRect(brush) }
         },
     ) {
-        Column(
-            modifier = modifier
-                // 键盘弹出时导航栏被 IME 盖住，imePadding + navigationBarsPadding 会把两段 inset
-                // 相加，输入框和键盘之间多出一条空白带（最后一条消息被顶得更高）。
-                // 取两者的并集（各自按较大的一侧）后只会留一段。
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
-                .padding(horizontal = 8.dp)
-                .padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MessageQueuePanel(
-                state = messageQueue,
-                onRemove = onRemoveQueuedMessage,
-                onBeginEdit = onBeginEditQueuedMessage,
-                onFinishEdit = onFinishEditQueuedMessage,
-                onResume = onResumeMessageQueue,
-            )
-            Surface(
-                modifier = Modifier
+        // 宽屏下输入区和消息列用同一个宽度上限并居中，两者才对得齐
+        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+            Column(
+                modifier = modifier
+                    .widthIn(max = CHAT_CONTENT_MAX_WIDTH)
                     .fillMaxWidth()
-                    .clip(containerShape)
-                    .chatInputHaze(
-                        hazeState = hazeState,
-                        displaySetting = settings.displaySetting,
-                        containerColor = containerColor,
-                        shape = containerShape,
-                    ),
-                shape = containerShape,
-                tonalElevation = 0.dp,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else containerColor,
+                    // 键盘弹出时导航栏被 IME 盖住，imePadding + navigationBarsPadding 会把两段 inset
+                    // 相加，输入框和键盘之间多出一条空白带（最后一条消息被顶得更高）。
+                    // 取两者的并集（各自按较大的一侧）后只会留一段。
+                    .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                    .padding(horizontal = 8.dp)
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                MessageQueuePanel(
+                    state = messageQueue,
+                    onRemove = onRemoveQueuedMessage,
+                    onBeginEdit = onBeginEditQueuedMessage,
+                    onFinishEdit = onFinishEditQueuedMessage,
+                    onResume = onResumeMessageQueue,
+                )
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(containerShape)
+                        .chatInputHaze(
+                            hazeState = hazeState,
+                            displaySetting = settings.displaySetting,
+                            containerColor = containerColor,
+                            shape = containerShape,
+                        ),
+                    shape = containerShape,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    color = if (settings.displaySetting.enableBlurEffect) Color.Transparent else containerColor,
                 ) {
-                    if (voiceState.phase != VoicePhase.Off) {
-                        VoiceModeRow(
-                            state = voiceState,
-                            onStop = onStopVoiceMode,
-                            onRetry = { onStartVoiceMode?.invoke() },
-                        )
-                        androidx.compose.material3.HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        )
-                    }
-                    if (state.messageContent.isNotEmpty()) {
-                        MediaFileInputRow(state = state)
-                    }
-
-                    TextInputRow(
-                        state = state,
-                        assistant = assistant,
-                        completionProviders = completionProviders,
-                        onSendMessage = { sendMessage() },
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
+                        if (voiceState.phase != VoicePhase.Off) {
+                            VoiceModeRow(
+                                state = voiceState,
+                                onStop = onStopVoiceMode,
+                                onRetry = { onStartVoiceMode?.invoke() },
+                            )
+                            androidx.compose.material3.HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            )
+                        }
+                        if (state.messageContent.isNotEmpty()) {
+                            MediaFileInputRow(state = state)
+                        }
+
+                        TextInputRow(
+                            state = state,
+                            assistant = assistant,
+                            completionProviders = completionProviders,
+                            onSendMessage = { sendMessage() },
+                        )
+
                         Row(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .weight(1f, fill = false)
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
-                                // Model Picker
-                                ModelSelectorButton(
-                                    state = modelListState,
-                                    onlyIcon = true,
-                                    modifier = Modifier,
-                                )
-
-                                // Reasoning
-                                if (chatModel?.abilities?.contains(ModelAbility.REASONING) == true) {
-                                    ReasoningButton(
-                                        reasoningLevel = assistant.reasoningLevel,
-                                        onUpdateReasoningLevel = {
-                                            onUpdateAssistant(assistant.copy(reasoningLevel = it))
-                                        },
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    // Model Picker
+                                    ModelSelectorButton(
+                                        state = modelListState,
                                         onlyIcon = true,
+                                        modifier = Modifier,
+                                    )
+
+                                    // Reasoning
+                                    if (chatModel?.abilities?.contains(ModelAbility.REASONING) == true) {
+                                        ReasoningButton(
+                                            reasoningLevel = assistant.reasoningLevel,
+                                            onUpdateReasoningLevel = {
+                                                onUpdateAssistant(assistant.copy(reasoningLevel = it))
+                                            },
+                                            onlyIcon = true,
+                                        )
+                                    }
+                                }
+
+                                if (runningBackgroundTasks > 0) {
+                                    BackgroundTasksButton(
+                                        running = runningBackgroundTasks,
+                                        onClick = onShowBackgroundTasks,
                                     )
                                 }
                             }
 
-                            if (runningBackgroundTasks > 0) {
-                                BackgroundTasksButton(
-                                    running = runningBackgroundTasks,
-                                    onClick = onShowBackgroundTasks,
+                            ActionIconButton(
+                                onClick = onMoreClick
+                            ) {
+                                Icon(
+                                    imageVector = HugeIcons.Add01,
+                                    contentDescription = stringResource(R.string.more_options)
+                                )
+                            }
+
+                            if (!voiceState.isActive && (asrState.isAvailable || asrState.isRecording)) {
+                                AsrButton(
+                                    state = asrState,
+                                    onClick = {
+                                        when (asrState.status) {
+                                            ASRStatus.Listening -> asr.stop()
+                                            ASRStatus.Idle, ASRStatus.Error -> {
+                                                if (!asrPermission.allRequiredPermissionsGranted) {
+                                                    asrPermission.requestPermissions()
+                                                } else {
+                                                    asrBaseText = state.textContent.text.toString()
+                                                    asr.start { transcript ->
+                                                        val spacer =
+                                                            if (asrBaseText.isBlank() || transcript.isBlank()) "" else " "
+                                                        state.setMessageText(asrBaseText + spacer + transcript)
+                                                    }
+                                                }
+                                            }
+
+                                            ASRStatus.Connecting, ASRStatus.Stopping -> {}
+                                        }
+                                    }
+                                )
+                            }
+
+                            if (loading) {
+                                KeepScreenOn()
+                            }
+
+                            AnimatedVisibility(
+                                visible = !asrState.isRecording,
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut(),
+                            ) {
+                                SendButton(
+                                    loading = loading,
+                                    empty = state.isEmpty(),
+                                    onClick = { sendMessage() },
+                                    onLongClick = { sendMessageWithoutAnswer() },
                                 )
                             }
                         }
-
-                        ActionIconButton(
-                            onClick = onMoreClick
-                        ) {
-                            Icon(
-                                imageVector = HugeIcons.Add01,
-                                contentDescription = stringResource(R.string.more_options)
-                            )
-                        }
-
-                        if (!voiceState.isActive && (asrState.isAvailable || asrState.isRecording)) {
-                            AsrButton(
-                                state = asrState,
-                                onClick = {
-                                    when (asrState.status) {
-                                        ASRStatus.Listening -> asr.stop()
-                                        ASRStatus.Idle, ASRStatus.Error -> {
-                                            if (!asrPermission.allRequiredPermissionsGranted) {
-                                                asrPermission.requestPermissions()
-                                            } else {
-                                                asrBaseText = state.textContent.text.toString()
-                                                asr.start { transcript ->
-                                                    val spacer =
-                                                        if (asrBaseText.isBlank() || transcript.isBlank()) "" else " "
-                                                    state.setMessageText(asrBaseText + spacer + transcript)
-                                                }
-                                            }
-                                        }
-
-                                        ASRStatus.Connecting, ASRStatus.Stopping -> {}
-                                    }
-                                }
-                            )
-                        }
-
-                        if (loading) {
-                            KeepScreenOn()
-                        }
-
-                        AnimatedVisibility(
-                            visible = !asrState.isRecording,
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut(),
-                        ) {
-                            SendButton(
-                                loading = loading,
-                                empty = state.isEmpty(),
-                                onClick = { sendMessage() },
-                                onLongClick = { sendMessageWithoutAnswer() },
-                            )
-                        }
                     }
                 }
-            }
 
+            }
         }
     }
 

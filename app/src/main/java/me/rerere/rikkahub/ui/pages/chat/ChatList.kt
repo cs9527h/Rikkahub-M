@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -343,126 +344,130 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting) {
-            LazyColumn(
-                state = state,
-                // 顶部留白放进 contentPadding，让消息可以滚动到透明标题栏下面
-                contentPadding = PaddingValues(16.dp) + PaddingValues(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = 32.dp + innerPadding.calculateBottomPadding(),
-                ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .topFadingEdge(innerPadding.calculateTopPadding() + 24.dp)
-                    .hazeSource(state = hazeState),
-            ) {
-                itemsIndexed(
-                    items = conversation.messageNodes,
-                    key = { index, item -> item.id },
-                ) { index, node ->
-                    Column {
-                        ListSelectableItem(
-                            key = node.id,
-                            onSelectChange = {
-                                if (!selectedItems.contains(node.id)) {
-                                    selectedItems.add(node.id)
-                                } else {
-                                    selectedItems.remove(node.id)
-                                }
-                            },
-                            selectedKeys = selectedItems,
-                            enabled = selectionState.selecting,
-                        ) {
-                            ChatMessage(
-                                node = node,
-                                model = node.currentMessage.modelId?.let(modelById::get)
-                                    ?: node.currentMessage.snapshotModel(),
-                                assistant = assistant,
-                                loading = loading && !compressing && index == lastMessageIndex,
-                                onRegenerate = {
-                                    onRegenerate(node.currentMessage)
+            // 宽屏下把消息列限制在 CHAT_CONTENT_MAX_WIDTH 并居中，避免正文一行横跨整块平板
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                LazyColumn(
+                    state = state,
+                    // 顶部留白放进 contentPadding，让消息可以滚动到透明标题栏下面
+                    contentPadding = PaddingValues(16.dp) + PaddingValues(
+                        top = innerPadding.calculateTopPadding(),
+                        bottom = 32.dp + innerPadding.calculateBottomPadding(),
+                    ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .widthIn(max = CHAT_CONTENT_MAX_WIDTH)
+                        .fillMaxWidth()
+                        .topFadingEdge(innerPadding.calculateTopPadding() + 24.dp)
+                        .hazeSource(state = hazeState),
+                ) {
+                    itemsIndexed(
+                        items = conversation.messageNodes,
+                        key = { index, item -> item.id },
+                    ) { index, node ->
+                        Column {
+                            ListSelectableItem(
+                                key = node.id,
+                                onSelectChange = {
+                                    if (!selectedItems.contains(node.id)) {
+                                        selectedItems.add(node.id)
+                                    } else {
+                                        selectedItems.remove(node.id)
+                                    }
                                 },
-                                onEdit = {
-                                    onEdit(node.currentMessage)
-                                },
-                                onFork = {
-                                    onForkMessage(node.currentMessage)
-                                },
-                                onDelete = {
-                                    onDelete(node.currentMessage)
-                                },
-                                onShare = {
-                                    // 默认选中从第一条到这一条
-                                    selectionState.start(
-                                        conversation.messageNodes.subList(0, index + 1).map { it.id }
-                                    )
-                                },
-                                onUpdate = {
-                                    onUpdateMessage(it)
-                                },
-                                isFavorite = node.isFavorite,
-                                onToggleFavorite = {
-                                    onToggleFavorite?.invoke(node)
-                                },
-                                onTranslate = onTranslate,
-                                onClearTranslation = onClearTranslation,
-                                onToolApproval = onToolApproval,
-                                onToolAnswer = onToolAnswer,
-                                lastMessage = index == lastMessageIndex,
-                            )
-                        }
-                    }
-                }
-
-                if (!loading && assistant?.allowConversationSystemPrompt == true &&
-                    onConversationSystemPromptChange != null) {
-                    item(key = "ConversationSystemPrompt") {
-                        ConversationSystemPromptButton(
-                            customSystemPrompt = conversation.customSystemPrompt,
-                            onSystemPromptChange = onConversationSystemPromptChange,
-                        )
-                    }
-                }
-
-                // 压缩时也用这一行，processingStatus 显示的是压缩中
-                if (loading) {
-                    item(LOADING_INDICATOR_KEY) {
-                        Row(
-                            modifier = Modifier.padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ContainedLoadingIndicator(
-                                modifier = Modifier.size(28.dp)
-                            )
-                            AnimatedVisibility(
-                                visible = processingStatus != null,
+                                selectedKeys = selectedItems,
+                                enabled = selectionState.selecting,
                             ) {
-                                Text(
-                                    text = processingStatus ?: "",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ChatMessage(
+                                    node = node,
+                                    model = node.currentMessage.modelId?.let(modelById::get)
+                                        ?: node.currentMessage.snapshotModel(),
+                                    assistant = assistant,
+                                    loading = loading && !compressing && index == lastMessageIndex,
+                                    onRegenerate = {
+                                        onRegenerate(node.currentMessage)
+                                    },
+                                    onEdit = {
+                                        onEdit(node.currentMessage)
+                                    },
+                                    onFork = {
+                                        onForkMessage(node.currentMessage)
+                                    },
+                                    onDelete = {
+                                        onDelete(node.currentMessage)
+                                    },
+                                    onShare = {
+                                        // 默认选中从第一条到这一条
+                                        selectionState.start(
+                                            conversation.messageNodes.subList(0, index + 1).map { it.id }
+                                        )
+                                    },
+                                    onUpdate = {
+                                        onUpdateMessage(it)
+                                    },
+                                    isFavorite = node.isFavorite,
+                                    onToggleFavorite = {
+                                        onToggleFavorite?.invoke(node)
+                                    },
+                                    onTranslate = onTranslate,
+                                    onClearTranslation = onClearTranslation,
+                                    onToolApproval = onToolApproval,
+                                    onToolAnswer = onToolAnswer,
+                                    lastMessage = index == lastMessageIndex,
                                 )
                             }
                         }
                     }
-                }
 
-                // 没有可用模型就发不了消息，放在消息后面，空会话时在顶部、有消息时贴着输入框
-                if (needsSetup) {
-                    item(key = "QuickStartCard") {
-                        QuickStartCard(modifier = Modifier.animateItem())
+                    if (!loading && assistant?.allowConversationSystemPrompt == true &&
+                        onConversationSystemPromptChange != null) {
+                        item(key = "ConversationSystemPrompt") {
+                            ConversationSystemPromptButton(
+                                customSystemPrompt = conversation.customSystemPrompt,
+                                onSystemPromptChange = onConversationSystemPromptChange,
+                            )
+                        }
                     }
-                }
 
-                // 为了能正确滚动到这
-                item(SCROLL_BOTTOM_KEY) {
-                    Spacer(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(5.dp)
-                    )
+                    // 压缩时也用这一行，processingStatus 显示的是压缩中
+                    if (loading) {
+                        item(LOADING_INDICATOR_KEY) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                ContainedLoadingIndicator(
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                AnimatedVisibility(
+                                    visible = processingStatus != null,
+                                ) {
+                                    Text(
+                                        text = processingStatus ?: "",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 没有可用模型就发不了消息，放在消息后面，空会话时在顶部、有消息时贴着输入框
+                    if (needsSetup) {
+                        item(key = "QuickStartCard") {
+                            QuickStartCard(modifier = Modifier.animateItem())
+                        }
+                    }
+
+                    // 为了能正确滚动到这
+                    item(SCROLL_BOTTOM_KEY) {
+                        Spacer(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                        )
+                    }
                 }
             }
         }

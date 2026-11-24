@@ -163,8 +163,10 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     }
 
     val windowAdaptiveInfo = currentWindowDpSize()
-    val isBigScreen =
-        windowAdaptiveInfo.width > windowAdaptiveInfo.height && windowAdaptiveInfo.width >= 1100.dp
+    // 按 Material 的宽度断点判断，而不是"横屏且 >=1100dp"：
+    // 原来的规则会让竖屏平板（例如 800dp 宽）落回手机布局、抽屉变成要滑出来的浮层；
+    // 而横屏手机上宽度只有 700~900dp，又因为过了 1100dp 门槛才用永久抽屉，等于两头都不合适。
+    val isBigScreen = windowAdaptiveInfo.width >= 840.dp
 
     // 进入大屏（永久抽屉）模式时重置抽屉状态为关闭，
     // 避免从横屏旋转回竖屏后，模态抽屉残留为打开状态且无法关闭（#1304）
