@@ -12,6 +12,26 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.4）
+
+### 已完成（代码 + 单元测试/编译覆盖）
+
+- 0.9.4：大屏判定改为 Material expanded 断点（宽度 ≥840dp），竖屏平板/横屏手机/折叠屏展开都进固定抽屉；
+  聊天消息列与输入区统一 840dp 上限并居中（`CHAT_CONTENT_MAX_WIDTH`）。
+- 0.9.4：删除空接口 `RikkaHubAPI` 与 Retrofit 依赖；用 `PngTextChunkReader` 替换 `metadata-extractor`（4 个单测）；
+  移除 `guava listenablefuture` 显式依赖。
+- 0.9.4：启动预热 SharedPreferences；WebDAV 明文地址提示；lint 不递归检查依赖。
+- 0.9.4：最低版本维持 Android 8.0（API 26），降级评估结论见 `docs/releases/0.9.4.md`。
+
+### 未完成（延续）
+
+| 项 | 现状 | 下一步 |
+|---|---|---|
+| 宽屏布局的实机观感 | 只做了编译与单测，无截图 | CI `ui-screenshots` 或真机在 7"/10" 平板、折叠屏、横屏手机上各看一遍 |
+| 大字号（1.3×/2×）适配 | 未系统验证，固定高度卡片可能挤压 | 真机把系统字号调到最大，逐页检查聊天/设置/输入框 |
+| ABI 瘦身 | 已量化（去掉 x86_64 省约 2.7 MB） | 需要产品决定是否保留模拟器/ChromeOS 支持 |
+| i18n / 无障碍 / 分析 SDK | 见 0.9.3 台账 | 分批处理，分析 SDK 需产品决定去留 |
+
 ## 当前状态（0.9.3）
 
 ### 已完成（代码 + 单元测试/编译覆盖）

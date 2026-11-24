@@ -8,6 +8,18 @@
 
 # Mate · 更新日志
 
+## 0.9.4 — 屏幕适配、依赖瘦身与可读性修正（2026-11-24）
+
+- 适配：大屏判定从「横屏且宽度 ≥1100dp」改成「宽度 ≥840dp」（Material expanded 断点）。竖屏平板不再落回手机布局、抽屉不再是要滑出来的浮层；横屏手机也纳入固定抽屉。
+- 适配：聊天消息列与输入区统一限制在 840dp 并居中（新增 `CHAT_CONTENT_MAX_WIDTH`），平板上正文不再一行横跨整屏，消息与输入框左右对齐；手机上无变化（宽度本就小于 840dp）。
+- 体积：删除空接口 `RikkaHubAPI` 与只为它而建的 Retrofit 实例，`retrofit` + `converter-kotlinx-serialization` 两个依赖一并移除（全仓零调用）。
+- 体积：用自写的 `PngTextChunkReader` 替换 `com.drew:metadata-extractor`（只用来读角色卡的 PNG 文本块），新增 4 个单测覆盖 tEXt / iTXt / 非 PNG / 无文本块。
+- 体积：移除 `guava listablefuture` 显式依赖（零 import）。
+- 优化：启动时在 IO 线程预热 SharedPreferences，首屏读偏好不再触发主线程首次磁盘读。
+- 安全提示：WebDAV 地址为 `http://` 且已填密码时，备份页显式提示「用户名与密码会明文传输」。
+- 工具链：lint 配置为不递归检查依赖并屏蔽版本更新类告警，缩短 CI 与本地耗时。
+- 兼容：无数据库迁移；versionCode 40 / 0.9.4，包名与签名不变，可覆盖升级 0.9.3。
+
 ## 0.9.3 — 聊天界面回到上游观感（2026-11-24）
 
 - 回退：聊天背景改回上游实现。没有壁纸时不再补一层静态柔光（`SoftBackground` 删除），动态渐变背景换回上游的 `MeshGradientBackground`（无限动画版）。
