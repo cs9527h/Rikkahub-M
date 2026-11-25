@@ -8,6 +8,13 @@
 
 # Mate · 更新日志
 
+## 0.9.12 — 默认助手可以改名了、导出可选「原版兼容」包（2026-11-25）
+
+- 修复：内置助手被强制改名回「默认助手」且改不回去。0.9.10 的迁移写成了「每次归一化都执行」——只要你把名字改回「李鱼」就会立刻被清空。现在迁移改为**一次性**（`Settings.defaultAssistantMigrated` 标记），之后名字、头像都按你的设置保留；新增 3 个单测锁住这个行为。
+- 新增：导出备份时可选择「完整」或「兼容原版」。「兼容原版」只导设置与附件、不含聊天数据库，原版 RikkaHub 可以直接导入（原版 DB schema 34，读不了我们的 41）。
+- 对比上游：按文件级 diff 复核，上游有而我们没有的 12 个文件全部是主动取舍（赞助商/捐赠、SponsorAPI、空接口 RikkaHubAPI、已被合并的单页备份 tabs、已迁到设置页的记忆页）；未发现上游功能缺失。
+- 兼容：无数据库迁移（仅新增一个设置字段，有默认值）；versionCode 48 / 0.9.12，可覆盖升级 0.9.11。
+
 ## 0.9.11 — 去加密后的全量清理与回归（2026-11-25）
 
 - 清理：删除去掉备份加密后成为死代码的 `EncryptedBackupSession` 及其测试、`BackupArchiveFormat.exportPassphrase` 及其 5 个用例、`BackupVM.automaticPassphraseConfigured` 与 `forgetAutomaticBackupPassphrase`；`MissingBackupPassphraseException` 单独成文件，仅供「打开 0.9.9 之前的加密备份」使用。

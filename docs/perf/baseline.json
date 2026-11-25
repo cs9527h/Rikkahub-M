@@ -1,7 +1,7 @@
 {
-  "version": "0.9.11",
+  "version": "0.9.12",
   "measured": false,
-  "source": "未采集（本版为死代码清理，未改渲染路径）",
+  "source": "未采集（本版为改名修复与导出选项）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

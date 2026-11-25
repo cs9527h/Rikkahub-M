@@ -12,6 +12,12 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.12）
+
+- 0.9.12：修复内置助手改名被强制回退（迁移改为一次性 + `defaultAssistantMigrated` 标记），新增 3 个单测。
+- 0.9.12：导出新增「兼容原版」选项（不含聊天库），原版 RikkaHub 可导入。
+- 0.9.12：文件级对比上游，缺失的 12 个文件均为主动取舍，无功能缺口。
+
 ## 当前状态（0.9.11）
 
 - 0.9.11：删除去加密后的死代码（`EncryptedBackupSession` 及测试、`exportPassphrase` 及用例、

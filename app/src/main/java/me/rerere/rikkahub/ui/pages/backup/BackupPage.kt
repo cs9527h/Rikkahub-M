@@ -121,6 +121,8 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     var busy by remember { mutableStateOf(false) }
     var busyLabel by remember { mutableStateOf("备份中…") }
     var restoreFraction by remember { mutableStateOf<Float?>(null) }
+    var showExportChoice by remember { mutableStateOf(false) }
+    var exportWithDatabase by remember { mutableStateOf(true) }
     var showProgress by remember { mutableStateOf(false) }
     var showRestart by remember { mutableStateOf(false) }
     var showStorage by remember { mutableStateOf(false) }
@@ -143,7 +145,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             restoreFraction = null
             busyLabel = "正在打包备份…"
             runCatching {
-                val export = vm.exportToFile()
+                val export = vm.exportToFile(includeDatabase = exportWithDatabase)
                 try {
                     // 200MB 级的包写到 SAF 上必须离开主线程：原来这段同步 copy 直接把界面冻住，
                     // 用户看到的就是「一直显示备份中，然后不动了」。
@@ -275,9 +277,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     onClick = {
                         if (busy) return@Button
                         when (target) {
-                            BackupTarget.LOCAL -> createLocalBackup.launch(
-                                "Rikkahub-M-backup-${System.currentTimeMillis()}.zip"
-                            )
+                            BackupTarget.LOCAL -> showExportChoice = true
                             else -> scope.launch {
                                 busy = true
                                 runCatching { vm.backupNow(target) }
@@ -361,6 +361,37 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
             },
             onDismiss = { showStorage = false },
+        )
+    }
+
+    if (showExportChoice) {
+        AlertDialog(
+            onDismissRequest = { showExportChoice = false },
+            title = { Text("导出备份") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("完整备份：包含聊天记录，只有本应用能恢复。")
+                    Text(
+                        "兼容原版：只导设置与附件，原版 RikkaHub 也能导入（原版数据库版本比我们低，读不了我们的聊天库）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    exportWithDatabase = true
+                    showExportChoice = false
+                    createLocalBackup.launch("Rikkahub-M-backup-${System.currentTimeMillis()}.zip")
+                }) { Text("完整备份") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    exportWithDatabase = false
+                    showExportChoice = false
+                    createLocalBackup.launch("Rikkahub-M-backup-${System.currentTimeMillis()}.zip")
+                }) { Text("兼容原版") }
+            },
         )
     }
 

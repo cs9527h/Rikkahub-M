@@ -207,10 +207,20 @@ class BackupVM(
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    /** 导出本机备份：明文 zip，不加密、不需要口令，恢复时也不问任何东西。 */
-    suspend fun exportToFile(): File = withContext(Dispatchers.IO) {
+    /**
+     * 导出本机备份：明文 zip，不加密、不需要口令。
+     *
+     * [includeDatabase] = false 时只导设置与附件，用来生成**原版 RikkaHub 能导入**的包
+     * （原版数据库 schema 34，比我们低，无法读取我们的聊天库）。
+     */
+    suspend fun exportToFile(includeDatabase: Boolean = true): File = withContext(Dispatchers.IO) {
+        val items = if (includeDatabase) {
+            localBackupItems.value
+        } else {
+            localBackupItems.value - me.rerere.rikkahub.data.datastore.WebDavConfig.BackupItem.DATABASE
+        }
         webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = localBackupItems.value),
+            settings.value.webDavConfig.copy(items = items),
             passphrase = null,
             includeCredentials = false,
         )

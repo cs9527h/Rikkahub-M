@@ -72,7 +72,10 @@ internal fun Settings.withBuiltInDefaults(): Settings {
                 assistant.chatModelId == LEGACY_MATE_MODEL_ID -> assistant.copy(chatModelId = null)
                 // 内置助手回到上游默认：名字留空（界面显示「默认助手」）、头像用 Avatar.Dummy。
                 // 只迁移旧版本写进去的固定值，用户自己改过的名字/头像不动。
-                assistant.id == DEFAULT_ASSISTANT_ID &&
+                // 只在「一次性迁移」没做过时执行：否则用户把名字改回「李鱼」会被再次清空，
+                // 看起来就是「名字改不回去」。
+                !this.defaultAssistantMigrated &&
+                    assistant.id == DEFAULT_ASSISTANT_ID &&
                     (assistant.name == "李鱼" || assistant.avatar == me.rerere.rikkahub.data.model.Avatar.Emoji("🐟")) ->
                     assistant.copy(
                         name = if (assistant.name == "李鱼") "" else assistant.name,
@@ -86,6 +89,10 @@ internal fun Settings.withBuiltInDefaults(): Settings {
             }
         }
         .ifEmpty { DEFAULT_ASSISTANTS }
+    val assistantMigrated = this.assistants.any { assistant ->
+        assistant.id == DEFAULT_ASSISTANT_ID &&
+            (assistant.name == "李鱼" || assistant.avatar == me.rerere.rikkahub.data.model.Avatar.Emoji("🐟"))
+    }
     val ttsProviders = this.ttsProviders.ifEmpty { DEFAULT_TTS_PROVIDERS }
         .filterNot {
             it is me.rerere.tts.provider.TTSProviderSetting.OpenAI &&
@@ -107,6 +114,8 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         providers = providers,
         assistants = assistants,
         ttsProviders = ttsProviders,
+        // 做过一次旧版助手迁移后置位，之后用户改什么名字/头像都不再被覆盖
+        defaultAssistantMigrated = defaultAssistantMigrated || assistantMigrated,
     )
 }
 

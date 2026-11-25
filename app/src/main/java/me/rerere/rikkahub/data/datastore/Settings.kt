@@ -86,6 +86,11 @@ data class Settings(
     val webServerEnabled: Boolean = false,
     val webServerPort: Int = 8080,
     val webServerJwtEnabled: Boolean = false,
+    /**
+     * 内置助手是否已经从旧版 Mate 的「李鱼 + 🐟」迁移到上游默认（名字留空 = 界面显示「默认助手」）。
+     * 只迁移一次：之后用户把名字改回「李鱼」或换头像都不再被覆盖。
+     */
+    val defaultAssistantMigrated: Boolean = false,
     val webServerAccessPassword: String = "",
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
