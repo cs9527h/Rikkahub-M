@@ -8,6 +8,13 @@
 
 # Mate · 更新日志
 
+## 0.9.11 — 去加密后的全量清理与回归（2026-11-25）
+
+- 清理：删除去掉备份加密后成为死代码的 `EncryptedBackupSession` 及其测试、`BackupArchiveFormat.exportPassphrase` 及其 5 个用例、`BackupVM.automaticPassphraseConfigured` 与 `forgetAutomaticBackupPassphrase`；`MissingBackupPassphraseException` 单独成文件，仅供「打开 0.9.9 之前的加密备份」使用。
+- 修复：`UpdateNotes` 两处多余的 `!!` 改为安全写法；`NotificationAvatar` 去掉穷尽 `when` 里多余的 `else`。
+- 回归：全模块单元测试通过；`BackupArchiveFormatTest` 去掉与口令相关的用例后仍覆盖备份文件名识别与 kind 推断。
+- 兼容：无数据库迁移；versionCode 47 / 0.9.11，可覆盖升级 0.9.10。
+
 ## 0.9.10 — 备份回到上游做法：不加密、不要口令与密钥（2026-11-25）
 
 - 调整：本机导出、WebDAV/S3 手动备份、自动备份**一律明文 zip**，与上游 RikkaHub 一致。不再生成、读取或要求任何口令/密钥。

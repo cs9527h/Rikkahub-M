@@ -1,6 +1,5 @@
 package me.rerere.rikkahub.data.sync
 
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -24,33 +23,6 @@ class BackupArchiveFormatTest {
         )) {
             assertFalse(name, BackupArchiveFormat.isBackupName(name))
         }
-    }
-
-    @Test fun explicitlyUnencryptedExportDoesNotUsePassphrase() {
-        assertNull(BackupArchiveFormat.exportPassphrase(false, "unused password", "unused password", false))
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun plaintextCannotIncludeCredentials() {
-        BackupArchiveFormat.exportPassphrase(false, "password", "password", true)
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun emptyEncryptionPassphraseIsRejected() {
-        BackupArchiveFormat.exportPassphrase(true, "", "", false)
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun mismatchedConfirmationIsRejected() {
-        BackupArchiveFormat.exportPassphrase(true, "password one", "password two", true)
-    }
-
-    @Test fun whitespaceInPassphraseIsPreservedAndCopyIsIndependent() {
-        val original = " pass word "
-        val passphrase = BackupArchiveFormat.exportPassphrase(true, original, original, true)!!
-        assertArrayEquals(original.toCharArray(), passphrase)
-        passphrase.fill('\u0000')
-        assertTrue(original == " pass word ")
     }
 
     @Test

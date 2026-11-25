@@ -1,7 +1,7 @@
 {
-  "version": "0.9.10",
+  "version": "0.9.11",
   "measured": false,
-  "source": "未采集（本版为备份去加密 + 进度修复）",
+  "source": "未采集（本版为死代码清理，未改渲染路径）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

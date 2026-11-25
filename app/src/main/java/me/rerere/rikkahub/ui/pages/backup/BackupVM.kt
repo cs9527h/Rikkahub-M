@@ -54,7 +54,6 @@ class BackupVM(
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
     val localBackupItems = MutableStateFlow(WebDavConfig.BackupItem.entries.toList())
 
-    val automaticPassphraseConfigured = MutableStateFlow(false)
     val lastRestoreMessage = MutableStateFlow<String?>(null)
     private val archiveMutex = Mutex()
 
@@ -70,7 +69,6 @@ class BackupVM(
     private suspend fun <T> withPassphrase(export: Boolean, block: suspend (CharArray?, Boolean) -> T): T =
         archiveMutex.withLock {
             val stored = if (export) backupPassphraseStore.readOrCreate() else backupPassphraseStore.read()
-            if (export) automaticPassphraseConfigured.value = true
             try {
                 block(stored, false)
             } finally {
@@ -84,7 +82,6 @@ class BackupVM(
     }
 
     init {
-        viewModelScope.launch { automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured() }
         viewModelScope.launch {
             localBackupItems.value = settingsStore.settingsFlow.first().backupReminderConfig.localBackupItems
         }
@@ -100,7 +97,6 @@ class BackupVM(
                 val text = me.rerere.rikkahub.data.sync.BackupRecoveryKey.encode(secret)
                 requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
                     .use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                automaticPassphraseConfigured.value = true
             } finally {
                 secret.fill('\u0000')
             }
@@ -120,7 +116,6 @@ class BackupVM(
                     )
                 }
                 backupPassphraseStore.save(secret)
-                automaticPassphraseConfigured.value = true
             } finally {
                 secret.fill('\u0000')
             }
@@ -149,21 +144,11 @@ class BackupVM(
                 )
             )
         }
-        automaticPassphraseConfigured.value = backupPassphraseStore.isConfigured()
         if (enabled) {
             me.rerere.rikkahub.mate.MateAutoBackupWorker.schedule(context)
         } else {
             me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
         }
-    }
-
-    suspend fun forgetAutomaticBackupPassphrase() {
-        settingsStore.update { current ->
-            current.copy(backupReminderConfig = current.backupReminderConfig.copy(autoBackupOnAppLifecycle = false))
-        }
-        me.rerere.rikkahub.mate.MateAutoBackupWorker.cancel(context)
-        backupPassphraseStore.clear()
-        automaticPassphraseConfigured.value = false
     }
 
     fun updateSettings(fn: (Settings) -> Settings) {

@@ -31,7 +31,6 @@ object NotificationAvatar {
             when (avatar) {
                 is Avatar.Emoji -> drawEmoji(avatar.content)
                 is Avatar.Image -> loadImage(context, avatar.url)
-                else -> null
             }
         }.getOrNull() ?: return null
         cache.put(key, bitmap)

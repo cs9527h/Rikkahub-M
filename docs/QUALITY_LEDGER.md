@@ -12,6 +12,12 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.11）
+
+- 0.9.11：删除去加密后的死代码（`EncryptedBackupSession` 及测试、`exportPassphrase` 及用例、
+  `automaticPassphraseConfigured`、`forgetAutomaticBackupPassphrase`）；异常类抽成独立文件供旧加密备份恢复使用。
+- 0.9.11：修掉 `UpdateNotes` 两处多余 `!!` 与 `NotificationAvatar` 冗余 `else`；全模块单测通过。
+
 ## 当前状态（0.9.10）
 
 - 0.9.10：备份回到上游做法——本机导出 / WebDAV / S3 / 自动备份统一明文 zip，不生成也不读取口令与密钥；

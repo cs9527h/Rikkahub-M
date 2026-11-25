@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-24T16:25:24Z",
+  "updatedAt": "2026-11-25T00:12:38Z",
   "releases": [
+    {
+      "version": "0.9.11",
+      "tag": "v0.9.11",
+      "title": "Rikkahub-M 0.9.11",
+      "summary": "去加密后的全量清理与回归。",
+      "body": "## 优化\n\n- 清理掉去掉备份加密后遗留的无用代码（旧的口令会话、导出校验、密钥状态），安装包与启动路径更干净\n- 修正两处多余的强制解包与冗余分支\n\n## 其他\n\n- 备份行为与 0.9.10 一致：不加密、不要口令与密钥，兼容原版 RikkaHub 备份\n- 版本 0.9.11 / versionCode 47，包名与签名不变，可覆盖升级 0.9.10",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.10",
       "tag": "v0.9.10",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-24T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.9",

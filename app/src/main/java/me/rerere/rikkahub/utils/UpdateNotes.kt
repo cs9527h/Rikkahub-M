@@ -92,8 +92,8 @@ object UpdateNotes {
             if (bucket != null) {
                 items.getOrPut(bucket) { mutableListOf() }.add(bulletText)
             } else {
-                if (loose == null) loose = mutableListOf()
-                loose!!.add(bulletText)
+                val target = loose ?: mutableListOf<String>().also { loose = it }
+                target.add(bulletText)
             }
         }
 
@@ -101,8 +101,9 @@ object UpdateNotes {
             val cleaned = list.map { it.removePrefix("- ").trim() }.filter { it.isNotEmpty() && !isTechnical(it) }
             if (cleaned.isEmpty()) null else NoteSection(title, cleaned)
         }
-        if (sections.isEmpty() && !loose.isNullOrEmpty()) {
-            val cleaned = loose!!.filter { !isTechnical(it) }
+        val looseItems = loose
+        if (sections.isEmpty() && !looseItems.isNullOrEmpty()) {
+            val cleaned = looseItems.filter { !isTechnical(it) }
             if (cleaned.isNotEmpty()) return listOf(NoteSection("其他", cleaned.take(8)))
         }
         return sections.sortedBy { section ->
