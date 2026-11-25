@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T05:24:54Z",
+  "updatedAt": "2026-11-25T05:40:43Z",
   "releases": [
+    {
+      "version": "0.9.17",
+      "tag": "v0.9.17",
+      "title": "Rikkahub-M 0.9.17",
+      "summary": "导出只留完整备份，恢复页新增原版备份入口。",
+      "body": "## 优化\n\n- 导出简化：只保留「完整备份」（设置 + 聊天记录 + 附件 + API Key），不再有容易误解的「兼容原版」选项\n- 恢复页新增独立入口「导入原版 RikkaHub 备份」，直接选原版的压缩包就能迁移，聊天记录会一起恢复\n\n## 其他\n\n- 版本 0.9.17 / versionCode 53，包名与签名不变，可覆盖升级 0.9.16",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.16",
       "tag": "v0.9.16",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.15",

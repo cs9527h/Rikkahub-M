@@ -12,6 +12,11 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.17）
+
+- 0.9.17：删除「兼容原版」导出（含 relocateTo / remapManagedAssetsTo / upstreamPortable 与对应单测），导出只有完整备份。
+- 0.9.17：恢复区新增独立入口「导入原版 RikkaHub 备份」，与「从本机文件恢复」共用同一管线。
+
 ## 当前状态（0.9.16）
 
 - 0.9.16：WebDAV/S3/自动备份不再剥离凭据（仅清空 Web 服务口令），与本机导出、上游一致。

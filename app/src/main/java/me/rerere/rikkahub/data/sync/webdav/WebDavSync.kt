@@ -168,12 +168,10 @@ class WebDavSync(
     suspend fun prepareBackupFile(
         config: WebDavConfig,
         includeCredentials: Boolean = false,
-        upstreamPortable: Boolean = false,
     ): File = backupManager.createBackup(
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
         includeCredentials = includeCredentials,
-        upstreamPortable = upstreamPortable,
     )
 
     private suspend fun restoreFromBackupFile(
