@@ -40,10 +40,9 @@ class WebDavSync(
 
     suspend fun backup(
         config: WebDavConfig,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config, passphrase, includeCredentials)
+        val file = prepareBackupFile(config, includeCredentials)
         try {
             val client = getClient(config)
             client.ensureCollectionExists().getOrThrow()
@@ -60,7 +59,6 @@ class WebDavSync(
     /** Returns null when the verified content equals the last successfully uploaded version. */
     suspend fun backupAutomatically(
         config: WebDavConfig,
-        passphrase: CharArray?,
         includeCredentials: Boolean,
         kind: BackupKind,
         lastSuccess: AutoBackupState?,
@@ -69,7 +67,6 @@ class WebDavSync(
         val prepared = backupManager.prepareBackup(
             includeDatabase = kind == BackupKind.CHATS,
             includeFiles = false,
-            passphrase = passphrase,
             includeCredentials = includeCredentials,
             kind = kind,
         )
@@ -130,7 +127,7 @@ class WebDavSync(
             deleted
         }
 
-    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem, passphrase: CharArray? = null) = withContext(
+    suspend fun restore(config: WebDavConfig, item: WebDavBackupItem,) = withContext(
         Dispatchers.IO
     ) {
         val client = getClient(config)
@@ -144,7 +141,7 @@ class WebDavSync(
             Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
 
             // Restore from backup file
-            restoreFromBackupFile(backupFile, config, passphrase)
+            restoreFromBackupFile(backupFile, config)
         } finally {
             // Clean up temp file
             if (backupFile.exists()) {
@@ -163,33 +160,28 @@ class WebDavSync(
     suspend fun restoreFromLocalFile(
         file: File,
         config: WebDavConfig,
-        passphrase: CharArray? = null,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) {
-        restoreFromBackupFile(file, config, passphrase, onProgress)
+        restoreFromBackupFile(file, config, onProgress)
     }
 
     suspend fun prepareBackupFile(
         config: WebDavConfig,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ): File = backupManager.createBackup(
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
-        passphrase = passphrase,
         includeCredentials = includeCredentials,
     )
 
     private suspend fun restoreFromBackupFile(
         backupFile: File,
         config: WebDavConfig,
-        passphrase: CharArray?,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = WebDavConfig.BackupItem.DATABASE in config.items,
         includeFiles = WebDavConfig.BackupItem.FILES in config.items,
-        passphrase = passphrase,
         onProgress = onProgress,
     )
 }

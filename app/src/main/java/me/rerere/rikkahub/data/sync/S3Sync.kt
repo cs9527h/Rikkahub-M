@@ -36,10 +36,9 @@ class S3Sync(
 
     suspend fun backupToS3(
         config: S3Config,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ) = withContext(Dispatchers.IO) {
-        val file = prepareBackupFile(config, passphrase, includeCredentials)
+        val file = prepareBackupFile(config, includeCredentials)
         try {
             val client = getS3Client(config)
             client.putObject(
@@ -57,7 +56,6 @@ class S3Sync(
     /** Returns null if this destination already holds the same successful content version. */
     suspend fun backupAutomatically(
         config: S3Config,
-        passphrase: CharArray?,
         includeCredentials: Boolean,
         kind: BackupKind,
         lastSuccess: AutoBackupState?,
@@ -66,7 +64,6 @@ class S3Sync(
         val prepared = backupManager.prepareBackup(
             includeDatabase = kind == BackupKind.CHATS,
             includeFiles = false,
-            passphrase = passphrase,
             includeCredentials = includeCredentials,
             kind = kind,
         )
@@ -142,7 +139,7 @@ class S3Sync(
             deleted
         }
 
-    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, passphrase: CharArray? = null) = withContext(
+    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem,) = withContext(
         Dispatchers.IO
     ) {
         val client = getS3Client(config)
@@ -156,7 +153,7 @@ class S3Sync(
             Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
 
             // Restore from backup file
-            restoreFromBackupFile(backupFile, config, passphrase)
+            restoreFromBackupFile(backupFile, config)
         } finally {
             // Clean up temp file
             if (backupFile.exists()) {
@@ -174,24 +171,20 @@ class S3Sync(
 
     suspend fun prepareBackupFile(
         config: S3Config,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
     ): File = backupManager.createBackup(
         includeDatabase = S3Config.BackupItem.DATABASE in config.items,
         includeFiles = S3Config.BackupItem.FILES in config.items,
-        passphrase = passphrase,
         includeCredentials = includeCredentials,
     )
 
     private suspend fun restoreFromBackupFile(
         backupFile: File,
         config: S3Config,
-        passphrase: CharArray?,
     ) = backupManager.stageRestore(
         archive = backupFile,
         includeDatabase = S3Config.BackupItem.DATABASE in config.items,
         includeFiles = S3Config.BackupItem.FILES in config.items,
-        passphrase = passphrase,
     )
 }
 

@@ -14,7 +14,6 @@ import kotlinx.coroutines.CancellationException
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.sync.AutoBackupPolicy
 import me.rerere.rikkahub.data.sync.BackupKind
-import me.rerere.rikkahub.data.sync.BackupPassphraseStore
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
 import org.koin.core.component.KoinComponent
@@ -29,7 +28,6 @@ class MateAutoBackupWorker(
     private val settingsStore: SettingsStore by inject()
     private val webDavSync: WebDavSync by inject()
     private val s3Sync: S3Sync by inject()
-    private val passphraseStore: BackupPassphraseStore by inject()
 
     override suspend fun doWork(): Result {
         val settings = settingsStore.awaitLoaded()
@@ -51,7 +49,6 @@ class MateAutoBackupWorker(
             // 与上游一致：备份不再加密，不生成也不读取任何口令/密钥。
             // 数据安全交给传输层（WebDAV/S3 都要求 https）与设备本身。
             run {
-                val passphrase: CharArray? = null
                 val includeCredentials = false // API Key / OAuth 等凭据一律不进备份
                 for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
                     val hours = when (kind) {
@@ -85,9 +82,9 @@ class MateAutoBackupWorker(
                                 continue
                             }
                             val fingerprint = if (transport == "webdav") {
-                                webDavSync.backupAutomatically(dav, passphrase, includeCredentials, kind, currentState)
+                                webDavSync.backupAutomatically(dav, includeCredentials, kind, currentState)
                             } else {
-                                s3Sync.backupAutomatically(s3, passphrase, includeCredentials, kind, currentState)
+                                s3Sync.backupAutomatically(s3, includeCredentials, kind, currentState)
                             }
                             settingsStore.update { current ->
                                 val config = current.backupReminderConfig

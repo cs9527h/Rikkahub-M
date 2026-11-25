@@ -114,6 +114,7 @@ private fun id(n: Int) = Uuid.parse("00000000-0000-0000-0000-%012d".format(n))
 // 每个字段都取了和默认值不同的值
 private val SAMPLE = Settings(
     dynamicColor = false,
+    defaultAssistantMigrated = true,
     themeId = "custom",
     customThemes = listOf(CustomTheme(id = "theme", name = "Theme")),
     developerMode = true,
@@ -221,6 +222,7 @@ private val STORED_KEYS = setOf(
     "web_server_jwt_enabled",
     "web_server_access_password",
     "web_server_localhost_only",
+    "default_assistant_migrated",
     "mode_injections",
     "lorebooks",
     "quick_messages",

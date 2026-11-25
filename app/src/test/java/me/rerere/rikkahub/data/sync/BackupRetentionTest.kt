@@ -8,10 +8,10 @@ import org.junit.Test
 class BackupRetentionTest {
     private fun version(name: String, time: Long) = BackupVersion(name, time)
 
-    private val settingsOld = version("backup_settings_20260101_010101.rkmbak", 10)
+    private val settingsOld = version("backup_settings_20260101_010101.zip", 10)
     private val settingsNew = version("backup_settings_20260202_020202_123.zip", 20)
-    private val settingsNewest = version("backup_settings_20260303_030303.rkmbak", 30)
-    private val chats = version("backup_chats_20260303_030303.rkmbak", 30)
+    private val settingsNewest = version("backup_settings_20260303_030303.zip", 30)
+    private val chats = version("backup_chats_20260303_030303.zip", 30)
     private val manual = version("backup_20260303_030303.zip", 30)
 
     @Test fun keepZeroDisablesDeletionEntirely() {
@@ -38,18 +38,18 @@ class BackupRetentionTest {
 
     @Test fun malformedOrUnrelatedNamesAreNotTreatedAsAutomaticArchives() {
         val names = listOf(
-            "backup_settings_latest.rkmbak",
-            "../backup_settings_20260101_010101.rkmbak",
+            "backup_settings_latest.zip",
+            "../backup_settings_20260101_010101.zip",
             "backup_settings_20260101_010101.txt",
             "notes_settings_20260101_010101.zip",
         )
         assertTrue(BackupRetention.selectExpired(names.map { version(it, 1) }, BackupKind.SETTINGS, 1).isEmpty())
-        assertFalse(BackupRetention.matches("backup_settings_latest.rkmbak", BackupKind.SETTINGS))
+        assertFalse(BackupRetention.matches("backup_settings_latest.zip", BackupKind.SETTINGS))
     }
 
     @Test fun fullArchiveKindIsRejected() {
         assertTrue(runCatching { BackupRetention.selectExpired(listOf(manual), BackupKind.FULL, 1) }.isFailure)
-        assertFalse(BackupRetention.matches("backup_settings_20260101_010101.rkmbak", BackupKind.FULL))
+        assertFalse(BackupRetention.matches("backup_settings_20260101_010101.zip", BackupKind.FULL))
     }
 
     @Test fun negativeKeepFailsInsteadOfDeletingEverything() {
@@ -59,8 +59,8 @@ class BackupRetentionTest {
     }
 
     @Test fun timestampTiesAreDeterministic() {
-        val a = version("backup_settings_20260101_010101.rkmbak", 5)
-        val b = version("backup_settings_20260102_010101.rkmbak", 5)
+        val a = version("backup_settings_20260101_010101.zip", 5)
+        val b = version("backup_settings_20260102_010101.zip", 5)
         assertEquals(listOf(a), BackupRetention.selectExpired(listOf(a, b), BackupKind.SETTINGS, 1))
     }
 

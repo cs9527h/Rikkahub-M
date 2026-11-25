@@ -48,23 +48,19 @@ class BackupManager(
     suspend fun createBackup(
         includeDatabase: Boolean,
         includeFiles: Boolean,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
         kind: BackupKind = BackupKind.FULL,
-    ): File = prepareBackup(includeDatabase, includeFiles, passphrase, includeCredentials, kind).file
+    ): File = prepareBackup(includeDatabase, includeFiles, includeCredentials, kind).file
 
     internal suspend fun prepareBackup(
         includeDatabase: Boolean,
         includeFiles: Boolean,
-        passphrase: CharArray? = null,
         includeCredentials: Boolean = false,
         kind: BackupKind = BackupKind.FULL,
     ): PreparedBackup = withContext(Dispatchers.IO) {
         restoreMutex.withLock {
-            require(!includeCredentials || (passphrase != null && passphrase.isNotEmpty())) {
-                "包含凭据的备份必须使用非空口令加密"
-            }
-            require(passphrase == null || passphrase.isNotEmpty()) { "备份口令不能为空" }
+            // 备份不再加密：明文 zip（与上游 RikkaHub 一致）。含凭据的备份依旧不允许生成。
+            require(!includeCredentials) { "备份不再支持写入凭据" }
             val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
             val archive = File.createTempFile("backup_${kind.wireName}_${timestamp}_", ".zip", context.cacheDir)
             val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
@@ -154,14 +150,7 @@ class BackupManager(
                     zip.closeEntry()
                 }
                 val fingerprint = BackupFingerprint.calculate(kind, entries, settingsJsonForFingerprint)
-                if (passphrase == null) return@withLock PreparedBackup(archive, fingerprint, kind)
-                val encrypted = File(
-                    context.cacheDir,
-                    "backup_${kind.wireName}_${timestamp}_${System.nanoTime()}.${BackupCrypto.EXTENSION}",
-                )
-                BackupCrypto.encrypt(archive, encrypted, passphrase)
-                archive.delete()
-                return@withLock PreparedBackup(encrypted, fingerprint, kind)
+                return@withLock PreparedBackup(archive, fingerprint, kind)
             } catch (e: Throwable) {
                 archive.delete()
                 throw e
@@ -171,38 +160,22 @@ class BackupManager(
         }
     }
 
-    /**
-     * 从输入流直接恢复：加密包边读边解密到临时文件，避免「先整包复制到 cache 再解密」多读写一遍。
-     * 明文 zip 仍会落到临时文件（ZipFile 需要随机访问）。
-     */
+    /** 从输入流恢复：SAF/网络流直接落到临时文件（ZipFile 需要随机访问）。 */
     suspend fun stageRestoreFromStream(
         input: java.io.InputStream,
         includeDatabase: Boolean,
         includeFiles: Boolean,
-        passphrase: CharArray? = null,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) = withContext(Dispatchers.IO) {
-        val buffered = java.io.BufferedInputStream(input, 64 * 1024)
-        buffered.mark(8)
-        val magic = ByteArray(8)
-        val read = buffered.read(magic)
-        buffered.reset()
-        val encrypted = read == 8 && String(magic, Charsets.US_ASCII) == "RKMENC01"
         val staged = File.createTempFile("restore_input_", ".zip", context.cacheDir)
         try {
-            buffered.use { stream ->
-                if (encrypted) {
-                    val key = passphrase ?: throw MissingBackupPassphraseException()
-                    BackupCrypto.decrypt(stream, staged, key)
-                } else {
-                    java.io.FileOutputStream(staged).use { out -> stream.copyTo(out) }
-                }
+            java.io.BufferedInputStream(input, 64 * 1024).use { stream ->
+                java.io.FileOutputStream(staged).use { out -> stream.copyTo(out) }
             }
             stageRestore(
                 archive = staged,
                 includeDatabase = includeDatabase,
                 includeFiles = includeFiles,
-                passphrase = passphrase,
                 onProgress = onProgress,
             )
         } finally {
@@ -214,24 +187,12 @@ class BackupManager(
         archive: File,
         includeDatabase: Boolean,
         includeFiles: Boolean,
-        passphrase: CharArray? = null,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) =
         withContext(Dispatchers.IO) {
             restoreMutex.withLock {
-                var decrypted: File? = null
-                try {
-                    val readable = if (!BackupCrypto.isEncrypted(archive)) {
-                        archive
-                    } else {
-                        // 用专用异常而不是 require：界面只对这个异常弹「输入恢复口令」，
-                        // 之前的 IllegalArgumentException 会被当成普通失败，用户永远等不到输入框。
-                        passphrase ?: throw MissingBackupPassphraseException()
-                        File.createTempFile("backup_decrypted_", ".zip", context.cacheDir).also { temp ->
-                            decrypted = temp
-                            BackupCrypto.decrypt(archive, temp, passphrase)
-                        }
-                    }
+                run {
+                    val readable = archive
                     val restore = pendingRestore(context)
                     val staging = restore.createStagingDirectory()
                     try {
@@ -385,8 +346,6 @@ class BackupManager(
                     } finally {
                         staging.deleteRecursively()
                     }
-                } finally {
-                    decrypted?.delete()
                 }
             }
         }

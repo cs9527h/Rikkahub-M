@@ -40,7 +40,6 @@ class BackupVM(
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
     private val deepSeekMigrator: DeepSeekMigrator,
-    private val backupPassphraseStore: me.rerere.rikkahub.data.sync.BackupPassphraseStore,
     private val backupManager: me.rerere.rikkahub.data.sync.BackupManager,
     private val context: android.content.Context,
 ) : ViewModel() {
@@ -58,26 +57,7 @@ class BackupVM(
     private val archiveMutex = Mutex()
 
     /** 离开页面只清提示，不动本机已保存的恢复密钥。 */
-    fun clearBackupPassphrase() {
-        lastRestoreMessage.value = null
-    }
-
-    /**
-     * 日常零口令：本机没有密钥时静默生成一把，之后手动/自动备份与同机恢复都用它。
-     * 备份内容一律加密，API Key / OAuth 等凭据一律排除。
-     */
-    private suspend fun <T> withPassphrase(export: Boolean, block: suspend (CharArray?, Boolean) -> T): T =
-        archiveMutex.withLock {
-            val stored = if (export) backupPassphraseStore.readOrCreate() else backupPassphraseStore.read()
-            try {
-                block(stored, false)
-            } finally {
-                stored?.fill('\u0000')
-            }
-        }
-
     override fun onCleared() {
-        clearBackupPassphrase()
         super.onCleared()
     }
 
@@ -89,51 +69,8 @@ class BackupVM(
         loadS3BackupFileItems()
     }
 
-    /** 导出恢复密钥文件：换机或重装后用它恢复，不依赖本机 Keystore。 */
-    suspend fun exportRecoveryKey(uri: android.net.Uri): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val secret = backupPassphraseStore.readOrCreate()
-            try {
-                val text = me.rerere.rikkahub.data.sync.BackupRecoveryKey.encode(secret)
-                requireNotNull(context.contentResolver.openOutputStream(uri)) { "无法写入所选位置" }
-                    .use { it.write(text.toByteArray(Charsets.UTF_8)) }
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    /** 导入恢复密钥文件：只接受本应用导出的格式，覆盖本机密钥前先清掉自动备份状态。 */
-    suspend fun importRecoveryKey(uri: android.net.Uri): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val text = requireNotNull(context.contentResolver.openInputStream(uri)) { "无法读取所选文件" }
-                .use { it.reader(Charsets.UTF_8).readText() }
-            val secret = me.rerere.rikkahub.data.sync.BackupRecoveryKey.decode(text)
-            try {
-                settingsStore.update { current ->
-                    current.copy(
-                        backupReminderConfig = current.backupReminderConfig.copy(autoBackupStates = emptyMap())
-                    )
-                }
-                backupPassphraseStore.save(secret)
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    /** 一键备份：本机位置由 UI 走 SAF 导出，远端走各自的同步实现，都自动确保已加密。 */
-    suspend fun backupNow(target: me.rerere.rikkahub.data.datastore.BackupTarget) {
-        when (target) {
-            me.rerere.rikkahub.data.datastore.BackupTarget.WEBDAV -> backup()
-            me.rerere.rikkahub.data.datastore.BackupTarget.S3 -> backupToS3()
-            me.rerere.rikkahub.data.datastore.BackupTarget.LOCAL -> Unit
-        }
-    }
-
     /** 打开自动备份：本机密钥缺失时静默生成，不需要用户输入口令。 */
     suspend fun setAutoBackupEnabled(enabled: Boolean) {
-        if (enabled) backupPassphraseStore.readOrCreate().also { it.fill('\u0000') }
         settingsStore.update { current ->
             current.copy(
                 backupReminderConfig = current.backupReminderConfig.copy(
@@ -190,18 +127,21 @@ class BackupVM(
 
     // 与上游一致：备份不加密、不需要口令或密钥
     suspend fun backup() {
-        webDavSync.backup(settings.value.webDavConfig, passphrase = null, includeCredentials = false)
+        webDavSync.backup(settings.value.webDavConfig, includeCredentials = false)
         recordBackupTime()
     }
 
-    suspend fun restore(item: WebDavBackupItem, oneTimePassphrase: CharArray? = null) =
-        if (oneTimePassphrase != null) {
-            webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = oneTimePassphrase)
-        } else {
-            withPassphrase(export = false) { passphrase, _ ->
-                webDavSync.restore(config = settings.value.webDavConfig, item = item, passphrase = passphrase)
-            }
+    suspend fun backupNow(target: me.rerere.rikkahub.data.datastore.BackupTarget) {
+        when (target) {
+            me.rerere.rikkahub.data.datastore.BackupTarget.WEBDAV -> backup()
+            me.rerere.rikkahub.data.datastore.BackupTarget.S3 -> backupToS3()
+            me.rerere.rikkahub.data.datastore.BackupTarget.LOCAL -> Unit
         }
+    }
+
+    suspend fun restore(item: WebDavBackupItem) {
+        webDavSync.restore(config = settings.value.webDavConfig, item = item)
+    }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
@@ -221,7 +161,6 @@ class BackupVM(
         }
         webDavSync.prepareBackupFile(
             settings.value.webDavConfig.copy(items = items),
-            passphrase = null,
             includeCredentials = false,
         )
     }
@@ -230,46 +169,30 @@ class BackupVM(
 
     suspend fun restoreFromLocalFile(
         file: File,
-        oneTimePassphrase: CharArray? = null,
         onProgress: ((Long, Long) -> Unit)? = null,
-    ) =
-        if (oneTimePassphrase != null) {
-            webDavSync.restoreFromLocalFile(
-                file,
-                settings.value.webDavConfig.copy(items = localBackupItems.value),
-                oneTimePassphrase,
-                onProgress,
-            )
-        } else {
-            withPassphrase(export = false) { passphrase, _ ->
-                webDavSync.restoreFromLocalFile(
-                    file,
-                    settings.value.webDavConfig.copy(items = localBackupItems.value),
-                    passphrase,
-                    onProgress,
-                )
-            }
-        }
+    ) {
+        webDavSync.restoreFromLocalFile(
+            file,
+            settings.value.webDavConfig.copy(items = localBackupItems.value),
+            onProgress,
+        )
+    }
 
-    /** 从 SAF/网络流直接恢复：加密包边读边解密，省掉一次整包复制。 */
+    /** 从 SAF/网络流直接恢复：边读边落盘，省掉整包复制到 cache 的一遍读写。 */
     suspend fun restoreFromStream(
         openStream: () -> java.io.InputStream?,
-        oneTimePassphrase: CharArray? = null,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) = withContext(Dispatchers.IO) {
         val items = localBackupItems.value
         val stream = requireNotNull(openStream()) { "无法读取备份文件" }
-        val key = oneTimePassphrase ?: backupPassphraseStore.read()
         try {
             backupManager.stageRestoreFromStream(
                 input = stream,
                 includeDatabase = me.rerere.rikkahub.data.datastore.WebDavConfig.BackupItem.DATABASE in items,
                 includeFiles = me.rerere.rikkahub.data.datastore.WebDavConfig.BackupItem.FILES in items,
-                passphrase = key,
                 onProgress = onProgress,
             )
         } finally {
-            key?.fill('\u0000')
             runCatching { stream.close() }
         }
     }
@@ -377,18 +300,13 @@ class BackupVM(
     }
 
     suspend fun backupToS3() {
-        s3Sync.backupToS3(settings.value.s3Config, passphrase = null, includeCredentials = false)
+        s3Sync.backupToS3(settings.value.s3Config, includeCredentials = false)
         recordBackupTime()
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem, oneTimePassphrase: CharArray? = null) =
-        if (oneTimePassphrase != null) {
-            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = oneTimePassphrase)
-        } else {
-            withPassphrase(export = false) { passphrase, _ ->
-                s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, passphrase = passphrase)
-            }
-        }
+    suspend fun restoreFromS3(item: S3BackupItem) {
+        s3Sync.restoreFromS3(config = settings.value.s3Config, item = item)
+    }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)

@@ -12,6 +12,13 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.13）
+
+- 0.9.13：彻底删除备份加密与密钥代码（BackupCrypto / BackupPassphraseStore / BackupRecoveryKey /
+  MissingBackupPassphraseException / RestorePassphrasePrompt 及 4 个仪器测试用例），接口去掉 passphrase 参数。
+- 0.9.13：`Settings.defaultAssistantMigrated` 补进 SettingsFields 映射与存储格式金标准；全模块单测通过。
+- 0.9.13：回看本次会话 109 个改动文件，除已修的助手改名外未发现第二处「每次加载覆盖用户数据」问题。
+
 ## 当前状态（0.9.12）
 
 - 0.9.12：修复内置助手改名被强制回退（迁移改为一次性 + `defaultAssistantMigrated` 标记），新增 3 个单测。

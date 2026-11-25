@@ -196,31 +196,6 @@ class BackupManagerTest {
         assertTrue(context.cacheDir.listFiles().orEmpty().isEmpty())
     }
 
-    @Test fun encryptedArchiveRestoresDatabaseOnlyAfterVerifiedStaging() = runBlocking {
-        val archive = manager.createBackup(true, false, "synthetic test password".toCharArray(), true)
-        assertEquals("rkmbak", archive.extension)
-        assertTrue(BackupCrypto.isEncrypted(archive))
-        liveDatabase.openHelper.writableDatabase.execSQL("UPDATE backup_probe SET text = 'changed'")
-        manager.stageRestore(archive, true, false, "synthetic test password".toCharArray())
-        assertEquals("changed", probe(liveDatabase))
-        assertTrue(File(context.noBackupFilesDir, "backup-restore/pending/settings.json").delete())
-        liveDatabase.close()
-        assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
-        liveDatabase = AppDatabaseFactory.create(context)
-        assertEquals("live", probe(liveDatabase))
-        assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("backup_decrypted_") })
-    }
-
-    @Test fun encryptedRestoreRejectsMissingOrWrongPasswordWithoutChangingLiveData() = runBlocking {
-        val archive = manager.createBackup(true, false, "synthetic password".toCharArray())
-        for (passphrase in listOf(null, "incorrect password".toCharArray())) {
-            assertTrue(runCatching { manager.stageRestore(archive, true, false, passphrase) }.isFailure)
-            assertEquals("live", probe(liveDatabase))
-            assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
-            assertFalse(context.cacheDir.listFiles().orEmpty().any { it.name.startsWith("backup_decrypted_") })
-        }
-    }
-
     @Test fun manifestDescribesSettingsAndDatabaseAndRejectsCorruptionBeforeStaging() = runBlocking {
         val archive = manager.createBackup(true, false)
         ZipFile(archive).use { zip ->
@@ -242,40 +217,6 @@ class BackupManagerTest {
         assertTrue(runCatching { manager.stageRestore(damaged, true, false) }.isFailure)
         assertEquals("live", probe(liveDatabase))
         assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
-    }
-
-    @Test fun automaticPassphraseVaultSurvivesRecreationWithoutStoringPlaintextOrExportingIt() = runBlocking {
-        withPassphraseVault { store, alias ->
-            val password = " synthetic recovery 口令 🔐 ".toCharArray()
-            store.save(password)
-            password.fill('\u0000')
-            assertTrue(store.isConfigured())
-            val reloaded = requireNotNull(BackupPassphraseStore(context, alias).read())
-            assertEquals(" synthetic recovery 口令 🔐 ", String(reloaded))
-            reloaded.fill('\u0000')
-            val ciphertext = File(context.noBackupFilesDir, "backup-secret/passphrase.bin").readBytes()
-            assertFalse(ciphertext.toString(Charsets.UTF_8).contains("synthetic recovery"))
-            val backup = manager.createBackup(false, false)
-            ZipFile(backup).use { zip -> assertFalse(zip.entries().asSequence().any { "backup-secret" in it.name }) }
-            store.clear()
-            assertFalse(store.isConfigured())
-            assertEquals(null, store.read())
-        }
-    }
-
-    @Test fun corruptOrLostLocalBackupKeyCannotYieldAPlaintextFallback() = runBlocking {
-        withPassphraseVault { store, alias ->
-            store.save("synthetic password".toCharArray())
-            val vault = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
-            val encrypted = vault.readBytes()
-            encrypted[encrypted.lastIndex] = (encrypted.last().toInt() xor 1).toByte()
-            vault.writeBytes(encrypted)
-            assertTrue(runCatching { store.read() }.isFailure)
-            store.save("synthetic replacement password".toCharArray())
-            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
-            assertTrue(runCatching { store.read() }.isFailure)
-            assertEquals("live", probe(liveDatabase))
-        }
     }
 
     @Test fun excludingChatAttachmentsStillBacksUpAvatarsBackgroundsSkillsAndFonts() = runBlocking {
@@ -437,10 +378,9 @@ class BackupManagerTest {
         )
         dao.upsertFile(trashed)
         dao.upsertFile(active)
-        val secret = "synthetic backup roundtrip passphrase".toCharArray()
         try {
-            val archive = manager.createBackup(false, false, passphrase = secret, kind = BackupKind.SETTINGS)
-            manager.stageRestore(archive, false, false, passphrase = secret)
+            val archive = manager.createBackup(false, false, kind = BackupKind.SETTINGS)
+            manager.stageRestore(archive, false, false)
             liveDatabase.openHelper.writableDatabase.execSQL(
                 "INSERT INTO backup_probe VALUES ('synthetic after staging')"
             )
@@ -465,7 +405,6 @@ class BackupManagerTest {
             assertEquals(trashed.copy(deletedAt = 0), restored.getFile(trashed.assistantId, trashed.path))
             assertEquals(active, restored.getFile(active.assistantId, active.path))
         } finally {
-            secret.fill('\u0000')
         }
     }
 
@@ -521,40 +460,6 @@ class BackupManagerTest {
         dao.markDeleted(entity.assistantId, entity.path, 100)
         dao.purgeDeletedFilesOfAssistant(entity.assistantId)
         assertEquals(null, dao.getFileIncludingDeleted(entity.assistantId, entity.path))
-    }
-
-    @Test fun passphraseVaultRecoversFromAtomicFileBackupAfterInterruptedWrite() = runBlocking {
-        withPassphraseVault { store, _ ->
-            val secret = "synthetic passphrase 123".toCharArray()
-            try {
-                store.save(secret)
-                val base = File(context.noBackupFilesDir, "backup-secret/passphrase.bin")
-                val backup = File(base.parentFile, base.name + ".bak")
-                assertTrue(base.renameTo(backup))
-                assertFalse(base.exists())
-
-                assertTrue("Backup file must count as configured", store.isConfigured())
-                val read = store.read()
-                try {
-                    org.junit.Assert.assertArrayEquals(secret, read)
-                } finally {
-                    read?.fill('\u0000')
-                }
-            } finally {
-                secret.fill('\u0000')
-            }
-        }
-    }
-
-    private suspend fun withPassphraseVault(block: suspend (BackupPassphraseStore, String) -> Unit) {
-        val alias = "rikkahub-contract-test-${java.util.UUID.randomUUID()}"
-        val store = BackupPassphraseStore(context, alias)
-        try {
-            block(store, alias)
-        } finally {
-            store.clear()
-            java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias)
-        }
     }
 
     private fun probe(database: AppDatabase): String = database.openHelper.readableDatabase

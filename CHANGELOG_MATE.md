@@ -8,6 +8,14 @@
 
 # Mate · 更新日志
 
+## 0.9.13 — 彻底删除密钥/口令代码，复核与上游的差异（2026-11-25）
+
+- 删除：备份加密与密钥相关的全部兼容代码 —— `BackupCrypto`（RKMENC01 容器）、`BackupPassphraseStore`（Keystore 口令库）、`BackupRecoveryKey`（恢复密钥文件）、`MissingBackupPassphraseException`、恢复口令输入框；`createBackup/stageRestore/backupAutomatically` 等接口去掉 `passphrase` 参数；DI 里对应的单例、Worker 里的口令依赖、页面上的「导入恢复密钥」入口一并移除。
+- 影响：0.9.9 及以前生成的**加密备份不再可恢复**（加密层已整体移除），明文 zip 备份不受影响。
+- 测试：删除 `BackupCryptoTest`、`BackupRecoveryKeyTest` 与 4 个加密/口令的仪器测试用例；`BackupArchiveFormatTest`、`BackupRetentionTest` 改用 `.zip`；新增 `SettingsFieldsTest` 对新迁移字段的映射断言。
+- 复核：对本次会话改过的 109 个文件逐个回看，重点查「每次加载都会覆盖用户数据」这类写法（默认助手改名 bug 的同类）；除已修的那一处外未发现第二处。
+- 兼容：`Settings` 新增 `defaultAssistantMigrated`（有默认值，无需数据库迁移）；versionCode 49 / 0.9.13，可覆盖升级 0.9.12。
+
 ## 0.9.12 — 默认助手可以改名了、导出可选「原版兼容」包（2026-11-25）
 
 - 修复：内置助手被强制改名回「默认助手」且改不回去。0.9.10 的迁移写成了「每次归一化都执行」——只要你把名字改回「李鱼」就会立刻被清空。现在迁移改为**一次性**（`Settings.defaultAssistantMigrated` 标记），之后名字、头像都按你的设置保留；新增 3 个单测锁住这个行为。

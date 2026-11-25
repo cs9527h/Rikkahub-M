@@ -59,7 +59,6 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.BackupReminderConfig
 import me.rerere.rikkahub.data.datastore.BackupTarget
 import me.rerere.rikkahub.data.datastore.WebDavConfig
-import me.rerere.rikkahub.data.sync.MissingBackupPassphraseException
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -71,8 +70,6 @@ import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.s3ConnectionItems
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
-import me.rerere.rikkahub.ui.pages.backup.components.RestorePassphraseDialog
-import me.rerere.rikkahub.ui.pages.backup.components.rememberRestorePassphrasePrompt
 import me.rerere.rikkahub.ui.pages.backup.components.BackupDialog
 import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
 import me.rerere.rikkahub.ui.theme.CustomColors
@@ -88,7 +85,6 @@ import java.time.Instant
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 
-private const val MIN_BACKUP_PASSPHRASE = 6
 
 private val IntervalOptions = listOf(6, 12, 24, 72)
 private val RetentionOptions = listOf(0, 5, 10, 20)
@@ -109,9 +105,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val config = settings.backupReminderConfig
     val target = config.backupTarget
-    val passphrasePrompt = rememberRestorePassphrasePrompt()
-    RestorePassphraseDialog(passphrasePrompt)
-
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -169,43 +162,17 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
         scope.launch {
             busy = true
             restoreFraction = null
-            busyLabel = "正在读取备份文件…"
+            busyLabel = "正在解压并校验备份…"
             try {
-                busyLabel = "正在解密并校验备份…"
-                // 双模式：先用本机密钥；本机没有密钥或密钥不匹配时，允许输入备份口令（至少 6 位）
-                var typed: CharArray? = null
-                while (true) {
-                    try {
-                        vm.restoreFromStream({ context.contentResolver.openInputStream(uri) }, typed) { done, total ->
-                            if (total > 0) {
-                                val next = (done.toFloat() / total).coerceIn(0f, 1f)
-                                // 只在变化 >=1% 时更新，避免每 64KB 触发一次重组
-                                if (restoreFraction == null || kotlin.math.abs(next - restoreFraction!!) >= 0.01f) {
-                                    restoreFraction = next
-                                }
-                            }
-                        }
-                        break
-                    } catch (_: MissingBackupPassphraseException) {
-                        typed = passphrasePrompt.ask() ?: run {
-                            toast("这台设备没有备份密钥，也没有输入口令：请导入恢复密钥文件，或输入备份口令", error = true)
-                            showRecords = true
-                            return@launch
-                        }
-                        if (typed.size < MIN_BACKUP_PASSPHRASE) {
-                            toast("口令至少 $MIN_BACKUP_PASSPHRASE 位", error = true)
-                            return@launch
-                        }
-                    } catch (e: IllegalStateException) {
-                        if (e.message?.contains("口令") != true) throw e
-                        // 口令错误不设次数上限：用户随时可以重试，取消由用户点取消决定
-                        typed = passphrasePrompt.ask() ?: run {
-                            toast("备份与本机密钥不匹配：请导入对应的恢复密钥文件，或输入备份口令", error = true)
-                            return@launch
+                vm.restoreFromStream({ context.contentResolver.openInputStream(uri) }) { done, total ->
+                    if (total > 0) {
+                        val next = (done.toFloat() / total).coerceIn(0f, 1f)
+                        // 只在变化 >=1% 时更新，避免每 64KB 触发一次重组
+                        if (restoreFraction == null || kotlin.math.abs(next - restoreFraction!!) >= 0.01f) {
+                            restoreFraction = next
                         }
                     }
                 }
-                typed?.fill('\u0000')
                 toast("恢复完成")
                 showRestart = true
             } catch (e: Exception) {
@@ -213,15 +180,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             } finally {
                 busy = false
             }
-        }
-    }
-
-    val importKeyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            vm.importRecoveryKey(uri)
-                .onSuccess { toast("恢复密钥已导入") }
-                .onFailure { toast("导入失败：" + (it.message ?: "未知错误"), error = true) }
         }
     }
 
@@ -434,36 +392,14 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 showRecords = false
                 pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
             },
-            onImportKey = {
-                showRecords = false
-                importKeyLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
-            },
             onRestore = { action ->
                 restoringName = "restoring"
                 showRecords = false
                 scope.launch {
                     busy = true
                     busyLabel = "正在下载并校验备份…"
-                    var typed: CharArray? = null
                     try {
-                        while (true) {
-                            try {
-                                action(typed)
-                                break
-                            } catch (_: MissingBackupPassphraseException) {
-                                typed = passphrasePrompt.ask() ?: run {
-                                    toast("这台设备没有备份密钥，也没有输入口令：请先导入恢复密钥文件", error = true)
-                                    return@launch
-                                }
-                            } catch (e: IllegalStateException) {
-                                if (e.message?.contains("口令") != true) throw e
-                                typed = passphrasePrompt.ask() ?: run {
-                                    toast("备份与本机密钥不匹配：请导入对应的恢复密钥文件，或输入备份口令", error = true)
-                                    return@launch
-                                }
-                            }
-                        }
-                        typed?.fill('\u0000')
+                        action()
                         toast("恢复完成")
                         showRecords = false
                         showRestart = true
@@ -485,7 +421,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
     if (showAdvanced) {
         AdvancedSheet(
             vm = vm,
-            onImportKey = { importKeyLauncher.launch(arrayOf("text/plain", "*/*")) },
             onDismiss = { showAdvanced = false },
         )
     }
@@ -665,8 +600,7 @@ private fun RecordsSheet(
     s3Items: UiState<List<S3BackupItem>>,
     restoringName: String?,
     onLocalRestore: () -> Unit,
-    onImportKey: () -> Unit,
-    onRestore: (suspend (CharArray?) -> Unit) -> Unit,
+    onRestore: (suspend () -> Unit) -> Unit,
     onDelete: (String, suspend () -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -693,26 +627,21 @@ private fun RecordsSheet(
             }
             when (section) {
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("选择本机保存的备份文件。备份用密钥加密，不再需要记口令：同机恢复直接用本机密钥；换机后先导入恢复密钥文件再恢复。")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onLocalRestore, enabled = restoringName == null) { Text("选择文件") }
-                        FilledTonalButton(onClick = onImportKey, enabled = restoringName == null) {
-                            Text("导入恢复密钥文件")
-                        }
-                    }
+                    Text("选择本机保存的备份文件（明文 zip，直接解压恢复，不需要口令或密钥）。")
+                    Button(onClick = onLocalRestore, enabled = restoringName == null) { Text("选择文件") }
                 }
                 BackupTarget.WEBDAV -> BackupList(
                     state = webDavItems,
                     restoringName = restoringName,
                     describe = { "${it.displayName}" to "${it.size.fileSizeToString()} · ${it.lastModified.toLocalDateTime()}" },
-                    onRestore = { item -> onRestore { pass -> vm.restore(item, pass) } },
+                    onRestore = { item -> onRestore { vm.restore(item) } },
                     onDelete = { item -> onDelete(item.displayName) { vm.deleteWebDavBackupFile(item) } },
                 )
                 BackupTarget.S3 -> BackupList(
                     state = s3Items,
                     restoringName = restoringName,
                     describe = { "${it.displayName}" to "${it.size.fileSizeToString()} · ${it.lastModified.toLocalDateTime()}" },
-                    onRestore = { item -> onRestore { pass -> vm.restoreFromS3(item, pass) } },
+                    onRestore = { item -> onRestore { vm.restoreFromS3(item) } },
                     onDelete = { item -> onDelete(item.displayName) { vm.deleteS3BackupFile(item) } },
                 )
             }
@@ -755,7 +684,6 @@ private fun <T> BackupList(
 @Composable
 private fun AdvancedSheet(
     vm: BackupVM,
-    onImportKey: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -823,19 +751,6 @@ private fun AdvancedSheet(
                     ) { keep, selected -> ConnectedChoiceLabel(if (keep == 0) "全部" else keep.toString(), selected) }
                 }
             }
-            CardGroup(title = { Text("恢复密钥") }) {
-                item(
-                    leadingContent = { CardGroupIcon(HugeIcons.FileExport) },
-                    headlineContent = { Text("换机或重装时使用") },
-                    supportingContent = { Text("密钥文件属于敏感材料，请与备份分开保存，不要截图或分享。") },
-                )
-                item(onClick = onImportKey, headlineContent = { Text("导入恢复密钥文件（仅用于打开旧版加密备份）") })
-            }
-            Text(
-                "新备份不再加密、不需要口令或密钥；只有 0.9.9 之前生成的加密备份在恢复时会要求输入原口令（或导入当时的恢复密钥）。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
