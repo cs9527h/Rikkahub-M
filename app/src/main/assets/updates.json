@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T06:35:49Z",
+  "updatedAt": "2026-11-25T06:38:36Z",
   "releases": [
+    {
+      "version": "1.1.0",
+      "tag": "v1.1.0",
+      "title": "Rikkahub-M 1.1.0",
+      "summary": "聊天页顶栏直接使用上游实现。",
+      "body": "## 优化\n\n- 聊天页顶栏与按钮容器改为上游 RikkaHub 的原版实现（代码逐字节比对一致），去掉我之前几版加的改动\n- 1.0.9 已取消发布，直接安装本版\n\n## 其他\n\n- 版本 1.1.0 / versionCode 57，包名与签名不变，可覆盖升级 1.0.8",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "1.0.9",
       "tag": "v1.0.9",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "1.0.8",

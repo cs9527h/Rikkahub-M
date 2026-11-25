@@ -669,10 +669,7 @@ private fun TopBar(
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
-    val context = LocalContext.current
-    val resources = LocalResources.current
 
-    // 与上游一致：顶栏本身透明，滚动后由胶囊（ChatTopBarCapsule）承担底色，不再整栏铺渐变遮罩。
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
@@ -695,7 +692,6 @@ private fun TopBar(
         },
         title = {
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
-            // 不再给标题加独立胶囊；用简洁的两行文字呈现会话与助手。
             Surface(
                 onClick = {
                     if (conversation.messageNodes.isNotEmpty()) {
@@ -706,24 +702,25 @@ private fun TopBar(
                 },
                 color = Color.Transparent,
             ) {
-                Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+                Column {
+                    val provider = chatModel?.findProvider(providers = settings.providers, checkOverwrite = false)
                     Text(
                         text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = assistant.name.ifBlank {
-                            resources.getString(R.string.assistant_page_default_assistant)
-                        },
-                        overflow = TextOverflow.Ellipsis,
-                        maxLines = 1,
-                        color = LocalContentColor.current.copy(0.65f),
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.sp,
-                        ),
-                    )
+                    if (chatModel != null && provider != null) {
+                        Text(
+                            text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${chatModel.displayName} (${provider.name})",
+                            overflow = TextOverflow.Ellipsis,
+                            maxLines = 1,
+                            color = LocalContentColor.current.copy(0.65f),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.sp,
+                            )
+                        )
+                    }
                 }
             }
         },

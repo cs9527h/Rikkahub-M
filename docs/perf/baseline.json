@@ -1,7 +1,7 @@
 {
-  "version": "1.0.9",
+  "version": "1.1.0",
   "measured": false,
-  "source": "未采集（本版为顶栏胶囊视觉修复）",
+  "source": "未采集（本版为顶栏代码对齐上游）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
