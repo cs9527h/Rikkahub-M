@@ -293,6 +293,18 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     supportingContent = { Text("恢复、删除、刷新") },
                 )
                 item(
+                    onClick = { pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    leadingContent = { CardGroupIcon(HugeIcons.FileZip) },
+                    headlineContent = { Text("从备份文件恢复") },
+                    supportingContent = { Text("选择本应用导出的完整备份（zip）") },
+                )
+                item(
+                    onClick = { pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
+                    headlineContent = { Text("导入原版 RikkaHub 备份") },
+                    supportingContent = { Text("原版的 zip，聊天记录会在迁移后一起恢复") },
+                )
+                item(
                     onClick = { showImport = true },
                     leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
                     headlineContent = { Text("从其他应用导入") },
@@ -302,7 +314,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     onClick = { showAdvanced = true },
                     leadingContent = { CardGroupIcon(HugeIcons.Settings02) },
                     headlineContent = { Text("高级设置") },
-                    supportingContent = { Text("备份范围、周期、保留份数、恢复密钥") },
+                    supportingContent = { Text("备份范围、周期、保留份数") },
                 )
             }
         }
