@@ -293,18 +293,6 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     supportingContent = { Text("恢复、删除、刷新") },
                 )
                 item(
-                    onClick = { pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-                    leadingContent = { CardGroupIcon(HugeIcons.FileZip) },
-                    headlineContent = { Text("从备份文件恢复") },
-                    supportingContent = { Text("选择本应用导出的完整备份（zip）") },
-                )
-                item(
-                    onClick = { pickLocalBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
-                    leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
-                    headlineContent = { Text("导入原版 RikkaHub 备份") },
-                    supportingContent = { Text("原版的 zip，聊天记录会在迁移后一起恢复") },
-                )
-                item(
                     onClick = { showImport = true },
                     leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
                     headlineContent = { Text("从其他应用导入") },
@@ -776,6 +764,7 @@ private fun ImportSheet(
                         }
                     }
                     "deepseek" -> vm.restoreFromDeepSeek(uri)
+                    "upstream" -> vm.restoreFromStream({ context.contentResolver.openInputStream(uri) })
                     else -> {
                         val temp = File(context.cacheDir, "cherry_${System.currentTimeMillis()}.zip")
                         try {
@@ -813,6 +802,7 @@ private fun ImportSheet(
                     "chatbox" to "Chatbox 备份",
                     "deepseek" to "DeepSeek 导出",
                     "cherry" to "Cherry Studio 备份",
+                    "upstream" to "原版 RikkaHub 备份",
                 ).forEach { (key, label) ->
                     item(
                         onClick = { type = key },
