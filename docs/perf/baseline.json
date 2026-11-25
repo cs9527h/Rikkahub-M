@@ -1,7 +1,7 @@
 {
-  "version": "0.9.17",
+  "version": "0.9.18",
   "measured": false,
-  "source": "未采集（本版为导出/恢复入口调整）",
+  "source": "未采集（本版为入口修复）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

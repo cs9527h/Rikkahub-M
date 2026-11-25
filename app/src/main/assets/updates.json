@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T05:40:43Z",
+  "updatedAt": "2026-11-25T05:49:23Z",
   "releases": [
+    {
+      "version": "0.9.18",
+      "tag": "v0.9.18",
+      "title": "Rikkahub-M 0.9.18",
+      "summary": "补上原版备份导入入口。",
+      "body": "## 修复\n\n- 恢复页补上「导入原版 RikkaHub 备份」按钮（上一个版本只写了说明、按钮没加上），现在两个入口都在\n- 去掉页面里残留的「兼容原版导出」旧说明\n\n## 其他\n\n- 0.9.17 已取消发布，直接安装本版即可\n- 版本 0.9.18 / versionCode 54，可覆盖升级 0.9.16",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.17",
       "tag": "v0.9.17",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.16",

@@ -23,6 +23,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -475,12 +476,18 @@ private fun StorageSheet(
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("本机备份保存为你选择的文件，是普通 zip，不加密、不需要口令。")
                     Text(
-                        "换机时把文件拷到新手机直接导入即可；含聊天记录的完整备份只有本应用能恢复，" +
-                            "「兼容原版」导出的包原版 RikkaHub 也能导入。",
+                        "导出即完整备份：设置 + 聊天记录 + 附件 + API Key，换机拷文件回来直接恢复。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     FilledTonalButton(onClick = onRestoreLocal) { Text("从本机文件恢复") }
+                    Text(
+                        "原版 RikkaHub 导出的备份（settings.json + rikka_hub.db + 附件）也能直接导入，" +
+                            "聊天记录会在 34→41 迁移后一起恢复。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = onRestoreLocal) { Text("导入原版 RikkaHub 备份") }
                 }
                 BackupTarget.WEBDAV -> CardGroup(title = { Text("WebDAV") }) {
                     // 明文地址 + Basic 认证 = 口令在局域网上裸奔，这里显式提示而不是静默拦下
