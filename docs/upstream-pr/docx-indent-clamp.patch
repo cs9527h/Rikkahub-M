@@ -1,0 +1,62 @@
+From 5a476312a27a898fca4e073afbf58c8a95fa3b4a Mon Sep 17 00:00:00 2001
+From: re-ovo <1609403959@qq.com>
+Date: Wed, 25 Nov 2026 12:51:09 +0800
+Subject: [PATCH] =?UTF-8?q?fix(document):=20DOCX/PPTX=20=E5=88=97=E8=A1=A8?=
+ =?UTF-8?q?=E5=B1=82=E7=BA=A7=E9=99=90=E5=B9=85=EF=BC=8C=E9=81=BF=E5=85=8D?=
+ =?UTF-8?q?=E7=95=B8=E5=BD=A2=E6=96=87=E6=A1=A3=E6=92=91=E7=88=86=E5=86=85?=
+ =?UTF-8?q?=E5=AD=98?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ilvl / lvl 是文档里的任意整数，后面的 "  ".repeat(level) 会按它分配字符串：
+一份几 KB 的 docx 写 ilvl=99999999 就能让解析 OOM。层级实际上限就是 0-8，
+标题级别限 1-6。
+---
+ document/src/main/java/me/rerere/document/DocxParser.kt | 7 +++++--
+ document/src/main/java/me/rerere/document/PptxParser.kt | 3 ++-
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/document/src/main/java/me/rerere/document/DocxParser.kt b/document/src/main/java/me/rerere/document/DocxParser.kt
+index bc658b38..ea68d67d 100644
+--- a/document/src/main/java/me/rerere/document/DocxParser.kt
++++ b/document/src/main/java/me/rerere/document/DocxParser.kt
+@@ -313,7 +313,7 @@ object DocxParser {
+                         "pStyle" -> {
+                             val styleVal = parser.getAttributeValue(null, "val")
+                             if (styleVal?.startsWith("Heading") == true || styleVal?.startsWith("heading") == true) {
+-                                headingLevel = styleVal.lastOrNull()?.digitToIntOrNull() ?: 1
++                                headingLevel = (styleVal.lastOrNull()?.digitToIntOrNull() ?: 1).coerceIn(1, 6)
+                             }
+                         }
+                         "numPr" -> {
+@@ -321,7 +321,10 @@ object DocxParser {
+                             while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                                 when (parser.eventType) {
+                                     XmlPullParser.START_TAG -> when (parser.name) {
+-                                        "ilvl" -> listLevel = parser.getAttributeValue(null, "val")?.toIntOrNull() ?: 0
++                                        // ilvl 来自文档本身，必须限幅：畸形文档写 100000 会让
++                                        // 后面的 "  ".repeat(level) 直接撑爆内存。
++                                        "ilvl" -> listLevel =
++                                            (parser.getAttributeValue(null, "val")?.toIntOrNull() ?: 0).coerceIn(0, 8)
+                                         "numId" -> isNumbered = parser.getAttributeValue(null, "val") != null
+                                     }
+                                     XmlPullParser.END_TAG -> {
+diff --git a/document/src/main/java/me/rerere/document/PptxParser.kt b/document/src/main/java/me/rerere/document/PptxParser.kt
+index 95debae2..2424d804 100644
+--- a/document/src/main/java/me/rerere/document/PptxParser.kt
++++ b/document/src/main/java/me/rerere/document/PptxParser.kt
+@@ -206,8 +206,9 @@ object PptxParser {
+                         }
+ 
+                         "lvl" -> {
++                            // 与 DocxParser 的 ilvl 一致：层级来自演示文稿，必须限幅。
+                             parser.getAttributeValue(null, "val")?.let {
+-                                level = it.toIntOrNull() ?: 0
++                                level = (it.toIntOrNull() ?: 0).coerceIn(0, 8)
+                             }
+                         }
+                     }
+-- 
+2.43.0
+
