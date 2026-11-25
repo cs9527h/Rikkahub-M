@@ -12,6 +12,13 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.15）
+
+- 0.9.15：兼容原版导出把头像/背景引用改写到原版包名目录（`BackupFileUris.relocateTo` + 单测）。
+- 0.9.15：本机导出恢复携带 API Key / OAuth（远端与自动备份仍剥离），解决原版导入后模型不可用。
+- 0.9.15：删除 `Theme.Rikkahub` 里硬编码的 `windowBackground`（聊天页顶部白块的来源）。
+- 0.9.15：清除 fork 上的 4 个上游补丁分支与 `docs/upstream-pr`。
+
 ## 当前状态（0.9.14）
 
 - 0.9.14：修掉备份页与安全模式里「已加密/恢复密钥」的过期文案。

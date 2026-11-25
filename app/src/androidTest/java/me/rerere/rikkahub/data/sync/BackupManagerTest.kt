@@ -188,12 +188,17 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
-    @Test fun plaintextExportCannotCarryCredentials() = runBlocking {
-        val failure = runCatching {
-            manager.createBackup(false, false, includeCredentials = true)
-        }.exceptionOrNull()
-        assertTrue(failure is IllegalArgumentException)
-        assertTrue(context.cacheDir.listFiles().orEmpty().isEmpty())
+    @Test fun plaintextExportCanCarryCredentialsButBlanksWebServerSecret() = runBlocking {
+        // 与上游一致：本机导出的明文 zip 带 API Key，恢复后不用重配；
+        // 但 Web 服务的访问口令不进备份（它只在本机有意义）。
+        val archive = manager.createBackup(false, false, includeCredentials = true)
+        ZipFile(archive).use { zip ->
+            val settingsJson = zip.getInputStream(zip.getEntry("settings.json")).readBytes().decodeToString()
+            assertEquals(
+                "",
+                Regex("""\"webServerAccessPassword\":\"([^\"]*)\"""").find(settingsJson)?.groupValues?.get(1)
+            )
+        }
     }
 
     @Test fun manifestDescribesSettingsAndDatabaseAndRejectsCorruptionBeforeStaging() = runBlocking {

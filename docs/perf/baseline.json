@@ -1,7 +1,7 @@
 {
-  "version": "0.9.14",
+  "version": "0.9.15",
   "measured": false,
-  "source": "未采集（本版为文案清理与预览缓存）",
+  "source": "未采集（本版为兼容导出与窗口背景修复）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

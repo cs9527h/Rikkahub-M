@@ -19,6 +19,20 @@ class BackupFileUrisTest {
         )
     }
 
+    @Test fun compatExportRelocatesAssetsToUpstreamPackageWithoutTouchingOtherProjects() {
+        // 「兼容原版」导出：把我们的头像路径改写成原版包名的 files 目录，原版恢复时才找得到
+        val ours = "file:///data/user/0/com.rikkahub.mate/files/upload/avatar.png"
+        assertEquals(
+            "file:///data/user/0/me.rerere.rikkahub/files/upload/avatar.png",
+            BackupFileUris.relocateTo(ours, "/data/user/0/me.rerere.rikkahub/files", folders),
+        )
+        // 非托管引用（网络图、content URI）保持原样，避免把用户的数据改坏
+        assertEquals(
+            "https://example.com/avatar.png",
+            BackupFileUris.relocateTo("https://example.com/avatar.png", "/data/user/0/x/files", folders),
+        )
+    }
+
     @Test fun unicodeSpacesAndUrlEscapingRoundTripWithoutChangingTheFileName() {
         val original = File("/synthetic/old/files/upload/头像 #1.png").toURI().toASCIIString()
         val restored = BackupFileUris.restoreUri(original, File("/synthetic/new/files"), folders)

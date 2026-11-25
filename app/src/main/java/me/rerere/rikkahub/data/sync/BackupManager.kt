@@ -50,22 +50,31 @@ class BackupManager(
         includeFiles: Boolean,
         includeCredentials: Boolean = false,
         kind: BackupKind = BackupKind.FULL,
-    ): File = prepareBackup(includeDatabase, includeFiles, includeCredentials, kind).file
+        upstreamPortable: Boolean = false,
+    ): File = prepareBackup(includeDatabase, includeFiles, includeCredentials, kind, upstreamPortable).file
 
     internal suspend fun prepareBackup(
         includeDatabase: Boolean,
         includeFiles: Boolean,
         includeCredentials: Boolean = false,
         kind: BackupKind = BackupKind.FULL,
+        upstreamPortable: Boolean = false,
     ): PreparedBackup = withContext(Dispatchers.IO) {
         restoreMutex.withLock {
-            // 备份不再加密：明文 zip（与上游 RikkaHub 一致）。含凭据的备份依旧不允许生成。
-            require(!includeCredentials) { "备份不再支持写入凭据" }
+            // 与上游一致：本机导出的明文 zip 可以携带 API Key / OAuth；
+            // 远端（WebDAV/S3）与自动备份仍由调用方传 false，不会把凭据传到云上。
             val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
             val archive = File.createTempFile("backup_${kind.wireName}_${timestamp}_", ".zip", context.cacheDir)
             val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
             try {
                 val settings = settingsStore.awaitLoaded()
+                // 「兼容原版」导出：把头像/背景等托管文件引用改写到原版包名的 files 目录，
+                // 原版恢复时不做 URL 重写，只有绝对路径对得上才显示得出来。
+                val settingsForExport = if (upstreamPortable) {
+                    remapManagedAssetsTo(settings, UPSTREAM_FILES_DIR)
+                } else {
+                    settings
+                }
                 val backupSettings = kind != BackupKind.CHATS
                 val backupDatabase = kind == BackupKind.CHATS || (kind == BackupKind.FULL && includeDatabase)
                 val coreAssets = if (backupSettings) localCoreAssetFiles(settings) else emptyMap()
@@ -374,6 +383,19 @@ class BackupManager(
         }
     }
 
+    /** 把设置里的托管文件引用改写到指定 files 根（用于兼容原版导出）。 */
+    private fun remapManagedAssetsTo(settings: Settings, targetFilesDir: String): Settings {
+        fun relocate(value: String) =
+            BackupFileUris.relocateTo(value, targetFilesDir, ATTACHMENT_FOLDERS.toSet())
+        fun avatar(value: Avatar): Avatar = if (value is Avatar.Image) value.copy(url = relocate(value.url)) else value
+        return settings.copy(
+            displaySetting = settings.displaySetting.copy(userAvatar = avatar(settings.displaySetting.userAvatar)),
+            assistants = settings.assistants.map { assistant ->
+                assistant.copy(avatar = avatar(assistant.avatar), background = assistant.background?.let(::relocate))
+            },
+        )
+    }
+
     private fun remapManagedAssets(settings: Settings): Settings {
         fun relocate(value: String) = BackupFileUris.restoreUri(value, context.filesDir, ATTACHMENT_FOLDERS.toSet())
         fun avatar(value: Avatar): Avatar = if (value is Avatar.Image) value.copy(url = relocate(value.url)) else value
@@ -441,6 +463,9 @@ class BackupManager(
         private const val MAX_SETTINGS_BYTES = 64L * 1024 * 1024
         private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
         private const val TAG = "BackupManager"
+
+        /** 原版 RikkaHub 的 files 目录（app id 固定为 me.rerere.rikkahub）。 */
+        private const val UPSTREAM_FILES_DIR = "/data/user/0/me.rerere.rikkahub/files"
 
         internal val ATTACHMENT_FOLDERS =
             listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)

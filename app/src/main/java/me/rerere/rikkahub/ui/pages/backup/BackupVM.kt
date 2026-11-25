@@ -161,7 +161,11 @@ class BackupVM(
         }
         webDavSync.prepareBackupFile(
             settings.value.webDavConfig.copy(items = items),
-            includeCredentials = false,
+            // 本机导出给用户自己用：带上 API Key / OAuth，恢复后不用重配；
+            // 远端与自动备份仍是 false（见 backup()/backupToS3()）。
+            includeCredentials = true,
+            // 不含数据库 = 「兼容原版」导出：同时把头像/背景的文件引用改写到原版包名目录
+            upstreamPortable = !includeDatabase,
         )
     }
 
