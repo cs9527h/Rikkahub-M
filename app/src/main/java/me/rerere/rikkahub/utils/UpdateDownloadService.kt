@@ -258,9 +258,16 @@ class UpdateDownloadService : Service(), KoinComponent {
          * [stop] 是异步销毁，服务里的 Idle 渲染经常来不及跑，进度通知就会永久停在
          * 「正在下载 xx%（取消下载）」上，点了也没反应。
          */
+        @SuppressLint("MissingPermission") // 下面已显式检查通知开关与 POST_NOTIFICATIONS
         fun finishCancelled(context: Context) {
             runCatching {
                 if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return@runCatching
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    return@runCatching
+                }
                 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_stat_rikkahub)
                     .setContentTitle("更新下载已取消")
