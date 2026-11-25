@@ -64,15 +64,20 @@ internal object PartialMemoryRestore {
                 preserveCurrentMemory -> Files.copy(stagedDatabase.toPath(), merged.toPath())
                 latest.isFile -> Files.copy(latest.toPath(), merged.toPath())
             }
-            val room = AppDatabaseFactory.create(context, merged.absolutePath)
-            try {
-                room.withTransaction {
-                    room.memoryDao().deleteAllFiles()
-                    room.memoryDao().upsertFiles(sourceMemories)
+            // 换机/重装恢复聊天时本机还没有数据库，也没有 memory.json：这时候 merged 就是备份库本身，
+            // 再「用本机记忆覆盖」等于把备份里自带的记忆行删干净。没有本机来源就原样保留备份库。
+            val hasMemorySource = memoryFile.isFile || latest.isFile
+            if (hasMemorySource) {
+                val room = AppDatabaseFactory.create(context, merged.absolutePath)
+                try {
+                    room.withTransaction {
+                        room.memoryDao().deleteAllFiles()
+                        room.memoryDao().upsertFiles(sourceMemories)
+                    }
+                    DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
+                } finally {
+                    room.close()
                 }
-                DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
-            } finally {
-                room.close()
             }
             DatabaseBackup.normalize(context, merged)
             require(stagedDatabase.parentFile!!.isDirectory || stagedDatabase.parentFile!!.mkdirs())

@@ -339,6 +339,8 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                 reextract = false
                 vm.startReextract(sources)
             },
+            // 助手自己的记忆库不该把别的角色卡的聊天列出来
+            ownerAssistantId = if (useGlobal) null else assistant.id.toString(),
         )
     }
 

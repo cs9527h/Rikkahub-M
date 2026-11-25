@@ -20,6 +20,10 @@ import javax.crypto.spec.SecretKeySpec
  */
 internal object WebJwt {
     private const val ALGORITHM = "HS256"
+
+    /** 允许的前后时钟偏差（秒）。 */
+    private const val CLOCK_SKEW_SECONDS = 120L
+
     private val encoder = Base64.getUrlEncoder().withoutPadding()
     private val decoder = Base64.getUrlDecoder()
     private val header = encode(
@@ -79,8 +83,11 @@ internal object WebJwt {
         val nowSeconds = nowMillis / 1000
         val expiresAt = payload.long("exp") ?: return false
         if (nowSeconds > expiresAt) return false
-        payload.long("iat")?.let { if (nowSeconds < it) return false }
-        payload.long("nbf")?.let { if (nowSeconds < it) return false }
+        // 手机时钟会被 NTP 校准或用户手动调整；签名与校验用的是同一台设备的时间，
+        // 严格比较会让「刚登录就 401」。留一点正常时钟偏差。
+        val earliestAcceptable = nowSeconds + CLOCK_SKEW_SECONDS
+        payload.long("iat")?.let { if (earliestAcceptable < it) return false }
+        payload.long("nbf")?.let { if (earliestAcceptable < it) return false }
         return true
     }
 

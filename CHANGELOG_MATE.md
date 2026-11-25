@@ -8,6 +8,24 @@
 
 # Mate · 更新日志
 
+## 1.1.3 — 全量代码复查与修复（2026-11-25）
+
+- 修复：换机/重装恢复聊天时，`PartialMemoryRestore` 在本机没有数据库的情况下把备份库自带的 `memory_file` 行删空，导致记忆全丢；现在只有存在本机记忆来源时才做搬运。
+- 修复：历史整理的两条来源查询没有 `assistant_id` 条件，给某个助手整理记忆会把所有助手的聊天发给模型并写进这个助手的库（之后还会被召回注入）；现在按记忆库作用域过滤，只有全局库才扫描全部聊天。
+- 修复：`FileUtils.buildUuidFileName` 只取 `.` 之后的字符当扩展名，导入包/远端 MCP 配置里的 `x./../../datastore/...` 会把写入带出目标目录；扩展名改为只接受纯字母数字，`createTargetFile` 再加 canonical 前缀断言。
+- 修复：`FilesRoutes` 按客户端 MIME 内联返回上传文件，同源脚本可读走 `localStorage` 里的令牌；统一加 `nosniff`，可执行类型改 `attachment` + octet-stream。
+- 修复：`PngTextChunkReader` 遇到 >8MB 的 IDAT 直接 `break`，4K 立绘的角色卡永远读不到数据；改为跳过超大块继续扫描，并加文本总量上限。
+- 修复：更新下载——长度未知的 206 会把 `total` 算成负数导致误判「不完整」并删文件；取消下载后通知永久卡住；取消后立刻重试两个协程写同一个 APK。
+- 修复：自动备份失败不推进 `lastCheckedAt`，每次切前后台都重跑整包上传；成功后也不再残留上一次的错误提示。
+- 修复：备份临时包原在 `cacheDir`（明文凭据、会被系统清理），改到 `noBackupFilesDir/backup-tmp` 并清理 6 小时前残留；恢复输入流加逐块上限，旧格式包补空间预检。
+- 修复：保留策略只按服务端 `Last-Modified` 排序，缺字段时会删掉最新的自动备份；改为文件名时间戳优先。
+- 修复：整理任务来源 JSON 损坏会让任务永久停在 `running`；`MemoryTriage` 把「不过/不同/不错」当否定导致批量按建议永远只能逐条确认。
+- 修复：JWT `iat` 硬比较（时钟回拨即 401）、口令限流表只增不减、`V1.0.10` 解析成 0 导致更新提醒失效、更新弹窗回退整段 CI 正文、WebDAV 下载空转、导入 `readUri` 无上限。
+- 测试：新增 `FileUtilsTest`、`PngTextChunkReaderTest`（2 例）、`BackupRetentionTest`（1 例）、`VersionTest`（1 例）回归用例。
+- 兼容：无数据库迁移；versionCode 60 / 1.1.3，包名与签名不变，可覆盖升级 1.1.2。
+- 明细：`docs/audit/2026-11-25-full-code-check.md`。
+
+
 ## 1.1.2 — 「原版 RikkaHub 备份」放进「从其他应用导入」（2026-11-25）
 
 - 调整：把「原版 RikkaHub 备份」放到 `备份与恢复 → 从其他应用导入` 里，与 Chatbox / DeepSeek / Cherry Studio 并列；选中后点「选择文件并导入」即可，走完整恢复管线（原版库 34 → 我们 41 迁移，聊天记录一起恢复），完成后提示重启。

@@ -190,16 +190,7 @@ class UpdateDownloadService : Service(), KoinComponent {
         UpdateDownloadState.Idle -> ""
     }
 
-    private fun launchIntent(): PendingIntent? {
-        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return null
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
+    private fun launchIntent(): PendingIntent? = launchIntent(this)
 
     private fun createChannel() {
         val manager = NotificationManagerCompat.from(this)
@@ -259,6 +250,39 @@ class UpdateDownloadService : Service(), KoinComponent {
 
         fun stop(context: Context) {
             runCatching { context.stopService(Intent(context, UpdateDownloadService::class.java)) }
+        }
+
+        /**
+         * 取消下载的收尾：先把「已取消」发出去，再停服务。
+         *
+         * [stop] 是异步销毁，服务里的 Idle 渲染经常来不及跑，进度通知就会永久停在
+         * 「正在下载 xx%（取消下载）」上，点了也没反应。
+         */
+        fun finishCancelled(context: Context) {
+            runCatching {
+                if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return@runCatching
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_rikkahub)
+                    .setContentTitle("更新下载已取消")
+                    .setContentText("需要时可以重新下载，已下载的部分会尽量续传")
+                    .setAutoCancel(true)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setContentIntent(launchIntent(context))
+                    .build()
+                NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+            }.onFailure { Log.w(TAG, "取消通知发布失败", it) }
+            stop(context)
+        }
+
+        private fun launchIntent(context: Context): PendingIntent? {
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return null
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
         }
     }
 }

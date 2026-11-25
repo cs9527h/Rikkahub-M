@@ -15,6 +15,9 @@ import kotlin.uuid.Uuid
 object FileUtils {
     private const val TAG = "FileUtils"
 
+    /** 扩展名只允许纯字母数字，且长度有限。 */
+    private val SAFE_EXTENSION = Regex("[a-z0-9]{1,8}")
+
     fun buildUuidFileName(displayName: String?, mimeType: String?): String {
         val extFromName = displayName
             ?.substringAfterLast('.', "")
@@ -24,7 +27,11 @@ object FileUtils {
             ?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it.lowercase()) }
             ?.takeIf { it.isNotBlank() }
             ?.lowercase()
-        val ext = extFromName ?: extFromMime ?: "bin"
+        // displayName 可能来自导入的备份包或远端 MCP 配置，`x./../../datastore/foo` 这类名字
+        // 会让扩展名带上路径分隔符，拼出来的文件名写到目标目录之外。只接受纯字母数字扩展名。
+        val ext = listOfNotNull(extFromName, extFromMime)
+            .firstOrNull { SAFE_EXTENSION.matches(it) }
+            ?: "bin"
         return "${Uuid.random()}.$ext"
     }
 
@@ -122,7 +129,7 @@ object FileUtils {
                 "heic", "heix", "heim", "heis",
                 "hevc", "hevx", "hevm", "hevs",
                 "mif1", "msf1", "heif",
-                    -> return "image/heic"
+                -> return "image/heic"
 
                 "avif", "avis" -> return "image/avif"
             }

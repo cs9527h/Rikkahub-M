@@ -211,7 +211,10 @@ class UpdateChecker(
                 val info = UpdateInfo(
                     version = latestStable.version,
                     publishedAt = latestStable.publishedAt,
-                    changelog = UpdateNotes.userFacing(latestStable.body).ifBlank { latestStable.body },
+                    // userFacing 抽不出用户可读条目时返回空串是有意的（纯技术正文不该整段展示），
+                    // 这里只退回摘要，不能退回原始正文。
+                    changelog = UpdateNotes.userFacing(latestStable.body)
+                        .ifBlank { UpdateNotes.summary(latestStable.body) },
                     downloads = downloadsOf(latestStable),
                     summary = latestStable.summary.ifBlank { UpdateNotes.summary(latestStable.body) },
                     tag = latestStable.tag,
@@ -230,7 +233,8 @@ class UpdateChecker(
                     val info = UpdateInfo(
                         version = latestPreview.version,
                         publishedAt = latestPreview.publishedAt,
-                        changelog = UpdateNotes.userFacing(latestPreview.body).ifBlank { latestPreview.body },
+                        changelog = UpdateNotes.userFacing(latestPreview.body)
+                            .ifBlank { UpdateNotes.summary(latestPreview.body) },
                         downloads = downloadsOf(latestPreview),
                         summary = latestPreview.summary.ifBlank { UpdateNotes.summary(latestPreview.body) },
                         tag = latestPreview.tag,
@@ -303,7 +307,9 @@ class UpdateChecker(
      */
     private suspend fun ensureSha256(note: ReleaseNote): ReleaseNote {
         if (!note.sha256.isNullOrBlank()) return note
-        val sumsUrl = "https://github.com/$REPO/releases/download/${note.tag.ifBlank { "v${note.version}" }}/SHA256SUMS.txt"
+        val sumsUrl = "https://github.com/$REPO/releases/download/${note.tag.ifBlank {
+            "v${note.version}"
+        }}/SHA256SUMS.txt"
         return runCatching {
             val body = httpGet(sumsUrl, accept = "text/plain")
             val expected = apkName(note.version)
@@ -384,7 +390,9 @@ class UpdateChecker(
      * 放错位置会被 UpdateMainThreadSourceGuardTest 当场判失败。
      */
     fun startDownload(info: UpdateInfo) {
-        if (downloadJob?.isActive == true) return
+        // 只在真正结束后才允许再次开始：取消后 isActive 立刻为 false，
+        // 用 isActive 判断会让「取消 → 立刻重试」变成两个协程同时写同一个安装包。
+        if (downloadJob != null) return
         val download = info.downloads.firstOrNull()
         if (download == null) {
             downloadState.value = UpdateDownloadState.Failed(info.version, "该版本没有可下载的安装包")
@@ -486,7 +494,9 @@ class UpdateChecker(
      * 不再让用户先干等 GitHub 连接超时。所有来源都必须是 HTTPS。
      */
     private fun downloadSources(info: UpdateInfo, download: UpdateDownload): List<UpdateSource> {
-        val github = "https://github.com/$REPO/releases/download/${info.tag.ifBlank { "v${info.version}" }}/${download.name}"
+        val github = "https://github.com/$REPO/releases/download/${info.tag.ifBlank {
+            "v${info.version}"
+        }}/${download.name}"
         val mirror = "${mirrorBase().trimEnd('/')}/${download.name}"
         val mirrorSource = UpdateSource("备用源", mirror)
         val githubSource = UpdateSource(
@@ -542,10 +552,18 @@ class UpdateChecker(
     /** 取消下载：停掉协程，保留已下载部分（下次同一来源可续传），状态回到空闲。 */
     fun cancelDownload() {
         cancelRequested = true
-        downloadJob?.cancel()
-        downloadJob = null
-        UpdateDownloadService.stop(context)
         downloadState.value = UpdateDownloadState.Idle
+        val job = downloadJob
+        if (job != null) {
+            job.cancel()
+            // 不能立刻把 downloadJob 置空：旧协程可能还在写 apk 与续传元数据，
+            // 立刻重试就会有两个写入者写同一个文件。等它真正结束后再放开。
+            appScope.launch {
+                job.join()
+                if (downloadJob === job) downloadJob = null
+            }
+        }
+        UpdateDownloadService.finishCancelled(context)
     }
 
     /**
@@ -679,7 +697,6 @@ class UpdateChecker(
         const val KEY_MIRROR_BASE = "mirror_base"
         const val KEY_LAST_GOOD_SOURCE = "last_good_source"
         const val KEY_LAST_GOOD_LABEL = "last_good_label"
-
     }
 }
 

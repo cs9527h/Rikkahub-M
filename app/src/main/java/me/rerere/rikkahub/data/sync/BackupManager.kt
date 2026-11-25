@@ -45,6 +45,25 @@ class BackupManager(
 ) {
     private val restoreMutex = Mutex()
 
+    /**
+     * 备份/恢复用的临时目录。
+     *
+     * 不用 cacheDir：这里的 zip 里可能带着 API Key 与 OAuth（本机导出传 includeCredentials=true），
+     * 而 cacheDir 会被系统在低空间时直接清掉——正在上传的包被抽走，或者进程被杀后明文凭据长期留着。
+     * noBackupFilesDir 不会被系统回收，也不进云备份；残留文件按时间在下次进入时清掉。
+     */
+    private fun tempWorkspace(): File =
+        File(context.noBackupFilesDir, "backup-tmp").apply { mkdirs() }
+
+    private fun sweepStaleTempFiles() {
+        val cutoff = System.currentTimeMillis() - STALE_TEMP_MILLIS
+        runCatching {
+            tempWorkspace().listFiles()
+                ?.filter { it.lastModified() < cutoff }
+                ?.forEach { it.deleteRecursively() }
+        }.onFailure { Log.w(TAG, "清理备份临时文件失败", it) }
+    }
+
     suspend fun createBackup(
         includeDatabase: Boolean,
         includeFiles: Boolean,
@@ -61,9 +80,11 @@ class BackupManager(
         restoreMutex.withLock {
             // 与上游一致：本机导出的明文 zip 可以携带 API Key / OAuth；
             // 远端（WebDAV/S3）与自动备份仍由调用方传 false，不会把凭据传到云上。
+            sweepStaleTempFiles()
             val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-            val archive = File.createTempFile("backup_${kind.wireName}_${timestamp}_", ".zip", context.cacheDir)
-            val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
+            val workspace = tempWorkspace()
+            val archive = File.createTempFile("backup_${kind.wireName}_${timestamp}_", ".zip", workspace)
+            val staging = Files.createTempDirectory(workspace.toPath(), "backup-").toFile()
             try {
                 val settings = settingsStore.awaitLoaded()
                 val backupSettings = kind != BackupKind.CHATS
@@ -167,10 +188,32 @@ class BackupManager(
         includeFiles: Boolean,
         onProgress: ((Long, Long) -> Unit)? = null,
     ) = withContext(Dispatchers.IO) {
-        val staged = File.createTempFile("restore_input_", ".zip", context.cacheDir)
+        sweepStaleTempFiles()
+        val workspace = tempWorkspace()
+        val staged = File.createTempFile("restore_input_", ".zip", workspace)
         try {
+            // 复制阶段就要有上限：空间预检发生在 stageRestore 里，等它跑到时 /data 可能已经被写满。
+            val usable = runCatching { workspace.usableSpace }.getOrDefault(0L)
+            val cap = if (usable > BackupSpace.MARGIN_BYTES) {
+                minOf(usable - BackupSpace.MARGIN_BYTES, MAX_RESTORE_INPUT_BYTES)
+            } else {
+                MAX_RESTORE_INPUT_BYTES
+            }
             java.io.BufferedInputStream(input, 64 * 1024).use { stream ->
-                java.io.FileOutputStream(staged).use { out -> stream.copyTo(out) }
+                java.io.FileOutputStream(staged).use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var copied = 0L
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        copied += read
+                        require(copied <= cap) {
+                            "备份文件过大或设备空间不足，已在 ${cap / (1024 * 1024)} MB 处中止"
+                        }
+                        out.write(buffer, 0, read)
+                    }
+                }
             }
             stageRestore(
                 archive = staged,
@@ -209,8 +252,13 @@ class BackupManager(
                             val verified = BackupManifest.verifyDetailed(zip) { coroutineContext.ensureActive() }
                             restoredKind = verified.kind
                             // Reject an impossible restore before writing anything into the staging area.
-                            verified.entries?.let { entries ->
-                                val needed = entries.sumOf { it.size }
+                            // 旧格式包没有清单（entries == null），此时按 zip 条目大小估算，不能让它们跳过预检。
+                            val neededBytes = verified.entries?.sumOf { it.size }
+                                ?: zip.entries().asSequence()
+                                    .filter { !it.isDirectory }
+                                    .sumOf { entry -> if (entry.size > 0) entry.size else 0L }
+                            run {
+                                val needed = neededBytes
                                 val available = staging.usableSpace
                                 // 0 means the platform cannot report free space.
                                 if (needed > 0 && available > 0 && !BackupSpace.fits(needed, available)) {
@@ -439,6 +487,16 @@ class BackupManager(
 
     companion object {
         private const val MAX_SETTINGS_BYTES = 64L * 1024 * 1024
+
+        /** 恢复输入包的硬上限，与清单允许的展开总量保持同一量级。 */
+        private const val MAX_RESTORE_INPUT_BYTES = 32L * 1024 * 1024 * 1024
+
+        /**
+         * 进程中途被杀留下的临时包：超过这个时间就不再需要。
+         * 留得比一次慢速上传更长（6 小时），避免另一份导出/恢复把正在传的包顺手删掉。
+         */
+        private const val STALE_TEMP_MILLIS = 6L * 60 * 60 * 1000
+
         private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
         private const val TAG = "BackupManager"
 

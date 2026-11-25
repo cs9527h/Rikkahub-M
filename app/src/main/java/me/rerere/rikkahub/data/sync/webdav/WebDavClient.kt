@@ -15,9 +15,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
+import io.ktor.util.cio.readChannel
 import io.ktor.utils.io.jvm.javaio.toInputStream
 import io.ktor.utils.io.readAvailable
-import io.ktor.util.cio.readChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.WebDavConfig
@@ -168,11 +168,16 @@ class WebDavClient(
 
                 val channel = response.bodyAsChannel()
                 targetFile.outputStream().use { outputStream ->
-                    val buffer = ByteArray(8192)
-                    while (!channel.isClosedForRead) {
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
                         val bytesRead = channel.readAvailable(buffer)
+                        // -1 才是流结束：只等 isClosedForRead 时若该标志没有置位，
+                        // 这里会 100% CPU 空转到用户杀进程。
+                        if (bytesRead < 0) break
                         if (bytesRead > 0) {
                             outputStream.write(buffer, 0, bytesRead)
+                        } else if (channel.isClosedForRead) {
+                            break
                         }
                     }
                 }
@@ -242,7 +247,11 @@ class WebDavClient(
             if (!response.status.isSuccess() && response.status != HttpStatusCode.MethodNotAllowed) {
                 val errorBody = response.bodyAsText()
                 Log.e(TAG, "mkcol failed: ${response.status} - $errorBody")
-                throw WebDavException("Failed to create collection: ${response.status}", response.status.value, errorBody)
+                throw WebDavException(
+                    "Failed to create collection: ${response.status}",
+                    response.status.value,
+                    errorBody
+                )
             }
 
             Log.d(TAG, "mkcol success: $path")

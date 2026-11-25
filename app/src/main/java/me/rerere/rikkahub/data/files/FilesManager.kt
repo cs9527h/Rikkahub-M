@@ -432,7 +432,14 @@ class FilesManager(
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        return File(dir, FileUtils.buildUuidFileName(displayName = displayName, mimeType = mimeType))
+        val target = File(dir, FileUtils.buildUuidFileName(displayName = displayName, mimeType = mimeType))
+        // 最后一道防线：文件名已经只剩 UUID + 扩展名，仍然确认它落在目标目录里，
+        // 而不是靠调用方保证 displayName 干净。
+        val dirPath = dir.canonicalPath + File.separator
+        require(target.canonicalPath.startsWith(dirPath)) {
+            "Refusing to write outside $folder: ${target.name}"
+        }
+        return target
     }
 
     private fun buildUuidFileName(displayName: String?, mimeType: String?): String =

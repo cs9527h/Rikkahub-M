@@ -50,7 +50,9 @@ class WebJwtTest {
         assertFalse(verify(sign(), secret = "other"))
         assertFalse(verify(sign(), audience = "someone-else"))
         assertFalse(verify(sign(expiresAt = now - 1_000)))
-        assertFalse(verify(sign(), nowMillis = now - 10_000))
+        // 允许 120s 以内的时钟偏差（手机 NTP 校准），超出才算签发自未来。
+        assertTrue(verify(sign(), nowMillis = now - 30_000))
+        assertFalse(verify(sign(), nowMillis = now - 300_000))
     }
 
     @Test

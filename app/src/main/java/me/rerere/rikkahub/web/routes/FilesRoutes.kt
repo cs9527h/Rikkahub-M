@@ -3,8 +3,10 @@ package me.rerere.rikkahub.web.routes
 import android.content.Context
 import androidx.core.net.toUri
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveMultipart
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
@@ -141,8 +143,7 @@ fun Route.filesRoutes(
                 throw NotFoundException("File not found on disk")
             }
 
-            call.response.header("Content-Type", entity.mimeType)
-            call.respondFile(file)
+            call.respondUserFile(file, entity.mimeType, entity.displayName)
         }
 
         // GET /api/files/path/{...} - Get file by relative path
@@ -208,8 +209,7 @@ fun Route.filesRoutes(
                 }
             }
 
-            call.response.header("Content-Type", contentType)
-            call.respondFile(file)
+            call.respondUserFile(file, contentType, relativePath.substringAfterLast('/'))
         }
     }
 }
@@ -285,3 +285,31 @@ private fun ManagedFileEntity.toUploadedFileDto(filesManager: FilesManager) = Up
     mime = mimeType,
     size = sizeBytes,
 )
+
+/**
+ * 浏览器里执行脚本的类型：上传方可以自己给 MIME，落在 App 源下内联返回就会被当成页面跑起来，
+ * 直接读走前端存在 localStorage 里的访问令牌（web-ui/app/services/api.ts）。这些类型一律改成下载。
+ */
+private val SCRIPTABLE_CONTENT_TYPES = setOf(
+    "text/html",
+    "application/xhtml+xml",
+    "image/svg+xml",
+    "text/xml",
+    "application/xml",
+    "text/javascript",
+    "application/javascript",
+)
+
+private suspend fun ApplicationCall.respondUserFile(file: File, contentType: String, fileName: String) {
+    val baseMime = contentType.substringBefore(';').trim().lowercase()
+    val inlineSafe = baseMime !in SCRIPTABLE_CONTENT_TYPES
+    response.header("X-Content-Type-Options", "nosniff")
+    response.header(
+        HttpHeaders.ContentType,
+        if (inlineSafe) contentType else ContentType.Application.OctetStream.toString()
+    )
+    val disposition = if (inlineSafe) "inline" else "attachment"
+    val safeName = fileName.replace("\"", "").replace("\r", "").replace("\n", "").ifBlank { "file" }
+    response.header(HttpHeaders.ContentDisposition, "$disposition; filename=\"$safeName\"")
+    respondFile(file)
+}

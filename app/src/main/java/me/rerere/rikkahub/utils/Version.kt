@@ -15,8 +15,11 @@ import kotlin.jvm.JvmInline
 value class Version(val value: String) : Comparable<Version> {
 
     private fun parse(): ParsedVersion {
-        // 去掉 build metadata（+号后面的部分）
-        val withoutBuild = value.split("+").first()
+        // 去掉 build metadata（+号后面的部分）和常见的 tag 前缀（v1.0.10 / V1.0.10）。
+        // 不剥前缀时 "V1.0.10" 的三段都会解析成 0，更新检查会静默认为「早已是最新」。
+        val withoutBuild = value.split("+").first().trim()
+            .removePrefix("v")
+            .removePrefix("V")
         // 分离主版本号和预发布标识符
         val hyphenIndex = withoutBuild.indexOf('-')
         val (coreStr, prereleaseStr) = if (hyphenIndex >= 0) {

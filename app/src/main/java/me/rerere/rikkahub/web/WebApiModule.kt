@@ -239,15 +239,18 @@ internal class AuthAttemptLimiter(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val failures = mutableMapOf<String, ArrayDeque<Long>>()
+    private var lastSweep = 0L
 
     @Synchronized
     fun isBlocked(key: String): Boolean {
+        pruneExpired()
         val entries = prune(key) ?: return false
         return entries.size >= maxFailures
     }
 
     @Synchronized
     fun recordFailure(key: String) {
+        pruneExpired()
         val entries = prune(key) ?: ArrayDeque<Long>().also { failures[key] = it }
         entries.addLast(clock())
     }
@@ -255,6 +258,21 @@ internal class AuthAttemptLimiter(
     @Synchronized
     fun clear(key: String) {
         failures.remove(key)
+    }
+
+    /** 只有 key 再次出现才会被清理；换着来源地址打就会把表撑大，所以顺带扫一遍所有过期 key。 */
+    private fun pruneExpired() {
+        val now = clock()
+        if (now - lastSweep < windowMillis) return
+        lastSweep = now
+        val iterator = failures.entries.iterator()
+        while (iterator.hasNext()) {
+            val entries = iterator.next().value
+            while (entries.isNotEmpty() && now - entries.first() > windowMillis) {
+                entries.removeFirst()
+            }
+            if (entries.isEmpty()) iterator.remove()
+        }
     }
 
     private fun prune(key: String): ArrayDeque<Long>? {

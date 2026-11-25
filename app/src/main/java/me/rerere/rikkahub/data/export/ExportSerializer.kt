@@ -31,7 +31,7 @@ interface ExportSerializer<T> {
     fun import(context: Context, uri: Uri): Result<T>
 
     // 获取导出文件名
-    fun getExportFileName(data: T): String = "${type}.json"
+    fun getExportFileName(data: T): String = "$type.json"
 
     // 便捷方法：直接导出为 JSON 字符串
     fun exportToJson(data: T, json: Json = DefaultJson): String {
@@ -42,7 +42,22 @@ interface ExportSerializer<T> {
     fun readUri(context: Context, uri: Uri): String {
         return context.contentResolver.openInputStream(uri)
             ?.bufferedReader()
-            ?.use { it.readText() }
+            ?.use { reader ->
+                // 导入入口接受 md / txt / json：选错文件（比如几百 MB 的日志）时不能整份读进堆里。
+                val builder = StringBuilder()
+                val buffer = CharArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val read = reader.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    require(total <= MAX_IMPORT_CHARS) {
+                        "文件超过 ${MAX_IMPORT_CHARS / (1024 * 1024)} MB 上限，请选择正确的导入文件"
+                    }
+                    builder.append(buffer, 0, read)
+                }
+                builder.toString()
+            }
             ?: error("Failed to read file")
     }
 
@@ -51,11 +66,16 @@ interface ExportSerializer<T> {
             if (cursor.moveToFirst()) {
                 val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (nameIndex != -1) cursor.getString(nameIndex) else null
-            } else null
+            } else {
+                null
+            }
         }
     }
 
     companion object {
+        /** 提示词/角色卡这类导入文件的合理上限。 */
+        private const val MAX_IMPORT_CHARS = 64L * 1024 * 1024
+
         val DefaultJson = Json {
             ignoreUnknownKeys = true
             encodeDefaults = true
@@ -130,7 +150,7 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
             val json = readUri(context, uri)
             // 首先尝试解析为自己的格式
             tryImportNative(json)
-            // 然后尝试解析为 SillyTavern 格式
+                // 然后尝试解析为 SillyTavern 格式
                 ?: tryImportSillyTavern(json, getUriFileName(context, uri)?.removeSuffix(".json"))
                 ?: throw IllegalArgumentException("Unsupported format")
         }
@@ -191,7 +211,7 @@ object LorebookSerializer : ExportSerializer<Lorebook> {
             1 -> InjectionPosition.AFTER_SYSTEM_PROMPT
             2 -> InjectionPosition.TOP_OF_CHAT
             3 -> InjectionPosition.TOP_OF_CHAT // After Examples -> 聊天历史开头
-            4 -> InjectionPosition.AT_DEPTH    // @Depth 模式
+            4 -> InjectionPosition.AT_DEPTH // @Depth 模式
             else -> InjectionPosition.AFTER_SYSTEM_PROMPT
         }
     }

@@ -1,7 +1,7 @@
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "measured": false,
-  "source": "未采集（本版为入口位置调整）",
+  "source": "未采集（本版为全量代码复查修复）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

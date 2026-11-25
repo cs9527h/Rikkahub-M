@@ -60,8 +60,9 @@ class MateAutoBackupWorker(
                     for (transport in listOf("webdav", "s3")) {
                         val ready = if (transport == "webdav") davReady else s3Ready
                         if (!ready) continue
+                        val stateKey = AutoBackupPolicy.key(transport, kind)
+                        val checkedAt = System.currentTimeMillis()
                         try {
-                            val stateKey = AutoBackupPolicy.key(transport, kind)
                             val currentState =
                                 settingsStore.awaitLoaded().backupReminderConfig.autoBackupStates[stateKey]
                             val destinationId = if (transport == "webdav") {
@@ -76,7 +77,6 @@ class MateAutoBackupWorker(
                                     s3.accessKeyId,
                                 )
                             }
-                            val checkedAt = System.currentTimeMillis()
                             if (currentState?.destinationId == destinationId &&
                                 !AutoBackupPolicy.isDue(currentState, kind, checkedAt, hours)
                             ) {
@@ -100,7 +100,9 @@ class MateAutoBackupWorker(
                                     lastBackupTime = if (fingerprint == null) config.lastBackupTime else checkedAt,
                                     lastAutoBackupTime =
                                     if (fingerprint == null) config.lastAutoBackupTime else checkedAt,
-                                    lastAutoBackupError = if (fingerprint == null) config.lastAutoBackupError else "",
+                                    // 走到这里说明这次检查成功了：旧的错误提示必须清掉，
+                                    // 哪怕内容和上次一致（fingerprint == null）也不能留着。
+                                    lastAutoBackupError = "",
                                 ))
                             }
                             if (fingerprint != null) {
@@ -125,6 +127,23 @@ class MateAutoBackupWorker(
                         } catch (_: Exception) {
                             // One unreachable destination or type must not cancel the others.
                             hadFailure = true
+                            // 失败也要推进「检查时间」：isDue 只看 lastCheckedAt，不写就等于永远到期，
+                            // 每次切前后台都会重新打包整份备份并上传（网络不通时就是持续的 IO 风暴）。
+                            runCatching {
+                                settingsStore.update { current ->
+                                    val config = current.backupReminderConfig
+                                    current.copy(
+                                        backupReminderConfig = config.copy(
+                                            autoBackupStates = config.autoBackupStates +
+                                                (stateKey to AutoBackupPolicy.checked(
+                                                    config.autoBackupStates[stateKey],
+                                                    checkedAt,
+                                                )),
+                                            lastAutoBackupError = "网络或备份存储暂不可用",
+                                        )
+                                    )
+                                }
+                            }.onFailure { Log.w("MateAutoBackup", "记录备份检查时间失败", it) }
                         }
                     }
                 }

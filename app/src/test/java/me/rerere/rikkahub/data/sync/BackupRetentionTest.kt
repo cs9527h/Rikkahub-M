@@ -58,6 +58,18 @@ class BackupRetentionTest {
         )
     }
 
+    @Test fun newestNameIsKeptEvenWhenServerTimestampIsMissing() {
+        // S3 缺 Last-Modified、WebDAV 解析失败都会退成 EPOCH：只按服务端时间排序会把最新的删掉。
+        val newestWithoutTimestamp = version("backup_settings_20260303_030303.zip", 0)
+        val olderWithTimestamp = version("backup_settings_20260101_010101.zip", 9_999_999)
+        val expired = BackupRetention.selectExpired(
+            listOf(newestWithoutTimestamp, olderWithTimestamp),
+            BackupKind.SETTINGS,
+            1,
+        )
+        assertEquals(listOf(olderWithTimestamp), expired)
+    }
+
     @Test fun timestampTiesAreDeterministic() {
         val a = version("backup_settings_20260101_010101.zip", 5)
         val b = version("backup_settings_20260102_010101.zip", 5)

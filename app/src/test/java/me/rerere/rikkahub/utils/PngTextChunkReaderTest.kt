@@ -70,4 +70,29 @@ class PngTextChunkReaderTest {
         )
         assertTrue(chunks.isEmpty())
     }
+
+    @Test
+    fun `text chunk after an oversized image block is still read`() {
+        // 4K 立绘的 IDAT 常超过单块上限；过去遇到它就 break，卡数据整段读不到。
+        val text = "[chara:huge]"
+        val bytes = png(
+            chunk("IHDR", ByteArray(13)),
+            chunk("IDAT", ByteArray(9 * 1024 * 1024)),
+            chunk("tEXt", "chara\u0000$text".toByteArray(Charsets.ISO_8859_1)),
+            chunk("IEND", ByteArray(0)),
+        )
+        assertEquals(listOf(text), PngTextChunkReader.readTextChunks(ByteArrayInputStream(bytes)))
+    }
+
+    @Test
+    fun `total text size is capped instead of exhausting the heap`() {
+        val text = "a".repeat(7 * 1024 * 1024)
+        val out = ByteArrayOutputStream()
+        out.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        repeat(3) { out.write(chunk("tEXt", "k\u0000$text".toByteArray(Charsets.ISO_8859_1))) }
+        out.write(chunk("IEND", ByteArray(0)))
+        val chunks = PngTextChunkReader.readTextChunks(ByteArrayInputStream(out.toByteArray()))
+        assertTrue("至少读到一段", chunks.isNotEmpty())
+        assertTrue("总量应被限制", chunks.sumOf { it.length } <= 8 * 1024 * 1024)
+    }
 }

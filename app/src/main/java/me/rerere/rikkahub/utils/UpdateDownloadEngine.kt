@@ -302,7 +302,11 @@ object UpdateDownloadEngine {
                     deleteQuietly(target, metaFile)
                     throw UpdateRestartException("续传区间不匹配，已重置下载")
                 }
-                total = range.total ?: (range.start + response.body.contentLength())
+                total = range.total ?: response.body.contentLength().let { bodyLength ->
+                    // 长度未知时 contentLength() 是 -1：这里不能当成 0 或负数，
+                    // 否则写完的字节数永远对不上 total，会把已经下好的文件判成「不完整」并删掉。
+                    if (bodyLength >= 0) range.start + bodyLength else -1L
+                }
             } else {
                 resumeFrom = 0
                 target.delete()

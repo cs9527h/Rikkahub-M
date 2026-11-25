@@ -24,30 +24,48 @@ object PngTextChunkReader {
     /** 单块上限：8 MB，避免畸形文件把内存吃满。 */
     private const val MAX_CHUNK_BYTES = 8 * 1024 * 1024
 
+    /** 所有文本块合计上限：一条 8 MB 的 tEXt 不算问题，几百条加起来就能把堆打爆。 */
+    private const val MAX_TOTAL_TEXT_CHARS = 4 * 1024 * 1024
+
     /** 读取所有文本块内容（按文件顺序）。非 PNG 或没有文本块时返回空列表。 */
     fun readTextChunks(input: InputStream): List<String> {
         val header = ByteArray(8)
         if (!readFully(input, header) || !header.contentEquals(PNG_SIGNATURE)) return emptyList()
 
         val texts = mutableListOf<String>()
+        var totalChars = 0
         val lengthBytes = ByteArray(4)
         val typeBytes = ByteArray(4)
+        val crcBytes = ByteArray(4)
         while (true) {
             if (!readFully(input, lengthBytes)) break
             val length = readInt(lengthBytes)
-            if (length < 0 || length > MAX_CHUNK_BYTES) break
+            if (length < 0) break
             if (!readFully(input, typeBytes)) break
             val type = String(typeBytes, Charsets.US_ASCII)
+            if (length > MAX_CHUNK_BYTES) {
+                // 大图的 IDAT 通常有几十 MB，它只是像素数据：跳过去继续找后面的文本块，
+                // 不能因为一块超大就结束整个扫描，否则 4K 角色卡的卡数据永远读不到。
+                if (type == "IEND") break
+                if (!skipFully(input, length.toLong() + 4L)) break
+                continue
+            }
             val data = ByteArray(length)
             if (!readFully(input, data)) break
             // crc 跳过：这里只读文本，不校验完整性
-            if (!readFully(input, ByteArray(4))) break
+            if (!readFully(input, crcBytes)) break
 
-            when (type) {
-                "tEXt" -> parseTextChunk(data)?.let { texts.add(it) }
-                "iTXt" -> parseInternationalTextChunk(data)?.let { texts.add(it) }
-                "IEND" -> break
+            val text = when (type) {
+                "tEXt" -> parseTextChunk(data)
+                "iTXt" -> parseInternationalTextChunk(data)
+                else -> null
             }
+            if (text != null) {
+                texts.add(text)
+                totalChars += text.length
+                if (totalChars >= MAX_TOTAL_TEXT_CHARS) break
+            }
+            if (type == "IEND") break
         }
         return texts
     }
@@ -97,6 +115,25 @@ object PngTextChunkReader {
             val read = input.read(buffer, offset, buffer.size - offset)
             if (read <= 0) return false
             offset += read
+        }
+        return true
+    }
+
+    /** 跳过 [count] 字节，用于略过不关心的大块，避免为它们分配内存。 */
+    private fun skipFully(input: InputStream, count: Long): Boolean {
+        var remaining = count
+        val scratch = ByteArray(64 * 1024)
+        while (remaining > 0) {
+            val skipped = runCatching {
+                input.skip(remaining)
+            }.getOrDefault(0L)
+            if (skipped > 0) {
+                remaining -= skipped
+                continue
+            }
+            val read = input.read(scratch, 0, minOf(remaining, scratch.size.toLong()).toInt())
+            if (read <= 0) return false
+            remaining -= read
         }
         return true
     }

@@ -44,6 +44,8 @@ internal fun MemoryReextractPicker(
     history: HistoryMemoryManager,
     onDismiss: () -> Unit,
     onChoose: (List<HistoryConversationSource>) -> Unit,
+    /** 目标记忆库所属助手；全局记忆库为 null，允许挑选所有助手的聊天。 */
+    ownerAssistantId: String? = null,
 ) {
     var from by rememberSaveable { mutableStateOf("") }
     var through by rememberSaveable { mutableStateOf("") }
@@ -55,12 +57,12 @@ internal fun MemoryReextractPicker(
     val fromTime = dateBoundary(from, false)
     val untilTime = dateBoundary(through, true)
     val valid = fromTime != null && untilTime != null && fromTime < untilTime
-    LaunchedEffect(fromTime, untilTime) {
+    LaunchedEffect(fromTime, untilTime, ownerAssistantId) {
         sources = null
         failed = false
         if (fromTime != null && untilTime != null && valid) {
             try {
-                sources = history.sources(fromTime, untilTime)
+                sources = history.sources(fromTime, untilTime, ownerAssistantId)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

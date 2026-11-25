@@ -82,6 +82,14 @@ class VersionTest {
     }
 
     @Test
+    fun `tag prefix is ignored`() {
+        // Release tag 常写成 v1.0.10 / V1.0.10；不剥前缀时整段会被解析成 0.0.0，更新提醒再也弹不出来。
+        assertEquals(0, Version("v1.0.10").compareTo(Version("1.0.10")))
+        assertEquals(0, Version("V1.0.10").compareTo(Version("1.0.10")))
+        assertTrue(Version("V1.0.10") > Version("v1.0.9"))
+    }
+
+    @Test
     fun `string extension operators`() {
         assertTrue("1.0.0" < Version("2.0.0"))
         assertTrue(Version("2.0.0") > "1.0.0")

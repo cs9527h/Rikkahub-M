@@ -76,7 +76,9 @@ internal class HistoryMemoryManager(
     suspend fun undoAvailable(scope: String): Boolean = withContext(Dispatchers.IO) { dao.lastUndo(scope) != null }
     fun recalls(scope: String) = dao.recalls(scope)
     suspend fun clearRecalls(scope: String) = dao.clearRecalls(scope)
-    suspend fun sources(from: Long, until: Long) = conversations.historySources(from, until)
+    /** [ownerAssistantId] 为空表示全局记忆库（可以整理所有助手的聊天）。 */
+    suspend fun sources(from: Long, until: Long, ownerAssistantId: String? = null) =
+        conversations.historySources(from, until, ownerAssistantId)
 
     /** 每一轮整理的历史；任务行被新任务替换后，这些记录仍然按 scope 留下来。 */
     fun observeTaskLogs(scope: String, limit: Int = TASK_LOG_KEEP) = dao.taskLogs(scope, limit)
@@ -125,10 +127,13 @@ internal class HistoryMemoryManager(
      */
     suspend fun prepareIncremental(scope: String, assistant: Assistant): Plan? = withContext(Dispatchers.IO) {
         val since = dao.state(scope)?.lastOrganizedAt ?: 0L
+        // 每个助手的记忆库只吸收自己的聊天：否则给助手 A 整理记忆时，会把其他角色卡的
+        // 私人聊天一起发给模型，写进 A 的库，之后在 A 的对话里被召回注入。
+        val owner = scope.takeIf { it != MemoryRepository.GLOBAL_MEMORY_ID }
         val sources = if (since <= 0L) {
-            conversations.historySources(Long.MIN_VALUE, Long.MAX_VALUE)
+            conversations.historySources(Long.MIN_VALUE, Long.MAX_VALUE, owner)
         } else {
-            conversations.historySourcesUpdatedSince(since)
+            conversations.historySourcesUpdatedSince(since, owner)
         }
         if (sources.isEmpty()) return@withContext null
         prepare(scope, assistant, sources)
@@ -373,8 +378,18 @@ internal class HistoryMemoryManager(
     /** Return true when this work unit used its time slice and should resume at its durable cursor. */
     suspend fun run(scope: String, id: String, generation: Long): Boolean = withContext(Dispatchers.IO) {
         val start = TimeSource.Monotonic.markNow()
-        val sources = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
-            ?.let { Json.decodeFromString<List<HistorySource>>(it.sources) } ?: return@withContext false
+        val row = dao.job(scope)?.takeIf { it.id == id && it.generation == generation && it.status == "running" }
+            ?: return@withContext false
+        val sources = try {
+            Json.decodeFromString<List<HistorySource>>(row.sources)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 任务行里的来源列表损坏时异常会穿出 Worker：状态永远停在 running，界面一直「正在整理」。
+            // 这里明确失败，并留下可读原因。
+            fail(scope, row.id, row.generation, memoryFailure(MemoryStage.READING_HISTORY, e), billable = false)
+            return@withContext false
+        }
         // 阶段跟着代码走：任何一次失败都能说清是在读历史、调模型、解析还是写库时挂的。
         var stage = MemoryStage.READING_HISTORY
         try {

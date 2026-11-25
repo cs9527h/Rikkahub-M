@@ -138,20 +138,31 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET folder_id = '' WHERE folder_id = :folderId")
     suspend fun clearFolder(folderId: String)
 
+    /**
+     * 记忆整理的历史来源。[owner] 是助手 id：每个助手的记忆库只该吸收自己的聊天，
+     * 传 null 表示全局记忆库，允许整理所有助手的聊天。
+     */
     @Query("""
         SELECT id, title, create_at AS createdAt, update_at AS updatedAt
-        FROM conversationentity WHERE create_at >= :from AND create_at < :until
+        FROM conversationentity
+        WHERE create_at >= :from AND create_at < :until
+          AND (:owner IS NULL OR assistant_id = :owner)
         ORDER BY create_at DESC, id
     """)
-    suspend fun historySources(from: Long, until: Long): List<HistoryConversationSource>
+    suspend fun historySources(from: Long, until: Long, owner: String? = null): List<HistoryConversationSource>
 
-    /** 增量整理：只取上次整理之后有改动的会话（新建或继续聊过）。 */
+    /** 增量整理：只取上次整理之后有改动的会话（新建或继续聊过）。[owner] 含义同 [historySources]。 */
     @Query("""
         SELECT id, title, create_at AS createdAt, update_at AS updatedAt
-        FROM conversationentity WHERE update_at > :since
+        FROM conversationentity
+        WHERE update_at > :since
+          AND (:owner IS NULL OR assistant_id = :owner)
         ORDER BY update_at DESC, id
     """)
-    suspend fun historySourcesUpdatedSince(since: Long): List<HistoryConversationSource>
+    suspend fun historySourcesUpdatedSince(
+        since: Long,
+        owner: String? = null,
+    ): List<HistoryConversationSource>
 
     @Query("SELECT update_at FROM conversationentity WHERE id = :id")
     suspend fun historyRevision(id: String): Long?

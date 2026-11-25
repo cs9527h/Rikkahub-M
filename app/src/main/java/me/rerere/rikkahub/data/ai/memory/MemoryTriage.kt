@@ -57,7 +57,12 @@ object MemoryTriageEngine {
         // 完全相同的句子已经记过：直接忽略，避免同一条事实反复堆积
         val duplicate = memories.firstOrNull { memory -> memory.statedKeys().contains(key) }
         if (duplicate != null) {
-            return MemoryTriage(MemorySuggestion.IGNORE, targetPath = duplicate.path, reason = "已经记住过同样的事实", overlap = 100)
+            return MemoryTriage(
+                MemorySuggestion.IGNORE,
+                targetPath = duplicate.path,
+                reason = "已经记住过同样的事实",
+                overlap = 100
+            )
         }
 
         val grams = gramsOf(fact)
@@ -117,11 +122,28 @@ object MemoryTriageEngine {
     internal fun conflicts(fact: String, memory: MemoryFile): Boolean =
         negationOf(fact) != negationOf(memory.recallBody)
 
-    private val negations = listOf("不再", "没有", "不用", "不想", "不喜欢", "不", "没", "未")
+    /** 明确的多字否定词组。 */
+    private val negations = listOf(
+        "不再", "没有", "还没", "尚未", "不用", "不想", "不喜欢", "不是", "不要", "不能",
+        "不会", "从未", "从没", "无需", "不需", "别",
+    )
+
+    /**
+     * 带「不/没/未」但**不是**否定的常见词。
+     * 直接拿单字判断会把「不过」「不同」「不错」「未来」算成否定，两条同主题的候选就被判成互相矛盾，
+     * 批量按建议永远只能逐条确认。
+     */
+    private val nonNegatingWords = listOf(
+        "不过", "不同", "不错", "不少", "不但", "不仅", "不管", "不论", "不久", "不断",
+        "不然", "不定", "未来", "未知", "没法", "没事",
+    )
 
     private fun negationOf(text: String): Boolean {
         val sample = text.take(600)
-        return negations.any { it in sample }
+        if (negations.any { it in sample }) return true
+        var stripped = sample
+        nonNegatingWords.forEach { stripped = stripped.replace(it, "") }
+        return "不" in stripped || "没" in stripped || "未" in stripped
     }
 
     internal fun gramsOf(text: String): Set<String> {
