@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T05:49:23Z",
+  "updatedAt": "2026-11-25T06:31:59Z",
   "releases": [
+    {
+      "version": "1.0.8",
+      "tag": "v1.0.8",
+      "title": "Rikkahub-M 1.0.8",
+      "summary": "版本号进入 1.x（逢 10 进 1），功能同 0.9.18。",
+      "body": "## 其他\n\n- 版本号改为 1.0.8，之后按「逢 10 进 1」递增（1.0.9 → 1.1.0 → …）\n- 功能与 0.9.18 相同：恢复页两个入口、导出只有完整备份、云端与自动备份携带凭据\n- 版本 1.0.8 / versionCode 55，包名与签名不变，可覆盖升级 0.9.18",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.18",
       "tag": "v0.9.18",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.17",

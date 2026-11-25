@@ -12,6 +12,11 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（1.0.8）
+
+- 1.0.8：显示版本切换到 1.x 并启用「逢 10 进 1」（见 `docs/VERSIONING.md`），versionCode 55 单调递增。
+- 内容与 0.9.18 一致（恢复页两个入口、导出只有完整备份、云端与自动备份携带凭据）。
+
 ## 当前状态（0.9.17）
 
 - 0.9.17：删除「兼容原版」导出（含 relocateTo / remapManagedAssetsTo / upstreamPortable 与对应单测），导出只有完整备份。
