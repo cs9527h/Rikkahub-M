@@ -28,6 +28,26 @@ capture() {
       if grep -Fq "package=\"$package\"" "evidence/$label-$theme.xml"; then ready=1; break; fi
       # A system dialog (launcher ANR) may cover the app; the activity is still resumed.
       if adb shell dumpsys window 2>/dev/null | grep -Fq "mCurrentFocus=.*$package/"; then ready=1; break; fi
+      # 慢速 runner 上旧版冷启动会弹系统 ANR 对话框，它抢焦点、挡住应用窗口。
+      # 点掉「等待」再重试；只是让采集不被系统弹窗挡住，判定标准不变。
+      if grep -Fq 'aerr_wait' "evidence/$label-$theme.xml"; then
+        tap=$(python3 -c '
+import re, sys, xml.etree.ElementTree as ET
+for node in ET.parse(sys.argv[1]).iter():
+    if node.get("resource-id") == "android:id/aerr_wait":
+        match = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+        if match:
+            x1, y1, x2, y2 = map(int, match.groups())
+            print((x1 + x2) // 2, (y1 + y2) // 2)
+            break
+' "evidence/$label-$theme.xml" 2>/dev/null || true)
+        if [ -n "${tap:-}" ]; then
+          # shellcheck disable=SC2086
+          adb shell input tap $tap >/dev/null 2>&1 || true
+          sleep 3
+          continue
+        fi
+      fi
       sleep 2
     done
     adb exec-out screencap -p > "evidence/$label-$theme.png"
