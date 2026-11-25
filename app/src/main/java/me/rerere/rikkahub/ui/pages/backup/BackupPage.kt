@@ -328,9 +328,9 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             title = { Text("导出备份") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("完整备份：包含聊天记录，只有本应用能恢复。")
+                    Text("完整备份：设置 + 聊天记录 + 附件，只有本应用能恢复（原版读不了更高版本的聊天库）。")
                     Text(
-                        "兼容原版：只导设置与附件，原版 RikkaHub 也能导入（原版数据库版本比我们低，读不了我们的聊天库）。",
+                        "通用包：设置 + 附件，不含聊天记录；本应用与原版 RikkaHub 都能导入。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -628,7 +628,7 @@ private fun RecordsSheet(
             }
             when (section) {
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("选择本机保存的备份文件（明文 zip，直接解压恢复，不需要口令或密钥）。")
+                    Text("选择备份文件：本应用的完整备份、原版 RikkaHub 的备份（settings.json + rikka_hub.db + 附件）都能直接恢复，聊天记录会一起导入。")
                     Button(onClick = onLocalRestore, enabled = restoringName == null) { Text("选择文件") }
                 }
                 BackupTarget.WEBDAV -> BackupList(

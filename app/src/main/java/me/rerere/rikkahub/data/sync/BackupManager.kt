@@ -495,7 +495,7 @@ class BackupManager(
                 "mediaGenerationProviders", "ttsProviders", "asrProviders", "networkSetting", "mcpServers",
             )
             if (includeCredentials) {
-                // 仅加密备份携带凭据；明文 ZIP 仍按原规则剥离密钥。
+                // 携带凭据（与上游 RikkaHub 一致）：只清空 Web 服务相关的本机设置。
                 return JsonObject(settings.mapValues { (key, value) ->
                     if (key == "webServerEnabled") {
                         JsonPrimitive(false)

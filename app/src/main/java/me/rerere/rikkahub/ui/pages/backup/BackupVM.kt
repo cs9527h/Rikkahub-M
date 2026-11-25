@@ -127,7 +127,8 @@ class BackupVM(
 
     // 与上游一致：备份不加密、不需要口令或密钥
     suspend fun backup() {
-        webDavSync.backup(settings.value.webDavConfig, includeCredentials = false)
+        // 与「本机导出」一致：备份带上 API Key / OAuth，换机后不用重配
+        webDavSync.backup(settings.value.webDavConfig, includeCredentials = true)
         recordBackupTime()
     }
 
@@ -304,7 +305,7 @@ class BackupVM(
     }
 
     suspend fun backupToS3() {
-        s3Sync.backupToS3(settings.value.s3Config, includeCredentials = false)
+        s3Sync.backupToS3(settings.value.s3Config, includeCredentials = true)
         recordBackupTime()
     }
 

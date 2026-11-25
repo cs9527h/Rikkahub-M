@@ -49,7 +49,8 @@ class MateAutoBackupWorker(
             // 与上游一致：备份不再加密，不生成也不读取任何口令/密钥。
             // 数据安全交给传输层（WebDAV/S3 都要求 https）与设备本身。
             run {
-                val includeCredentials = false // API Key / OAuth 等凭据一律不进备份
+                // 与手动备份一致：凭据进备份，恢复后不用重配；Web 服务口令仍会被清空
+                val includeCredentials = true
                 for (kind in listOf(BackupKind.SETTINGS, BackupKind.CHATS)) {
                     val hours = when (kind) {
                         BackupKind.SETTINGS -> settings.backupReminderConfig.autoSettingsIntervalHours

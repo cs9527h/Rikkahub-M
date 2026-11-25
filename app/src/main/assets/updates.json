@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T05:17:00Z",
+  "updatedAt": "2026-11-25T05:24:54Z",
   "releases": [
+    {
+      "version": "0.9.16",
+      "tag": "v0.9.16",
+      "title": "Rikkahub-M 0.9.16",
+      "summary": "云端备份带凭据，双向恢复说明更清楚。",
+      "body": "## 优化\n\n- 云端备份（WebDAV / S3 / 自动备份）不再剥离 API Key，恢复后可以直接用\n- 导出时明确区分「完整备份」与「通用包」；恢复页说明原版 RikkaHub 的备份可以直接导入（聊天记录会一起恢复）\n\n## 其他\n\n- 版本 0.9.16 / versionCode 52，包名与签名不变，可覆盖升级 0.9.15",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.15",
       "tag": "v0.9.15",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.14",
