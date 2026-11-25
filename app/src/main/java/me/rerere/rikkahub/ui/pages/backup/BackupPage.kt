@@ -504,9 +504,10 @@ private fun StorageSheet(
 
             when (target) {
                 BackupTarget.LOCAL -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("本机备份保存为你选择的文件，文件本身已加密。")
+                    Text("本机备份保存为你选择的文件，是普通 zip，不加密、不需要口令。")
                     Text(
-                        "加密密钥保存在本机（Android Keystore）。换机、卸载重装或清除应用数据后，必须先用「导出恢复密钥文件」拿到的密钥才能打开这份备份；密钥丢了，备份无法恢复。",
+                        "换机时把文件拷到新手机直接导入即可；含聊天记录的完整备份只有本应用能恢复，" +
+                            "「兼容原版」导出的包原版 RikkaHub 也能导入。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

@@ -189,7 +189,7 @@ class SafeModeActivity : ComponentActivity() {
                             val message = e.message ?: "未知错误"
                             Toast.makeText(
                                 context,
-                                if (message.contains("口令")) "该备份已加密，请回到应用内备份页恢复" else "导入失败：$message",
+                                "导入失败：$message",
                                 Toast.LENGTH_LONG,
                             ).show()
                         } finally {

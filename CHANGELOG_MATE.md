@@ -8,6 +8,14 @@
 
 # Mate · 更新日志
 
+## 0.9.14 — 全量复查：旧文案、无用字符串与预览 IO（2026-11-25）
+
+- 修复：备份页还留着「文件已加密 / 必须用恢复密钥」的旧说明（加密功能已删除），改为说明现在是普通 zip、换机直接导入；安全模式里「该备份已加密」的分支一并去掉。
+- 优化：Markdown「网页预览」模板改为进程内缓存，不再每次点击都在主线程读 10KB asset 并重复解析。
+- 清理：删除 58 个未被引用的字符串 key（8 门语言共 459 条 `<string>` 条目），XML 全部通过解析校验，无悬空引用。
+- 复核：`BackupVM` 暴露的备份方法逐个确认仍有调用方（`recordLocalExportSuccess` / `loadBackupFileItems` / `testWebDav` / `testS3` 等），无新增死代码。
+- 兼容：无数据库迁移；versionCode 50 / 0.9.14，可覆盖升级 0.9.13。
+
 ## 0.9.13 — 彻底删除密钥/口令代码，复核与上游的差异（2026-11-25）
 
 - 删除：备份加密与密钥相关的全部兼容代码 —— `BackupCrypto`（RKMENC01 容器）、`BackupPassphraseStore`（Keystore 口令库）、`BackupRecoveryKey`（恢复密钥文件）、`MissingBackupPassphraseException`、恢复口令输入框；`createBackup/stageRestore/backupAutomatically` 等接口去掉 `passphrase` 参数；DI 里对应的单例、Worker 里的口令依赖、页面上的「导入恢复密钥」入口一并移除。

@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T04:26:58Z",
+  "updatedAt": "2026-11-25T04:33:03Z",
   "releases": [
+    {
+      "version": "0.9.14",
+      "tag": "v0.9.14",
+      "title": "Rikkahub-M 0.9.14",
+      "summary": "复查修复过期文案、清理无用字符串、预览更快。",
+      "body": "## 修复\n\n- 备份页不再显示「已加密 / 需要恢复密钥」这类过期说明（加密功能已经整体移除），改成说明现在是普通 zip、换机直接导入\n\n## 优化\n\n- 网页预览不再每次点击都读一遍模板文件，打开更快\n- 清理了 58 个已经没人用的文案（8 种语言一并清掉），安装包再小一点\n\n## 其他\n\n- 版本 0.9.14 / versionCode 50，包名与签名不变，可覆盖升级 0.9.13",
+      "publishedAt": "2026-11-25T00:00:00Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "0.9.13",
       "tag": "v0.9.13",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T00:00:00Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "0.9.12",

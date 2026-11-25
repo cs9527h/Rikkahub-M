@@ -12,8 +12,18 @@ import me.rerere.rikkahub.utils.toCssHex
  * - Mermaid diagrams
  * - Syntax highlighting via highlight.js
  */
+/** 模板 10KB 且永不变化：缓存一次，避免每次点「网页预览」都在主线程读 asset。 */
+private object MarkdownWebAssets {
+    private var cached: String? = null
+
+    @Synchronized
+    fun template(context: Context): String =
+        cached ?: context.assets.open("html/mark.html").bufferedReader().use { it.readText() }
+            .also { cached = it }
+}
+
 fun buildMarkdownPreviewHtml(context: Context, markdown: String, colorScheme: ColorScheme): String {
-    val htmlTemplate = context.assets.open("html/mark.html").bufferedReader().use { it.readText() }
+    val htmlTemplate = MarkdownWebAssets.template(context)
 
     return htmlTemplate
         .replace("{{MARKDOWN_BASE64}}", markdown.base64Encode())

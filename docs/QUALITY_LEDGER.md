@@ -12,6 +12,12 @@
 6. 持续清旧账：每版先看本台账。
 7. 性能门禁永久保留，`docs/perf/README.md` 与 `scripts/perf_compare.py` 不得移除。
 
+## 当前状态（0.9.14）
+
+- 0.9.14：修掉备份页与安全模式里「已加密/恢复密钥」的过期文案。
+- 0.9.14：Markdown 网页预览模板改为进程内缓存（不再每次点击读 asset）。
+- 0.9.14：删除 58 个未引用字符串（8 语言 459 条），XML 校验通过、无悬空引用。
+
 ## 当前状态（0.9.13）
 
 - 0.9.13：彻底删除备份加密与密钥代码（BackupCrypto / BackupPassphraseStore / BackupRecoveryKey /
