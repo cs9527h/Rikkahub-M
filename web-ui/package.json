@@ -7,7 +7,9 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
-    "lint": "oxlint app --fix",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "pnpm run test && pnpm run typecheck && pnpm run lint",
+    "lint": "oxlint app tests",
     "fmt": "oxfmt app",
     "fmt:check": "oxfmt app --check"
   },

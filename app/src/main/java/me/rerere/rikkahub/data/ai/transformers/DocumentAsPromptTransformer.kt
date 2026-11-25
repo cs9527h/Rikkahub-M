@@ -2,7 +2,10 @@ package me.rerere.rikkahub.data.ai.transformers
 
 import androidx.core.net.toFile
 import androidx.core.net.toUri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -33,7 +36,7 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
                                   $content
                                   ```
                                   </UploadFile>
-                                  """.trimMargin()
+                                """.trimMargin()
                                 add(0, UIMessagePart.Text(prompt))
                             }
                         }
@@ -55,8 +58,9 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         return PptxParser.parse(file)
     }
 
-    private fun parseEpubAsText(file: File): String {
-        return EpubParser.parse(file)
+    private suspend fun parseEpubAsText(file: File): String {
+        val context = currentCoroutineContext()
+        return EpubParser.parse(file) { context.ensureActive() }
     }
 
     // 上传文件保存在 filesDir/upload 下, 该目录通过 proot 挂载到 workspace 的 /upload
@@ -67,7 +71,8 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         return "/upload/${file.name}"
     }
 
-    private fun readDocumentContent(document: UIMessagePart.Document): String {
+    private suspend fun readDocumentContent(document: UIMessagePart.Document): String {
+        currentCoroutineContext().ensureActive()
         val file = runCatching { document.url.toUri().toFile() }.getOrNull()
             ?: return "[ERROR, invalid file uri: ${document.fileName}]"
         if (!file.exists() || !file.isFile) {
@@ -82,6 +87,7 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
                 else -> file.readText()
             }
         }.getOrElse {
+            if (it is CancellationException) throw it
             "[ERROR, failed to read file: ${document.fileName}]"
         }
     }

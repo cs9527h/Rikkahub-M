@@ -87,31 +87,32 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
 
             Log.d(TAG, "search requested")
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val bodyRaw = response.body.string()
-                val searchResponse = runCatching {
-                    json.decodeFromString<SearXNGResponse>(bodyRaw)
-                }.onFailure {
-                    Log.w(TAG, "decode SearXNG response failed", it)
-                    error("Failed to decode SearXNG response: ${it.message}")
-                }.getOrThrow()
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val bodyRaw = response.body.string()
+                    val searchResponse = runCatching {
+                        json.decodeFromString<SearXNGResponse>(bodyRaw)
+                    }.onFailure {
+                        Log.w(TAG, "decode SearXNG response failed", it)
+                        error("Failed to decode SearXNG response: ${it.message}")
+                    }.getOrThrow()
 
-                // 转换为标准格式，取前 N 个结果
-                val items = searchResponse.results
-                    .take(commonOptions.resultSize)
-                    .map { result ->
-                        SearchResultItem(
-                            title = result.title,
-                            url = result.url,
-                            text = result.content
-                        )
-                    }
+                    // 转换为标准格式，取前 N 个结果
+                    val items = searchResponse.results
+                        .take(commonOptions.resultSize)
+                        .map { result ->
+                            SearchResultItem(
+                                title = result.title,
+                                url = result.url,
+                                text = result.content
+                            )
+                        }
 
-                return@withContext Result.success(SearchResult(items = items))
-            } else {
-                Log.w(TAG, "SearXNG API error: ${response.code}")
-                error("SearXNG request failed with status ${response.code}")
+                    return@withContext Result.success(SearchResult(items = items))
+                } else {
+                    Log.w(TAG, "SearXNG API error: ${response.code}")
+                    error("SearXNG request failed with status ${response.code}")
+                }
             }
         }
     }

@@ -83,7 +83,7 @@ object DoubaoSearchService : SearchService<SearchServiceOptions.DoubaoOptions> {
                 .build()
 
             httpClient.newCall(request).await().use { response ->
-                val responseBody = response.body.string()
+                val responseBody = if (response.isSuccessful) response.body.string() else response.readErrorBody()
                 if (!response.isSuccessful) {
                     error("Doubao search failed #${response.code}: $responseBody")
                 }

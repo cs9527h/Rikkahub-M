@@ -16,6 +16,18 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import me.rerere.rikkahub.utils.ImageExportResult
+import me.rerere.rikkahub.utils.writeImageToGallery
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,7 +45,6 @@ import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.escapeHtml
-import me.rerere.rikkahub.utils.exportImage
 import me.rerere.rikkahub.utils.toCssHex
 import me.rerere.ui.webview.WEB_VIEW_ASSET_URL
 import me.rerere.ui.webview.WEB_VIEW_BASE_URL
@@ -54,37 +65,41 @@ fun Mermaid(
     val toaster = LocalToaster.current
     val navController = LocalNavController.current
 
-    val jsInterface = remember {
-        MermaidInterface(
-            onExportImage = { base64Image ->
-                runCatching {
-                    activity?.let {
+    val scope = rememberCoroutineScope()
+    val jsInterface = remember(context, activity, resources, toaster, scope) {
+        MermaidInterface { base64Image ->
+            // JavascriptInterface callbacks arrive off-main. Dispatch UI/permissions
+            // to Main, and bitmap decoding + gallery writes to IO.
+            scope.launch {
+                try {
+                    checkNotNull(activity) { "Activity is missing" }
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
+                        toaster.show("请授予存储权限后重新导出", type = ToastType.Error)
+                        return@launch
+                    }
+                    val result = withContext(Dispatchers.IO) {
+                        val bytes = Base64.decode(base64Image, Base64.DEFAULT)
+                        val bitmap = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) {
+                            "Mermaid returned no image"
+                        }
                         try {
-                            val imageBytes = Base64.decode(base64Image, Base64.DEFAULT)
-                            val bitmap =
-                                BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                            context.exportImage(
-                                it,
-                                bitmap,
-                                "mermaid_${System.currentTimeMillis()}.png"
-                            )
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+                            context.writeImageToGallery(bitmap, "mermaid_${System.currentTimeMillis()}.png")
+                        } finally {
+                            bitmap.recycle()
                         }
                     }
-                    toaster.show(
-                        resources.getString(R.string.mermaid_export_success),
-                        type = ToastType.Success
-                    )
-                }.onFailure {
-                    it.printStackTrace()
-                    toaster.show(
-                        resources.getString(R.string.mermaid_export_failed),
-                        type = ToastType.Error
-                    )
+                    check(result == ImageExportResult.Saved) { "Image export failed" }
+                    toaster.show(resources.getString(R.string.mermaid_export_success), type = ToastType.Success)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    toaster.show(resources.getString(R.string.mermaid_export_failed), type = ToastType.Error)
                 }
             }
-        )
+        }
     }
 
     val html = remember(code, colorScheme, darkMode) {
@@ -129,8 +144,16 @@ fun Mermaid(
             ) {
                 IconButton(
                     onClick = {
-                        val contentId = WebViewContentCache.store(context.cacheDir, html)
-                        navController.navigate(Screen.WebView(contentId = contentId))
+                        scope.launch {
+                            try {
+                                val contentId = WebViewContentCache.storeAsync(context.cacheDir, html)
+                                navController.navigate(Screen.WebView(contentId = contentId))
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                toaster.show("网页预览失败", type = ToastType.Error)
+                            }
+                        }
                     },
                 ) {
                     Icon(

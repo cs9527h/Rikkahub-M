@@ -9,7 +9,6 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -22,7 +21,6 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -127,6 +125,8 @@ fun Context.getActivity(): Activity? {
     return null
 }
 
+enum class ImageExportResult { Saved, PermissionRequired, Failed }
+
 fun Context.exportImage(
     activity: Activity,
     bitmap: Bitmap,
@@ -145,39 +145,59 @@ fun Context.exportImage(
             return
         }
     }
+    writeImageToGallery(bitmap, fileName)
+}
 
-    // 保存到相册
-    var outputStream: OutputStream? = null
-    try {
+/** Result is Saved only after encoding AND closing the output stream succeed. */
+fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportResult {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+        PackageManager.PERMISSION_GRANTED
+    ) {
+        return ImageExportResult.PermissionRequired
+    }
+    var pendingUri: Uri? = null
+    var pendingFile: File? = null
+    return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10及以上使用MediaStore API
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
-            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            uri?.let {
-                outputStream = contentResolver.openOutputStream(it)
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream!!)
+            val uri = checkNotNull(contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues))
+            pendingUri = uri
+            writeImageExport(contentResolver.openOutputStream(uri)) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
+            check(contentResolver.update(uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }, null, null) > 0)
+            pendingUri = null
         } else {
-            // Android 9及以下直接写入文件
             val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+            check(imagesDir.isDirectory || imagesDir.mkdirs())
             val image = File(imagesDir, fileName)
-            outputStream = FileOutputStream(image)
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-
-            // 通知图库更新
-            val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-            mediaScanIntent.data = Uri.fromFile(image)
-            sendBroadcast(mediaScanIntent)
+            pendingFile = image
+            writeImageExport(FileOutputStream(image)) {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(image)))
+            pendingFile = null
         }
-        Log.i(TAG, "Image saved successfully: $fileName")
+        ImageExportResult.Saved
     } catch (e: Exception) {
+        pendingUri?.let { runCatching { contentResolver.delete(it, null, null) } }
+        pendingFile?.delete()
         Log.e(TAG, "Failed to save image", e)
-    } finally {
-        outputStream?.close()
+        ImageExportResult.Failed
+    }
+}
+
+internal fun writeImageExport(output: OutputStream?, encode: (OutputStream) -> Boolean) {
+    checkNotNull(output) { "Image output stream is missing" }.use {
+        check(encode(it)) { "Image encoding failed" }
     }
 }
 

@@ -17,7 +17,6 @@ import okhttp3.Callback
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -31,7 +30,7 @@ import kotlin.coroutines.resumeWithException
 
 /** OAuth 2.x 的通用 HTTP、PKCE、授权码和刷新令牌客户端。 */
 class OAuthHttpClient(
-    private val httpClient: OkHttpClient,
+    private val httpClient: Call.Factory,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -304,7 +303,7 @@ class OAuthHttpClient(
         }
     }
 
-    private suspend fun executeRaw(request: Request): Response =
+    internal suspend fun executeRaw(request: Request): Response =
         suspendCancellableCoroutine { continuation ->
             val call = httpClient.newCall(request)
             continuation.invokeOnCancellation { call.cancel() }
@@ -314,7 +313,9 @@ class OAuthHttpClient(
                 }
 
                 override fun onResponse(call: Call, response: Response) {
-                    if (continuation.isActive) continuation.resume(response) else response.close()
+                    continuation.resume(response) { _, responseToClose, _ ->
+                        responseToClose.close()
+                    }
                 }
             })
         }

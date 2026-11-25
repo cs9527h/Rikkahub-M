@@ -56,8 +56,8 @@ object BraveSearchService : SearchService<SearchServiceOptions.BraveOptions> {
         runCatching {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val url = "https://api.search.brave.com/res/v1/web/search" +
-                    "?q=${java.net.URLEncoder.encode(query, "UTF-8")}" +
-                    "&count=${commonOptions.resultSize}"
+                "?q=${java.net.URLEncoder.encode(query, "UTF-8")}" +
+                "&count=${commonOptions.resultSize}"
 
             val request = Request.Builder()
                 .url(url)
@@ -65,27 +65,28 @@ object BraveSearchService : SearchService<SearchServiceOptions.BraveOptions> {
                 .addHeader("X-Subscription-Token", serviceOptions.apiKey)
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val responseBody = response.body.string()
-                val searchResponse = json.decodeFromString<BraveSearchResponse>(responseBody)
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val responseBody = response.body.string()
+                    val searchResponse = json.decodeFromString<BraveSearchResponse>(responseBody)
 
-                val items = searchResponse.web?.results?.map { result ->
-                    SearchResultItem(
-                        title = result.title,
-                        url = result.url,
-                        text = result.description ?: ""
-                    )
-                } ?: emptyList()
+                    val items = searchResponse.web?.results?.map { result ->
+                        SearchResultItem(
+                            title = result.title,
+                            url = result.url,
+                            text = result.description ?: ""
+                        )
+                    } ?: emptyList()
 
-                return@withContext Result.success(
-                    SearchResult(
-                        answer = null,
-                        items = items
+                    return@withContext Result.success(
+                        SearchResult(
+                            answer = null,
+                            items = items
+                        )
                     )
-                )
-            } else {
-                error("Brave search failed with code ${response.code}: ${response.message}")
+                } else {
+                    error("Brave search failed with code ${response.code}: ${response.message}")
+                }
             }
         }
     }

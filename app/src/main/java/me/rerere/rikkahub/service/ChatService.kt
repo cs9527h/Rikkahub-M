@@ -905,8 +905,9 @@ class ChatService(
         force: Boolean = false
     ): Unit = withContext(Dispatchers.IO) {
         withLoadedSession<Unit>(conversationId) { session ->
-            val incarnation = session.incarnation
-            val conversation = session.state.value
+            val (incarnation, titleRevision, conversation) = synchronized(session) {
+                Triple(session.incarnation, session.titleRevision, session.state.value)
+            }
             if (!force && conversation.title.isNotBlank()) return@withLoadedSession
 
             val settings = settingsStore.awaitLoaded()
@@ -921,6 +922,7 @@ class ChatService(
                     transform = { it.copy(title = title) },
                     persist = { conversationRepo.updateTitle(conversationId, title) },
                     expectedIncarnation = incarnation,
+                    expectedTitleRevision = titleRevision,
                 )
             }.onFailure {
                 it.printStackTrace()
@@ -1116,7 +1118,9 @@ class ChatService(
         clearSuggestions: Boolean,
         midTurn: Boolean = false,
     ) {
-        val conversation = session.state.value
+        val (incarnation, conversation) = synchronized(session) {
+            session.incarnation to session.state.value
+        }
         val nodes = conversation.messageNodes
         val checkpointIndex = nodes.indexOfLast { it.currentMessage.isContextCheckpoint }
         // 压缩范围是 (checkpointIndex, endIndex)，之后的节点原样保留
@@ -1154,6 +1158,9 @@ class ChatService(
         // 原消息原样保留，摘要插在压缩范围的最后一条消息之后。摘要生成期间对话可能已变化，
         // 因此按节点定位插入到最新状态。
         session.update { latest ->
+            check(session.incarnation == incarnation && latest.hasSameCompressionInput(conversation, endIndex)) {
+                context.getString(R.string.chat_page_compress_conversation_changed)
+            }
             val updated = latest.insertContextCheckpoint(
                 afterNodeId = nodes[endIndex - 1].id,
                 summary = summary,
@@ -1517,9 +1524,15 @@ class ChatService(
         messageId: Uuid,
         failIfMissing: Boolean = true,
     ) {
-        mutate(conversationId) { conversation ->
-            conversation.deleteMessage(messageId)
-                ?: if (failIfMissing) throw NotFoundException("Message not found") else conversation
+        withLoadedSession<Unit>(conversationId) { session ->
+            session.withStoppedJobs(pauseInbox = true) {
+                session.update { conversation ->
+                    conversation.deleteMessage(messageId)
+                        ?: if (failIfMissing) throw NotFoundException("Message not found") else conversation
+                }
+                session.flush()
+            }
+            dispatchInbox(conversationId)
         }
     }
 

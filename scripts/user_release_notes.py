@@ -69,6 +69,10 @@ def main() -> int:
         lines += [f"### {name}", ""]
         lines += [f"- {item}" for item in items]
         lines.append("")
+    english = pathlib.Path("docs/releases") / f"{version}.en.md"
+    if english.is_file():
+        lines += english.read_text(encoding="utf-8").strip().splitlines()
+        lines.append("")
     lines += [
         "---",
         "",

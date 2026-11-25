@@ -161,7 +161,9 @@ fun HighlightCodeBlock(
             )
         }
         Column(
-            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
+            modifier = Modifier
+                .then(if (completeCodeBlock) Modifier.animateContentSize() else Modifier)
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
         ) {
             when {
                 canInlinePreview && previewMode -> {
@@ -190,7 +192,7 @@ fun HighlightCodeBlock(
                     when {
                         showLineNumbers && autoWrap -> {
                             CodeBlockWithLineNumbersWrapped(
-                                displayLines = displayLines,
+                                displayCode = displayCode,
                                 language = language,
                                 textStyle = textStyle,
                                 colorPalette = colorPalette,
@@ -253,11 +255,15 @@ fun HighlightCodeBlock(
 
 @Composable
 private fun CodeBlockWithLineNumbersWrapped(
-    displayLines: List<String>,
+    displayCode: String,
     language: String,
     textStyle: TextStyle,
     colorPalette: HighlightTextColorPalette,
 ) {
+    // Highlight once with cross-line lexical context, then retain span ranges
+    // while splitting for aligned wrapped line numbers.
+    val highlighted = rememberHighlightedCode(displayCode, language, colorPalette)
+    val displayLines = remember(highlighted) { splitHighlightedCodeLines(highlighted) }
     val lineNumberWidth = remember(displayLines.size) {
         displayLines.size.toString().length
     }
@@ -279,7 +285,7 @@ private fun CodeBlockWithLineNumbersWrapped(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                     BetterText(
-                        text = rememberHighlightedCode(line, language, colorPalette),
+                        text = line,
                         style = codeStyle,
                         modifier = Modifier.weight(1f)
                     )
@@ -334,7 +340,6 @@ private fun CodeBlockDefault(
         SelectableContent {
             BetterText(
                 text = rememberHighlightedCode(displayCode, language, colorPalette),
-                modifier = Modifier.animateContentSize(),
                 style = codeTextStyle(textStyle),
             )
         }
@@ -460,9 +465,19 @@ private fun HighlightCodeActions(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .onClick {
-                            val content = buildCodePreviewHtml(code = code, language = normalizedLanguage)
-                            val contentId = WebViewContentCache.store(context.cacheDir, content)
-                            navController.navigate(Screen.WebView(contentId = contentId))
+                            scope.launch {
+                                try {
+                                    val content = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                                        buildCodePreviewHtml(code = code, language = normalizedLanguage)
+                                    }
+                                    val contentId = WebViewContentCache.storeAsync(context.cacheDir, content)
+                                    navController.navigate(Screen.WebView(contentId = contentId))
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "网页预览失败", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                         .padding(4.dp)
                         .size(iconSize)

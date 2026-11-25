@@ -60,6 +60,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import android.view.inputmethod.InputContentInfo
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -496,6 +500,8 @@ private fun TextInputRow(
 ) {
     val settings = LocalSettings.current
     val filesManager: FilesManager = koinInject()
+    val pasteScope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
     val quickMessages = remember(settings.quickMessages, assistant.quickMessageIds) {
         settings.getQuickMessagesOfAssistant(assistant)
     }
@@ -537,30 +543,65 @@ private fun TextInputRow(
         var isFullScreen by remember { mutableStateOf(false) }
         var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
         val receiveContentListener = remember(
-            settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
+            settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold,
+            state, filesManager, pasteScope, toaster,
         ) {
             ReceiveContentListener { transferableContent ->
                 when {
                     transferableContent.hasMediaType(MediaType.Image) -> {
-                        transferableContent.consume { item ->
-                            val uri = item.uri
-                            if (uri != null) {
-                                state.addImages(
-                                    filesManager.createChatFilesByContents(
-                                        listOf(uri)
-                                    )
-                                )
-                            }
-                            uri != null
+                        val uris = mutableListOf<android.net.Uri>()
+                        val remaining = transferableContent.consume { item ->
+                            item.uri?.let { uris.add(it) } != null
                         }
+                        if (uris.isNotEmpty()) {
+                            // Compose requests the IME grant before onReceive. Keep its token
+                            // (and the ClipData) alive until copying completes, not just until
+                            // this synchronous callback returns. Drag grants live with Activity.
+                            pasteScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                try {
+                                    importPastedContent(
+                                        copy = { filesManager.createChatFilesByContents(uris) },
+                                        onImported = { copied ->
+                                            state.addImages(copied)
+                                            check(copied.size == uris.size) { "部分附件复制失败，请重新粘贴" }
+                                        },
+                                        release = {
+                                            // Holding the original content retains the IME grant owner.
+                                            @Suppress("DEPRECATION")
+                                            val permission = transferableContent.platformTransferableContent?.extras
+                                                ?.getParcelable<InputContentInfo>("EXTRA_INPUT_CONTENT_INFO")
+                                            runCatching { permission?.releasePermission() }
+                                        },
+                                    )
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    toaster.show("粘贴失败：${e.message.orEmpty()}", type = ToastType.Error)
+                                }
+                            }
+                        }
+                        remaining
                     }
 
                     settings.displaySetting.pasteLongTextAsFile && transferableContent.hasMediaType(MediaType.Text) -> {
                         transferableContent.consume { item ->
                             val text = item.text?.toString()
                             if (text != null && text.length > settings.displaySetting.pasteLongTextThreshold) {
-                                val document = filesManager.createChatTextFile(text)
-                                state.addFiles(listOf(document))
+                                pasteScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                    try {
+                                        importPastedContent(
+                                            copy = { filesManager.createChatTextFile(text) },
+                                            onImported = { document -> state.addFiles(listOf(document)) },
+                                        )
+                                    } catch (e: CancellationException) {
+                                        state.textContent.edit { replace(length, length, text) }
+                                        throw e
+                                    } catch (e: Exception) {
+                                        // Restore the consumed text on failure instead of losing it.
+                                        state.textContent.edit { replace(length, length, text) }
+                                        toaster.show("粘贴失败：${e.message.orEmpty()}", type = ToastType.Error)
+                                    }
+                                }
                                 true
                             } else {
                                 false
@@ -666,7 +707,7 @@ private fun TextInputRow(
                             onClick = {
                                 isFullScreen = !isFullScreen
                             }) {
-                            Icon(HugeIcons.Fullscreen, null)
+                            Icon(HugeIcons.Fullscreen, stringResource(R.string.text_area_fullscreen_edit))
                         }
                     }
                 }

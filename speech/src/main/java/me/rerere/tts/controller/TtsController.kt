@@ -7,7 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +23,6 @@ import me.rerere.tts.provider.TTSManager
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
 import java.io.IOException
-import java.util.UUID
 
 private const val TAG = "TtsController"
 private const val MAX_SYNTHESIS_ATTEMPTS = 3
@@ -55,7 +53,8 @@ class TtsController(
     // 队列与缓存（基于稳定 ID）
     private val queue: java.util.concurrent.ConcurrentLinkedQueue<TtsChunk> = java.util.concurrent.ConcurrentLinkedQueue()
     private val allChunks: MutableList<TtsChunk> = mutableListOf()
-    private val cache = java.util.concurrent.ConcurrentHashMap<UUID, kotlinx.coroutines.Deferred<TTSResponse>>()
+    // At most 3 x 8 MiB retained synthesis audio, independent of document length.
+    private val cache = SynthesisCache(scope)
 
     // 行为参数
     private val chunkDelayMs = 120L
@@ -153,7 +152,6 @@ class TtsController(
         isPaused = false
         queue.clear()
         allChunks.clear()
-        cache.values.forEach { it.cancel(CancellationException("Reset")) }
         cache.clear()
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
@@ -189,7 +187,7 @@ class TtsController(
     /** 跳过下一段（不打断当前正在播放） */
     fun skipNext() {
         if (queue.isNotEmpty()) {
-            queue.poll()
+            queue.poll()?.let { cache.remove(it.id) }
             _totalChunks.update { queue.size }
         }
     }
@@ -202,7 +200,6 @@ class TtsController(
         isPaused = false
         queue.clear()
         allChunks.clear()
-        cache.values.forEach { it.cancel(CancellationException("Stopped")) }
         cache.clear()
         _isSpeaking.update { false }
         _currentChunk.update { 0 }
@@ -260,13 +257,18 @@ class TtsController(
                         continue
                     }
 
-                    // 播放
+                    // A pause during synthesis must not auto-start the completed audio.
                     try {
+                        while (isPaused) delay(80)
                         audio.play(response)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         Log.e(TAG, "Playback error", e)
                         _error.update { e.message ?: "Audio playback error" }
+                    } finally {
+                        // play suspends through pause/resume and seeking. Evict only
+                        // after it ends, not when playback starts or pauses.
+                        cache.remove(chunk.id)
                     }
 
                     if (queue.isNotEmpty()) delay(chunkDelayMs)
@@ -284,14 +286,11 @@ class TtsController(
 
     private fun prefetchNextChunks(currentIndex: Int) {
         val provider = currentProvider ?: return
-        val begin = currentIndex + 1
-        val endExclusive = (begin + prefetchCount).coerceAtMost(allChunks.size)
-        if (begin >= endExclusive) return
-
-        for (i in begin until endExclusive) {
-            val chunk = allChunks.getOrNull(i) ?: continue
-            getOrCreateSynthesis(chunk, provider)
-        }
+        // Prefetch the actual remaining queue, not skipped historical chunks.
+        val next = queue.take(prefetchCount)
+        val currentId = allChunks.getOrNull(currentIndex)?.id
+        cache.retain(next.map { it.id }.toSet() + listOfNotNull(currentId))
+        next.forEach { getOrCreateSynthesis(it, provider) }
     }
 
     private suspend fun awaitOrCreate(chunk: TtsChunk, provider: TTSProviderSetting): TTSResponse {
@@ -300,7 +299,7 @@ class TtsController(
             deferred.await()
         } catch (e: Exception) {
             // 避免后续复用已经失败或取消的 Deferred
-            cache.remove(chunk.id, deferred)
+            cache.remove(chunk.id)
             throw e
         }
     }
@@ -309,10 +308,8 @@ class TtsController(
         chunk: TtsChunk,
         provider: TTSProviderSetting
     ): kotlinx.coroutines.Deferred<TTSResponse> {
-        return cache.computeIfAbsent(chunk.id) {
-            scope.async(Dispatchers.IO) {
-                synthesizeWithRetry(provider, chunk)
-            }
+        return cache.getOrCreate(chunk.id) {
+            synthesizeWithRetry(provider, chunk)
         }
     }
 

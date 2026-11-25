@@ -9,7 +9,16 @@ object WebViewContentCache {
     private const val HASH_LENGTH = 64
     private val maxAgeMillis = TimeUnit.DAYS.toMillis(7)
     private val hexDigits = "0123456789abcdef".toCharArray()
+    private val cleanupTimes = mutableMapOf<String, Long>()
+    private val cleanupIntervalMillis = TimeUnit.HOURS.toMillis(1)
 
+    suspend fun storeAsync(cacheDir: File, content: String): String =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store(cacheDir, content) }
+
+    suspend fun loadAsync(cacheDir: File, id: String): String? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { load(cacheDir, id) }
+
+    @Synchronized
     fun store(cacheDir: File, content: String): String {
         val id = content.sha256()
         val directory = File(cacheDir, DIRECTORY_NAME)
@@ -27,6 +36,7 @@ object WebViewContentCache {
         return id
     }
 
+    @Synchronized
     fun load(cacheDir: File, id: String): String? {
         if (!id.isSha256()) return null
 
@@ -40,8 +50,13 @@ object WebViewContentCache {
         }.getOrNull()
     }
 
+    @Synchronized
     private fun removeExpiredFiles(directory: File) {
-        val expirationTime = System.currentTimeMillis() - maxAgeMillis
+        val now = System.currentTimeMillis()
+        val lastCleanup = cleanupTimes[directory.absolutePath]
+        if (lastCleanup != null && now >= lastCleanup && now - lastCleanup < cleanupIntervalMillis) return
+        cleanupTimes[directory.absolutePath] = now
+        val expirationTime = now - maxAgeMillis
         directory.listFiles()?.forEach { file ->
             if (file.isFile && file.lastModified() < expirationTime) {
                 file.delete()

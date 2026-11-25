@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -32,6 +31,9 @@ import me.rerere.rikkahub.utils.UiState
 import java.io.File
 
 private const val TAG = "BackupVM"
+
+internal suspend fun awaitLocalBackupItems(settingsStore: SettingsStore): List<WebDavConfig.BackupItem> =
+    settingsStore.awaitLoaded().backupReminderConfig.localBackupItems
 
 class BackupVM(
     private val settingsStore: SettingsStore,
@@ -63,7 +65,7 @@ class BackupVM(
 
     init {
         viewModelScope.launch {
-            localBackupItems.value = settingsStore.settingsFlow.first().backupReminderConfig.localBackupItems
+            localBackupItems.value = awaitLocalBackupItems(settingsStore)
         }
         loadBackupFileItems()
         loadS3BackupFileItems()

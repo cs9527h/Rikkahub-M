@@ -246,15 +246,18 @@ private fun ChatListNormal(
     val density = LocalDensity.current
     val activity = androidx.activity.compose.LocalActivity.current as? me.rerere.rikkahub.RouteActivity
 
-    DisposableEffect(Unit) {
+    val currentSettings by rememberUpdatedState(settings.displaySetting)
+    val currentPadding by rememberUpdatedState(innerPadding)
+    val currentDensity by rememberUpdatedState(density)
+    DisposableEffect(activity, state, scope) {
         val listener: (Boolean) -> Boolean = { isVolumeUp ->
-            if (settings.displaySetting.enableVolumeKeyScroll) {
+            if (currentSettings.enableVolumeKeyScroll) {
                 // 列表视口包含标题栏和输入区遮住的部分，翻页时只按可见区域计算
-                val coveredPx = with(density) {
-                    (innerPadding.calculateTopPadding() + 32.dp + innerPadding.calculateBottomPadding()).toPx()
+                val coveredPx = with(currentDensity) {
+                    (currentPadding.calculateTopPadding() + 32.dp + currentPadding.calculateBottomPadding()).toPx()
                 }
-                val scrollAmount = (state.layoutInfo.viewportSize.height - coveredPx) *
-                    settings.displaySetting.volumeKeyScrollRatio
+                val scrollAmount = (state.layoutInfo.viewportSize.height - coveredPx).coerceAtLeast(0f) *
+                    currentSettings.volumeKeyScrollRatio
                 scope.launch { state.scrollBy(if (isVolumeUp) -scrollAmount else scrollAmount) }
                 true
             } else {

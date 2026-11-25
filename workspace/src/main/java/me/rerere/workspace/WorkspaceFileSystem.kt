@@ -6,7 +6,9 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.io.path.name
 
 class WorkspaceFileSystem(
@@ -76,6 +78,7 @@ class WorkspaceFileSystem(
     fun delete(root: File, path: String, recursive: Boolean = false): Boolean {
         require(path.isNotBlank() && path != ".") { "Refusing to delete workspace root" }
         val file = resolvePath(root, path)
+        require(file != root.canonicalFile) { "Workspace root deletion is prohibited" }
         if (!file.exists()) return false
         return if (file.isDirectory) {
             require(recursive) { "Directory delete requires recursive = true" }
@@ -90,6 +93,10 @@ class WorkspaceFileSystem(
         require(source.isNotBlank() && source != ".") { "Refusing to move workspace root" }
         val sourceFile = resolvePath(root, source)
         val targetFile = resolvePath(root, target)
+        require(sourceFile != root.canonicalFile && targetFile != root.canonicalFile) {
+            "Workspace root movement or replacement is prohibited"
+        }
+        require(sourceFile != targetFile) { "Source and target resolve to the same path" }
         require(sourceFile.exists()) { "Source does not exist: $source" }
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }
@@ -139,32 +146,40 @@ class WorkspaceFileSystem(
             ?.takeIf { it.isNotBlank() }
             ?.let { FileSystems.getDefault().getPathMatcher("glob:$it") }
 
+        val rootPath = root.canonicalFile.toPath()
         val results = mutableListOf<WorkspaceSearchMatch>()
         walk(start) { paths ->
             paths
-                .filter { Files.isRegularFile(it) }
+                .filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+                .filter { it.toRealPath().startsWith(rootPath) }
                 .filter { !it.toFile().name.startsWith(".l2s.") }
                 .forEach { path ->
                     if (results.size >= config.maxSearchResults) return@forEach
                     if (includeMatcher != null &&
-                        !includeMatcher.matches(root.toPath().relativize(path).normalizeForMatch())
+                        !includeMatcher.matches(rootPath.relativize(path).normalizeForMatch())
                     ) {
                         return@forEach
                     }
                     val file = path.toFile()
                     if (file.length() > config.maxReadBytes) return@forEach
-                    file.useLines(StandardCharsets.UTF_8) { lines ->
-                        lines.forEachIndexed { index, line ->
-                            if (results.size >= config.maxSearchResults) return@useLines
-                            if (matcher.containsMatchIn(line)) {
-                                results += WorkspaceSearchMatch(
-                                    path = file.relativePath(root),
-                                    line = index + 1,
-                                    text = line,
-                                )
-                            }
+                    // Recheck each candidate immediately before opening; never follow a file symlink.
+                    if (!path.toRealPath().startsWith(rootPath)) return@forEach
+                    Files.newByteChannel(path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)
+                        .use { channel ->
+                            java.nio.channels.Channels.newInputStream(channel)
+                                .bufferedReader(StandardCharsets.UTF_8).useLines { lines ->
+                                    lines.forEachIndexed { index, line ->
+                                        if (results.size >= config.maxSearchResults) return@useLines
+                                        if (matcher.containsMatchIn(line)) {
+                                            results += WorkspaceSearchMatch(
+                                                path = file.relativePath(root),
+                                                line = index + 1,
+                                                text = line,
+                                            )
+                                        }
+                                    }
+                                }
                         }
-                    }
                 }
         }
         return results

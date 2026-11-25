@@ -81,25 +81,26 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val responseData = response.body.string().let {
-                    json.decodeFromString<JinaSearchResponse>(it)
-                }
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val responseData = response.body.string().let {
+                        json.decodeFromString<JinaSearchResponse>(it)
+                    }
 
-                return@withContext Result.success(
-                    SearchResult(
-                        items = responseData.data.take(commonOptions.resultSize).map {
-                            SearchResultItem(
-                                title = it.title,
-                                url = it.url,
-                                text = it.description
-                            )
-                        }
+                    return@withContext Result.success(
+                        SearchResult(
+                            items = responseData.data.take(commonOptions.resultSize).map {
+                                SearchResultItem(
+                                    title = it.title,
+                                    url = it.url,
+                                    text = it.description
+                                )
+                            }
+                        )
                     )
-                )
-            } else {
-                error("response failed #${response.code}")
+                } else {
+                    error("response failed #${response.code}")
+                }
             }
         }
     }
@@ -127,26 +128,27 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
                 .addHeader("X-Return-Format", "markdown")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (!response.isSuccessful) {
-                error("response failed for url $url #${response.code}")
-            }
-            val responseData = response.body.string().let {
-                json.decodeFromString<JinaScrapeResponse>(it)
-            }
+            httpClient.newCall(request).await().use { response ->
+                if (!response.isSuccessful) {
+                    error("response failed for url $url #${response.code}")
+                }
+                val responseData = response.body.string().let {
+                    json.decodeFromString<JinaScrapeResponse>(it)
+                }
 
-            ScrapedResult(
-                urls = listOf(
-                    ScrapedResultUrl(
-                        url = responseData.data.url,
-                        content = responseData.data.content,
-                        metadata = ScrapedResultMetadata(
-                            title = responseData.data.title,
-                            description = responseData.data.description
+                ScrapedResult(
+                    urls = listOf(
+                        ScrapedResultUrl(
+                            url = responseData.data.url,
+                            content = responseData.data.content,
+                            metadata = ScrapedResultMetadata(
+                                title = responseData.data.title,
+                                description = responseData.data.description
+                            )
                         )
                     )
                 )
-            )
+            }
         }
     }
 

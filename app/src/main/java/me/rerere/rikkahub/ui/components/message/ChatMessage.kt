@@ -36,6 +36,11 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.ui.toast.ToastType
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -126,6 +131,9 @@ fun ChatMessage(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
 ) {
+    val previewScope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
+    var preparingPreview by remember { mutableStateOf(false) }
     val message = node.messages[node.selectIndex]
     if (message.isContextCheckpoint) {
         ChatMessageContextCheckpoint(
@@ -268,18 +276,26 @@ fun ChatMessage(
             onToggleFavorite = onToggleFavorite,
             onRequestTranslate = if (onTranslate != null) ({ showTranslateDialog = true }) else null,
             onWebViewPreview = {
-                val textContent = message.parts
-                    .filterIsInstance<UIMessagePart.Text>()
-                    .joinToString("\n\n") { it.text }
-                    .trim()
-                if (textContent.isNotBlank()) {
-                    val htmlContent = buildMarkdownPreviewHtml(
-                        context = context,
-                        markdown = textContent,
-                        colorScheme = colorScheme
-                    )
-                    val contentId = WebViewContentCache.store(context.cacheDir, htmlContent)
-                    navController.navigate(Screen.WebView(contentId = contentId))
+                if (!preparingPreview) {
+                    preparingPreview = true
+                    previewScope.launch {
+                        try {
+                            val textContent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                message.parts.filterIsInstance<UIMessagePart.Text>()
+                                    .joinToString("\n\n") { it.text }.trim()
+                            }
+                            if (textContent.isBlank()) return@launch
+                            val htmlContent = buildMarkdownPreviewHtml(context, textContent, colorScheme)
+                            val contentId = WebViewContentCache.storeAsync(context.cacheDir, htmlContent)
+                            navController.navigate(Screen.WebView(contentId = contentId))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            toaster.show("网页预览失败：${e.message.orEmpty()}", type = ToastType.Error)
+                        } finally {
+                            preparingPreview = false
+                        }
+                    }
                 }
             },
             onDismissRequest = {
@@ -394,7 +410,7 @@ private fun MessagePartsBlock(
                         maxOf(COLLAPSED_VISIBLE_STEPS, block.steps.size - firstPendingIndex)
                     }
                     ChainOfThought(
-                        modifier = Modifier.animateContentSize(),
+                        modifier = if (loading) Modifier else Modifier.animateContentSize(),
                         steps = block.steps,
                         collapsedVisibleCount = collapsedVisibleCount,
                         collapsedAdaptiveWidth = isReasoningOnlyBlock,
@@ -498,7 +514,7 @@ private fun MessagePartsBlock(
                                                 ChatMessageBubble(
                                                     role = role,
                                                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
-                                                    modifier = Modifier.animateContentSize(),
+                                                    modifier = if (streamingText) Modifier else Modifier.animateContentSize(),
                                                 ) {
                                                     MarkdownBlock(
                                                         content = paragraph,
@@ -514,8 +530,7 @@ private fun MessagePartsBlock(
                                         content = assistantVisibleText,
                                         streaming = streamingText,
                                         onClickCitation = handleClickCitation,
-                                        modifier = Modifier
-                                            .animateContentSize()
+                                        modifier = if (streamingText) Modifier else Modifier.animateContentSize()
                                     )
                                 }
                             }
@@ -555,7 +570,8 @@ private fun MessagePartsBlock(
                         } else {
                             ZoomableAsyncImage(
                                 model = part.url,
-                                contentDescription = null,
+                                contentDescription = "${stringResource(R.string.code_block_preview)} " +
+                                    "${stringResource(R.string.media_kind_image)} ${parts.take(block.index + 1).count { it is UIMessagePart.Image }}",
                                 modifier = Modifier
                                     .clip(MaterialTheme.shapes.large)
                                     .height(72.dp)

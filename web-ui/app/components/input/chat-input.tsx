@@ -33,6 +33,7 @@ import {
 } from "~/components/ui/dropdown-menu";
 import { Textarea } from "~/components/ui/textarea";
 import { resolveFileUrl } from "~/lib/files";
+import { uploadInputFiles } from "~/lib/upload-input";
 import { cn } from "~/lib/utils";
 import api from "~/services/api";
 import type { ConversationDto, UIMessagePart, UploadFilesResponseDto } from "~/types";
@@ -393,10 +394,7 @@ function ChatInputInner({
   );
 
   const handleUploadInputChange = React.useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      await uploadFiles(event.target.files);
-      event.currentTarget.value = "";
-    },
+    (event: React.ChangeEvent<HTMLInputElement>) => uploadInputFiles(event, uploadFiles),
     [uploadFiles],
   );
 

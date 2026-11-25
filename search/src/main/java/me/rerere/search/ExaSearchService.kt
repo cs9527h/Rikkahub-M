@@ -130,20 +130,21 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val bodyRaw = response.body.string()
-                val response = runCatching {
-                    json.decodeFromString<ExaData>(bodyRaw)
-                }.onFailure {
-                    Log.w(TAG, "decode response failed", it)
-                    error("Failed to decode response: ${bodyRaw.take(500)}")
-                }.getOrThrow()
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val bodyRaw = response.body.string()
+                    val response = runCatching {
+                        json.decodeFromString<ExaData>(bodyRaw)
+                    }.onFailure {
+                        Log.w(TAG, "decode response failed", it)
+                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                    }.getOrThrow()
 
-                return@withContext Result.success(mapSearchResult(response))
-            } else {
-                Log.w(TAG, "request failed #${response.code}")
-                error("response failed #${response.code}")
+                    return@withContext Result.success(mapSearchResult(response))
+                } else {
+                    Log.w(TAG, "request failed #${response.code}")
+                    error("response failed #${response.code}")
+                }
             }
         }
     }
@@ -163,20 +164,21 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val bodyRaw = response.body.string()
-                val data = runCatching {
-                    json.decodeFromString<ExaData>(bodyRaw)
-                }.onFailure {
-                    Log.w(TAG, "decode response failed", it)
-                    error("Failed to decode response: ${bodyRaw.take(500)}")
-                }.getOrThrow()
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val bodyRaw = response.body.string()
+                    val data = runCatching {
+                        json.decodeFromString<ExaData>(bodyRaw)
+                    }.onFailure {
+                        Log.w(TAG, "decode response failed", it)
+                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                    }.getOrThrow()
 
-                return@withContext Result.success(mapScrapedResult(data))
-            } else {
-                Log.w(TAG, "request failed #${response.code}")
-                error("response failed #${response.code}")
+                    return@withContext Result.success(mapScrapedResult(data))
+                } else {
+                    Log.w(TAG, "request failed #${response.code}")
+                    error("response failed #${response.code}")
+                }
             }
         }
     }

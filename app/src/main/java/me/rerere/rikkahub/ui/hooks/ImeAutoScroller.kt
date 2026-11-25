@@ -13,25 +13,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.platform.LocalDensity
 
+internal fun imeScrollDelta(previousHeight: Int, keyboardHeight: Int): Int =
+    keyboardHeight.coerceAtLeast(0) - previousHeight.coerceAtLeast(0)
+
 @Composable
 fun ImeLazyListAutoScroller(
     lazyListState: LazyListState,
 ) {
     val ime = WindowInsets.ime
     val localDensity = LocalDensity.current
-    var imeHeigh by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) {
+    var previousHeight by remember(lazyListState) { mutableIntStateOf(0) }
+    LaunchedEffect(lazyListState, ime, localDensity) {
         snapshotFlow {
             ime.getBottom(localDensity)
         }.collect { keyboardHeight ->
-            if (keyboardHeight > 0) {
-                if (imeHeigh < keyboardHeight) {
-                    lazyListState.scrollBy((keyboardHeight - imeHeigh).toFloat())
-                } else {
-                    lazyListState.scrollBy((keyboardHeight - imeHeigh).toFloat())
-                }
-                imeHeigh = keyboardHeight
-            }
+            // Include the final zero frame: closing reverses the opening compensation,
+            // and an identical-height second opening must start from zero again.
+            val delta = imeScrollDelta(previousHeight, keyboardHeight)
+            previousHeight = keyboardHeight
+            if (delta != 0) lazyListState.scrollBy(delta.toFloat())
         }
     }
 }

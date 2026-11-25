@@ -1,12 +1,12 @@
 {
-  "version": "1.1.3",
+  "version": "1.1.4",
   "measured": false,
-  "source": "未采集（本版为全量代码复查修复）",
+  "source": "未采集真机帧时（本版按回归测试修复；不宣称帧率或耗电改善幅度）",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,
   "metrics": {},
-  "note": "0.9.10 备份改为明文 zip，恢复不再解密；建议真机记录一次 200MB 备份的导出/恢复耗时作为基线。",
+  "note": "本版未采集真机指标；待同设备记录长会话滚动、流式长代码、IME反复开合、预览和长文语音的帧时/内存。下方为历史模拟器记录，不是本版本测量值。",
   "ciEmulator": {
     "device": "Android SDK built for x86_64 (emu64x, API 35, 2 cores)",
     "buildType": "benchmarkRelease",

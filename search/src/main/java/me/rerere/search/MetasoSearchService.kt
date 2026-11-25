@@ -74,31 +74,32 @@ object MetasoSearchService : SearchService<SearchServiceOptions.MetasoOptions> {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val bodyRaw = response.body?.string() ?: error("Failed to get response body")
-                val searchResponse = runCatching {
-                    json.decodeFromString<MetasoSearchResponse>(bodyRaw)
-                }.onFailure {
-                    Log.w(TAG, "decode Metaso response failed", it)
-                    error("Failed to decode response: $bodyRaw")
-                }.getOrThrow()
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val bodyRaw = response.body?.string() ?: error("Failed to get response body")
+                    val searchResponse = runCatching {
+                        json.decodeFromString<MetasoSearchResponse>(bodyRaw)
+                    }.onFailure {
+                        Log.w(TAG, "decode Metaso response failed", it)
+                        error("Failed to decode response: $bodyRaw")
+                    }.getOrThrow()
 
-                return@withContext Result.success(
-                    SearchResult(
-                        items = searchResponse.webpages.map { webpage ->
-                            SearchResultItem(
-                                title = webpage.title,
-                                url = webpage.link,
-                                text = webpage.snippet ?: ""
-                            )
-                        }
+                    return@withContext Result.success(
+                        SearchResult(
+                            items = searchResponse.webpages.map { webpage ->
+                                SearchResultItem(
+                                    title = webpage.title,
+                                    url = webpage.link,
+                                    text = webpage.snippet ?: ""
+                                )
+                            }
+                        )
                     )
-                )
-            } else {
-                val errorBody = response.body?.string()
-                Log.w(TAG, "Metaso search failed with code ${response.code}")
-                error("Search request failed with code ${response.code}: $errorBody")
+                } else {
+                    val errorBody = response.readErrorBody()
+                    Log.w(TAG, "Metaso search failed with code ${response.code}")
+                    error("Search request failed with code ${response.code}: $errorBody")
+                }
             }
         }
     }

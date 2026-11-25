@@ -87,27 +87,28 @@ object TinyfishSearchService : SearchService<SearchServiceOptions.TinyfishOption
                 .addHeader("X-API-Key", serviceOptions.apiKey)
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val responseBody = response.body.string()
-                val searchResponse = json.decodeFromString<TinyfishSearchResponse>(responseBody)
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val responseBody = response.body.string()
+                    val searchResponse = json.decodeFromString<TinyfishSearchResponse>(responseBody)
 
-                val items = searchResponse.results.map { result ->
-                    SearchResultItem(
-                        title = result.title,
-                        url = result.url,
-                        text = result.snippet
+                    val items = searchResponse.results.map { result ->
+                        SearchResultItem(
+                            title = result.title,
+                            url = result.url,
+                            text = result.snippet
+                        )
+                    }
+
+                    return@withContext Result.success(
+                        SearchResult(
+                            answer = null,
+                            items = items
+                        )
                     )
+                } else {
+                    error("Tinyfish search failed with code ${response.code}: ${response.message}")
                 }
-
-                return@withContext Result.success(
-                    SearchResult(
-                        answer = null,
-                        items = items
-                    )
-                )
-            } else {
-                error("Tinyfish search failed with code ${response.code}: ${response.message}")
             }
         }
     }
@@ -132,28 +133,29 @@ object TinyfishSearchService : SearchService<SearchServiceOptions.TinyfishOption
                 .addHeader("X-API-Key", serviceOptions.apiKey)
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val responseBody = response.body.string()
-                val fetchResponse = json.decodeFromString<TinyfishFetchResponse>(responseBody)
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val responseBody = response.body.string()
+                    val fetchResponse = json.decodeFromString<TinyfishFetchResponse>(responseBody)
 
-                return@withContext Result.success(
-                    ScrapedResult(
-                        urls = fetchResponse.results.map {
-                            ScrapedResultUrl(
-                                url = it.url,
-                                content = it.text ?: "",
-                                metadata = ScrapedResultMetadata(
-                                    title = it.title,
-                                    description = it.description,
-                                    language = it.language,
+                    return@withContext Result.success(
+                        ScrapedResult(
+                            urls = fetchResponse.results.map {
+                                ScrapedResultUrl(
+                                    url = it.url,
+                                    content = it.text ?: "",
+                                    metadata = ScrapedResultMetadata(
+                                        title = it.title,
+                                        description = it.description,
+                                        language = it.language,
+                                    )
                                 )
-                            )
-                        }
+                            }
+                        )
                     )
-                )
-            } else {
-                error("Tinyfish fetch failed with code ${response.code}: ${response.message}")
+                } else {
+                    error("Tinyfish fetch failed with code ${response.code}: ${response.message}")
+                }
             }
         }
     }

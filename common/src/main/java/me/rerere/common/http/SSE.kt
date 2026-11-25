@@ -1,7 +1,9 @@
 package me.rerere.common.http
 
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import me.rerere.common.http.sse.newEventSource
 import okhttp3.OkHttpClient
@@ -50,30 +52,37 @@ sealed class SseEvent {
  */
 fun OkHttpClient.sseFlow(request: Request): Flow<SseEvent> {
     return callbackFlow {
+        // Callbacks run on OkHttp's reader thread. Blocking this thread applies TCP
+        // backpressure instead of dropping chunks or launching unbounded sender jobs.
+        // Cancellation closes the channel and wakes a blocked sender.
+        fun emit(eventSource: EventSource, event: SseEvent) {
+            if (trySendBlocking(event).isFailure) eventSource.cancel()
+        }
+
         // 1. 创建 EventSourceListener
         // 监听 SSE 连接的各种事件并转换为 Flow 事件
         val listener = object : EventSourceListener() {
             override fun onOpen(eventSource: EventSource, response: Response) {
                 // 从回调中安全地发送事件到 Flow
                 // 连接成功建立时触发
-                trySend(SseEvent.Open)
+                emit(eventSource, SseEvent.Open)
             }
 
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
                 // 收到服务器发送的数据事件时触发
                 // 将事件数据封装后发送到 Flow
-                trySend(SseEvent.Event(id, type, data))
+                emit(eventSource, SseEvent.Event(id, type, data))
             }
 
             override fun onClosed(eventSource: EventSource) {
                 // 连接正常关闭时触发
-                trySend(SseEvent.Closed)
+                emit(eventSource, SseEvent.Closed)
                 channel.close() // 关闭 Flow 通道
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
                 // 连接发生错误时触发
-                trySend(SseEvent.Failure(t, response))
+                emit(eventSource, SseEvent.Failure(t, response))
                 channel.close(t) // 以异常关闭 Flow 通道
             }
         }
@@ -88,5 +97,5 @@ fun OkHttpClient.sseFlow(request: Request): Flow<SseEvent> {
             // 关闭 SSE 连接，释放资源
             eventSource.cancel()
         }
-    }
+    }.buffer(capacity = 16)
 }

@@ -71,30 +71,31 @@ object SerperSearchService : SearchService<SearchServiceOptions.SerperOptions> {
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val responseBody = response.body.string()
-                val searchResponse = json.decodeFromString<SerperSearchResponse>(responseBody)
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val responseBody = response.body.string()
+                    val searchResponse = json.decodeFromString<SerperSearchResponse>(responseBody)
 
-                val answer = searchResponse.answerBox?.let { it.answer ?: it.snippet }
-                    ?: searchResponse.knowledgeGraph?.description
+                    val answer = searchResponse.answerBox?.let { it.answer ?: it.snippet }
+                        ?: searchResponse.knowledgeGraph?.description
 
-                val items = searchResponse.organic.map { result ->
-                    SearchResultItem(
-                        title = result.title,
-                        url = result.link,
-                        text = result.snippet ?: ""
+                    val items = searchResponse.organic.map { result ->
+                        SearchResultItem(
+                            title = result.title,
+                            url = result.link,
+                            text = result.snippet ?: ""
+                        )
+                    }
+
+                    return@withContext Result.success(
+                        SearchResult(
+                            answer = answer,
+                            items = items
+                        )
                     )
+                } else {
+                    error("Serper search failed with code ${response.code}: ${response.message}")
                 }
-
-                return@withContext Result.success(
-                    SearchResult(
-                        answer = answer,
-                        items = items
-                    )
-                )
-            } else {
-                error("Serper search failed with code ${response.code}: ${response.message}")
             }
         }
     }

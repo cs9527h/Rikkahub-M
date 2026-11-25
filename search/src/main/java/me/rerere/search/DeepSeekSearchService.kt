@@ -87,23 +87,24 @@ object DeepSeekSearchService : SearchService<SearchServiceOptions.DeepSeekOption
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            val bodyRaw = response.body.string()
-            if (!response.isSuccessful) {
-                error("DeepSeek search failed: ${response.errorMessage(bodyRaw)}")
-            }
-
-            val searchResponse = json.decodeFromString<DeepSeekSearchResponse>(bodyRaw)
-            SearchResult(
-                items = searchResponse.results.map { result ->
-                    SearchResultItem(
-                        title = result.title,
-                        url = result.url,
-                        text = result.summary.ifBlank { result.snippet },
-                        publishedDate = result.date,
-                    )
+            httpClient.newCall(request).await().use { response ->
+                val bodyRaw = if (response.isSuccessful) response.body.string() else response.readErrorBody()
+                if (!response.isSuccessful) {
+                    error("DeepSeek search failed: ${response.errorMessage(bodyRaw)}")
                 }
-            )
+
+                val searchResponse = json.decodeFromString<DeepSeekSearchResponse>(bodyRaw)
+                SearchResult(
+                    items = searchResponse.results.map { result ->
+                        SearchResultItem(
+                            title = result.title,
+                            url = result.url,
+                            text = result.summary.ifBlank { result.snippet },
+                            publishedDate = result.date,
+                        )
+                    }
+                )
+            }
         }
     }
 
@@ -126,24 +127,25 @@ object DeepSeekSearchService : SearchService<SearchServiceOptions.DeepSeekOption
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
 
-            val response = httpClient.newCall(request).await()
-            val bodyRaw = response.body.string()
-            if (!response.isSuccessful) {
-                error("DeepSeek fetch failed: ${response.errorMessage(bodyRaw)}")
-            }
+            httpClient.newCall(request).await().use { response ->
+                val bodyRaw = if (response.isSuccessful) response.body.string() else response.readErrorBody()
+                if (!response.isSuccessful) {
+                    error("DeepSeek fetch failed: ${response.errorMessage(bodyRaw)}")
+                }
 
-            val fetchResponse = json.decodeFromString<DeepSeekFetchResponse>(bodyRaw)
-            ScrapedResult(
-                urls = listOf(
-                    ScrapedResultUrl(
-                        url = url,
-                        content = fetchResponse.content,
-                        metadata = ScrapedResultMetadata(
-                            title = fetchResponse.title.ifBlank { null },
+                val fetchResponse = json.decodeFromString<DeepSeekFetchResponse>(bodyRaw)
+                ScrapedResult(
+                    urls = listOf(
+                        ScrapedResultUrl(
+                            url = url,
+                            content = fetchResponse.content,
+                            metadata = ScrapedResultMetadata(
+                                title = fetchResponse.title.ifBlank { null },
+                            )
                         )
                     )
                 )
-            )
+            }
         }
     }
 

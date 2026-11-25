@@ -1,13 +1,11 @@
 package me.rerere.rikkahub.data.repository
 
-import android.database.sqlite.SQLiteBlobTooBigException
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.map
 import androidx.room.withTransaction
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -509,40 +507,19 @@ class ConversationRepository(
             .toSet()
 
         return database.withTransaction {
-            val nodes = mutableListOf<MessageNode>()
-            var offset = 0
-            val pageSize = 64
-            while (true) {
-                val page = try {
-                    messageNodeDAO.getNodesOfConversationPaged(conversationId, pageSize, offset)
-                } catch (e: SQLiteBlobTooBigException) {
-                    e.printStackTrace()
-                    offset += pageSize
-                    continue
-                } catch (e: CancellationException) {
-                    // CancellationException 是 IllegalStateException 的子类，必须先重新抛出，否则取消后会在事务内无限循环
-                    throw e
-                } catch (e: IllegalStateException) {
-                    e.printStackTrace()
-                    offset += pageSize
-                    continue
-                }
-                if (page.isEmpty()) break
-                page.forEach { entity ->
+            // Any failed page must fail the entire load: a partial snapshot could later erase history on save.
+            loadConversationNodePages { limit, offset ->
+                messageNodeDAO.getNodesOfConversationPaged(conversationId, limit, offset).map { entity ->
                     val messages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
                     val nodeId = Uuid.parse(entity.id)
-                    nodes.add(
-                        MessageNode(
-                            id = nodeId,
-                            messages = messages,
-                            selectIndex = entity.selectIndex,
-                            isFavorite = favoriteNodeIds.contains(nodeId)
-                        )
+                    MessageNode(
+                        id = nodeId,
+                        messages = messages,
+                        selectIndex = entity.selectIndex,
+                        isFavorite = favoriteNodeIds.contains(nodeId)
                     )
                 }
-                offset += page.size
             }
-            nodes
         }
     }
 
@@ -557,6 +534,16 @@ class ConversationRepository(
             )
         }
         messageNodeDAO.insertAll(entities)
+    }
+}
+
+/** Returns complete history or throws; never skips an unreadable page. Kept inside the caller's transaction. */
+internal suspend fun <T> loadConversationNodePages(fetch: suspend (limit: Int, offset: Int) -> List<T>): List<T> {
+    val nodes = mutableListOf<T>()
+    while (true) {
+        val page = fetch(64, nodes.size)
+        if (page.isEmpty()) return nodes
+        nodes.addAll(page)
     }
 }
 

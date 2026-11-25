@@ -73,28 +73,29 @@ object ZhipuSearchService : SearchService<SearchServiceOptions.ZhipuOptions> {
                 .addHeader("Authorization", "Bearer ${serviceOptions.apiKey}")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            if (response.isSuccessful) {
-                val bodyRaw = response.body?.string() ?: error("Failed to get response body")
-                val response = runCatching {
-                    json.decodeFromString<ZhipuDto>(bodyRaw)
-                }.onFailure {
-                    Log.w(TAG, "decode response failed", it)
-                    error("Failed to decode response: ${bodyRaw.take(500)}")
-                }.getOrThrow()
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val bodyRaw = response.body?.string() ?: error("Failed to get response body")
+                    val response = runCatching {
+                        json.decodeFromString<ZhipuDto>(bodyRaw)
+                    }.onFailure {
+                        Log.w(TAG, "decode response failed", it)
+                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                    }.getOrThrow()
 
-                return@withContext Result.success(SearchResult(
-                    items = response.searchResult.map {
-                        SearchResultItem(
-                            title = it.title,
-                            url = it.link,
-                            text = it.content,
-                        )
-                    }
-                ))
-            } else {
-                Log.w(TAG, "request failed #${response.code}")
-                error("response failed #${response.code}")
+                    return@withContext Result.success(SearchResult(
+                        items = response.searchResult.map {
+                            SearchResultItem(
+                                title = it.title,
+                                url = it.link,
+                                text = it.content,
+                            )
+                        }
+                    ))
+                } else {
+                    Log.w(TAG, "request failed #${response.code}")
+                    error("response failed #${response.code}")
+                }
             }
         }
     }

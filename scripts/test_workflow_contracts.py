@@ -80,6 +80,22 @@ class WorkflowContractsTest(unittest.TestCase):
             self.assertIn("if: always()", workflow)
         self.assertNotIn("continue-on-error:", CI)
 
+    def test_audit_regressions_and_mapping_are_release_gates(self):
+        build = job(RELEASE, "build")
+        publish = job(RELEASE, "publish")
+        self.assertIn("testDebugUnitTest :app:testGithubDebugUnitTest", build)
+        self.assertIn("pnpm run test", build)
+        self.assertIn("pnpm run typecheck", build)
+        self.assertIn("pnpm exec oxlint app", build)
+        self.assertIn("*/build/test-results/**", build)
+        self.assertIn('--require-marker "Workspace root deletion is prohibited"', build)
+        self.assertIn('--require-marker "EPUB total content too large"', build)
+        self.assertIn("test -s app/build/outputs/mapping/githubRelease/mapping.txt", build)
+        self.assertIn('zip -j "dist/mapping-${VERSION}.zip"', build)
+        self.assertIn("dist/mapping-*.zip", build)
+        self.assertIn("dist/mapping-*.zip", publish)
+        self.assertIn('--pattern "mapping-${VERSION}.zip"', publish)
+
     def test_signed_upgrade_uses_release_package_artifacts_and_data_contract(self):
         script = (ROOT / "scripts/compare-installed-screens.sh").read_text()
         self.assertIn("signed) candidate_dir=dist; candidate_package=com.rikkahub.mate", script)

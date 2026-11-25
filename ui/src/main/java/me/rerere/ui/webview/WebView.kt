@@ -95,6 +95,32 @@ private fun WebView.release(interfaces: Map<String, Any>) {
     destroy()
 }
 
+internal class WebViewBinding {
+    var state: WebViewState? = null
+        private set
+
+    fun attach(view: WebView, next: WebViewState) {
+        if (state !== next) {
+            view.stopLoading()
+            switchTo(next, view::removeJavascriptInterface)
+        }
+        next.webView = view
+    }
+
+    internal fun switchTo(next: WebViewState, removeInterface: (String) -> Unit) {
+        state?.interfaces?.keys?.forEach(removeInterface)
+        state?.webView = null
+        state = next
+        next.lastLoadedData = null
+        next.forceReload = true
+    }
+
+    fun detach(view: WebView) {
+        state?.takeIf { it.webView === view }?.webView = null
+        state = null
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
 fun WebView(
@@ -104,8 +130,9 @@ fun WebView(
     onUpdated: (WebView) -> Unit = {},
 ) {
     // Remember the clients based on the state
-    val webChromeClient = remember { MyWebChromeClient(state) }
-    val webViewClient = remember { MyWebViewClient(state) }
+    val webChromeClient = remember(state) { MyWebChromeClient(state) }
+    val webViewClient = remember(state) { MyWebViewClient(state) }
+    val binding = remember { WebViewBinding() }
 
     Box(
         modifier = modifier
@@ -118,7 +145,7 @@ fun WebView(
                         LayoutParams.MATCH_PARENT
                     )
 
-                    state.webView = this // Assign the WebView instance to the state
+                    binding.attach(this, state)
 
                     onCreated(this)
 
@@ -138,27 +165,25 @@ fun WebView(
             },
             modifier = Modifier.fillMaxWidth(), // Make WebView fill the width
             onReset = {
-                it.resetState(state.interfaces)
+                it.resetState(binding.state?.interfaces.orEmpty(), clearClients = true)
+                binding.detach(it)
                 Log.d(TAG, "AndroidView: Resetting WebView")
             },
             onRelease = {
-                if (state.webView === it) {
-                    state.webView = null
-                }
-                it.release(state.interfaces)
+                val interfaces = binding.state?.interfaces.orEmpty()
+                binding.detach(it)
+                it.release(interfaces)
                 Log.d(TAG, "AndroidView: Releasing WebView")
             },
             update = { webView ->
-                state.webView = webView
+                binding.attach(webView, state)
+                webView.webChromeClient = webChromeClient
+                webView.webViewClient = webViewClient
                 state.interfaces.forEach { (name, obj) ->
                     webView.addJavascriptInterface(obj, name)
                 }
                 Log.d(TAG, "AndroidView: Updating WebView")
-                // Ensure clients are updated if state changes (though unlikely here)
-                // webView.webChromeClient = webChromeClient
-                // webView.webViewClient = webViewClient
-
-                // Update settings that might change
+                webView.settings.apply(state.settings)
                 webView.settings.javaScriptEnabled = state.javaScriptEnabled
 
                 when (val content = state.content) {
@@ -333,7 +358,7 @@ fun rememberWebViewState(
     additionalHttpHeaders: Map<String, String> = emptyMap(),
     interfaces: Map<String, Any> = emptyMap(),
     settings: WebSettings.() -> Unit = {},
-) = remember(url, additionalHttpHeaders) { // Use keys for better recomposition control
+) = remember(url, additionalHttpHeaders, interfaces, settings) {
     WebViewState(
         initialContent = WebContent.Url(url, additionalHttpHeaders),
         interfaces = interfaces,
@@ -350,7 +375,7 @@ fun rememberWebViewState(
     historyUrl: String? = null,
     interfaces: Map<String, Any> = emptyMap(),
     settings: WebSettings.() -> Unit = {},
-) = remember(data, baseUrl, encoding, mimeType, historyUrl) { // Use keys
+) = remember(data, baseUrl, encoding, mimeType, historyUrl, interfaces, settings) {
     WebViewState(
         initialContent = WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl),
         interfaces = interfaces,

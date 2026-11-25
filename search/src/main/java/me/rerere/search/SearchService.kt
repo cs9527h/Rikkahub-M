@@ -409,8 +409,12 @@ enum class DoubaoSearchMode {
     CUSTOM,
 }
 
+// Keep provider diagnostics bounded even when an error endpoint returns an enormous body.
+internal fun Response.readErrorBody(): String = peekBody(4096).string()
+
 internal suspend fun Call.await(): Response {
     return suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
         enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 if (continuation.isActive) {

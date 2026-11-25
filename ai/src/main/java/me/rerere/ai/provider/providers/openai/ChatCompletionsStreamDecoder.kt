@@ -122,7 +122,7 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                     val url = imageObject["image_url"]?.jsonObjectOrNull
                         ?.get("url")?.jsonPrimitive?.contentOrNull ?: return@forEach
                     require(url.startsWith("data:image")) { "Only data uri is supported" }
-                    add(UIMessagePart.Image(url.substringAfter("data:image/png;base64,")))
+                    add(UIMessagePart.Image(url))
                 }
             },
             annotations = parseAnnotations(payload["annotations"]?.jsonArrayOrNull ?: JsonArray(emptyList())),
@@ -234,7 +234,11 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                         addAll(closeTools())
                         val id = imageId ?: nextId(sourceId, "image").also {
                             imageId = it
-                            add(StreamChunk.ImageStart(it, metadata = part.metadata))
+                            add(StreamChunk.ImageStart(
+                                it,
+                                mimeType = part.url.substringAfter("data:").substringBefore(";"),
+                                metadata = part.metadata,
+                            ))
                         }
                         add(StreamChunk.ImageDelta(id, part.url.substringAfter(";base64,", part.url), part.metadata))
                     }

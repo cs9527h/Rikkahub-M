@@ -20,6 +20,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.deleteMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -506,6 +507,159 @@ class ConversationSessionTest {
         assertEquals(session.state.value, persisted)
         assertEquals("partial reply", (persisted.currentMessages.single().parts[1] as UIMessagePart.Text).text)
         session.cleanup()
+    }
+
+    @Test
+    fun `failed history load leaves session uninitialized and cannot save partial nodes`() = runBlocking {
+        val id = Uuid.random()
+        val original = Conversation.ofId(id).updateCurrentMessages(listOf(UIMessage.user("history")))
+        val store = FakeConversationStore(original)
+        val session = ConversationSession(id, Conversation.ofId(id), this, store, {})
+        val failure = IllegalStateException("CursorWindow page failed")
+        val result = runCatching { session.initialize(load = { throw failure }) }
+        assertSame(failure, result.exceptionOrNull())
+        assertFalse(session.isInitialized)
+        assertTrue(runCatching { session.update { it.copy(title = "edit") } }.isFailure)
+        session.flush()
+        assertTrue(store.writes.isEmpty())
+        assertSame(original, store.persisted)
+    }
+
+    @Test
+    fun `title CAS rejects slow requests after manual rename including ABA`() = runBlocking {
+        val id = Uuid.random()
+        val store = FakeConversationStore(Conversation.ofId(id))
+        val session = ConversationSession(id, Conversation.ofId(id), this, store, {})
+        session.initialize(load = { store.persisted })
+        val revision = session.titleRevision
+        session.updateMetadata({ it.copy(title = "manual") }, { store.persisted = it })
+        session.updateMetadata({ it.copy(title = "") }, { store.persisted = it })
+        var written = false
+        assertFalse(session.updateMetadata(
+            transform = { it.copy(title = "late automatic") },
+            persist = { written = true },
+            expectedTitleRevision = revision,
+        ))
+        assertFalse(written)
+        assertEquals("", session.state.value.title)
+        val currentRevision = session.titleRevision
+        session.update { it.copy(isPinned = true) }
+        assertTrue(session.updateMetadata(
+            transform = { it.copy(title = "fresh automatic") },
+            persist = { store.persisted = it },
+            expectedTitleRevision = currentRevision,
+        ))
+        assertEquals("fresh automatic", store.persisted!!.title)
+        assertTrue(session.state.value.isPinned)
+    }
+
+    @Test
+    fun `replace closes registration before waiting and permits intentional new turns after deletion`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val store = FakeConversationStore(Conversation.ofId(id))
+        val session = ConversationSession(id, Conversation.ofId(id), scope, store, {})
+        try {
+            session.initialize(load = { store.persisted })
+            val cleaning = CompletableDeferred<Unit>()
+            val finish = CompletableDeferred<Unit>()
+            val old = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        cleaning.complete(Unit)
+                        finish.await()
+                        session.finishGeneration()
+                    }
+                }
+            }
+            session.setJob(old)
+            val replacement = launch(start = CoroutineStart.UNDISPATCHED) {
+                session.replace(Conversation.ofId(id), existsInDatabase = false) { store.persisted = null }
+            }
+            cleaning.await()
+            assertFalse(session.canStartNextTurn)
+            var ran = false
+            val contender = scope.launch(start = CoroutineStart.LAZY) { ran = true }
+            session.setJob(contender)
+            assertTrue(contender.isCancelled)
+            assertFalse(replacement.isCompleted)
+            finish.complete(Unit)
+            replacement.join()
+            assertFalse(ran)
+            assertNull(store.persisted)
+            session.flush()
+            assertNull(store.persisted)
+            assertTrue(session.canStartNextTurn)
+            val afterDelete = scope.launch(start = CoroutineStart.LAZY) {
+                ran = true
+                session.update { it.updateCurrentMessages(listOf(UIMessage.user("intentional new turn"))) }
+                session.flush()
+            }
+            session.setJob(afterDelete)
+            afterDelete.join()
+            assertTrue(ran)
+            assertEquals("intentional new turn", store.persisted!!.currentMessages.single().toText())
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `deleting streamed message joins final save and blocks replacement chunks`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val reply = UIMessage.assistant("first chunk")
+        val store = FakeConversationStore(Conversation.ofId(id))
+        val session = ConversationSession(id, Conversation.ofId(id), scope, store, {})
+        try {
+            session.initialize(load = { store.persisted })
+            val finish = CompletableDeferred<Unit>()
+            val cleaning = CompletableDeferred<Unit>()
+            val nextChunk = CompletableDeferred<Unit>()
+            val stream = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    session.update { it.updateCurrentMessages(listOf(reply)) }
+                    nextChunk.await()
+                    session.update {
+                        it.updateCurrentMessages(
+                            listOf(reply.copy(parts = listOf(UIMessagePart.Text("late chunk"))))
+                        )
+                    }
+                } finally {
+                    withContext(NonCancellable) {
+                        cleaning.complete(Unit)
+                        finish.await()
+                        session.finishGeneration()
+                    }
+                }
+            }
+            session.setJob(stream)
+            val deletion = launch(start = CoroutineStart.UNDISPATCHED) {
+                session.withStoppedJobs(pauseInbox = true) {
+                    session.update { checkNotNull(it.deleteMessage(reply.id)) }
+                    session.flush()
+                }
+            }
+            cleaning.await()
+            var successorRan = false
+            val successor = scope.launch(start = CoroutineStart.LAZY) { successorRan = true }
+            session.setJob(successor)
+            assertTrue(successor.isCancelled)
+            finish.complete(Unit)
+            deletion.join()
+            nextChunk.complete(Unit)
+            stream.join()
+            assertFalse(successorRan)
+            assertTrue(session.state.value.messageNodes.isEmpty())
+            assertTrue(store.persisted!!.messageNodes.isEmpty())
+            assertTrue(session.inbox.state.value.paused)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
     }
 
     private fun partialReply() = UIMessage(

@@ -15,7 +15,6 @@ import {
 } from "~/components/extended/conversation";
 import { ChatInput } from "~/components/input/chat-input";
 import { ChatMessage } from "~/components/message/chat-message";
-import { Button } from "~/components/ui/button";
 import { Drawer, DrawerContent } from "~/components/ui/drawer";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "~/components/ui/resizable";
 import { TypingIndicator } from "~/components/ui/typing-indicator";
@@ -28,7 +27,9 @@ import { useCurrentModel } from "~/hooks/use-current-model";
 import { getAssistantDisplayName, getModelDisplayName } from "~/lib/display";
 import { convertConversationToMarkdown, downloadMarkdown } from "~/lib/export-markdown";
 import { cn } from "~/lib/utils";
-import api, { sse } from "~/services/api";
+import api from "~/services/api";
+import { applyNodeUpdate, subscribeConversationDetail, type DetailConnectionStatus } from "~/services/conversation-stream";
+import { finishDraftSubmission, submitDraft } from "~/lib/draft-submission";
 import { useChatInputStore, useAppStore } from "~/stores";
 import { WorkbenchHost } from "~/components/workbench/workbench-host";
 import {
@@ -40,9 +41,6 @@ import {
   type ConversationDto,
   type MessageNodeDto,
   type MessageDto,
-  type ConversationNodeUpdateEventDto,
-  type ConversationErrorEventDto,
-  type ConversationSnapshotEventDto,
   type ProviderModel,
   type Settings,
   type UIMessagePart,
@@ -55,11 +53,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import i18n from "~/i18n";
-
-type ConversationStreamEvent =
-  | ConversationSnapshotEventDto
-  | ConversationNodeUpdateEventDto
-  | ConversationErrorEventDto;
 
 interface SelectedNodeMessage {
   node: MessageNodeDto;
@@ -280,43 +273,12 @@ function buildEditedParts(session: EditingSession, draftParts: UIMessagePart[]):
   return [...preservedParts, ...appendedAttachments];
 }
 
-function applyNodeUpdate(
-  conversation: ConversationDto,
-  event: ConversationNodeUpdateEventDto,
-): ConversationDto {
-  if (conversation.id !== event.conversationId) {
-    return conversation;
-  }
-
-  const nextNodes = [...conversation.messages];
-  const indexById = nextNodes.findIndex((node) => node.id === event.nodeId);
-  const targetIndex = indexById >= 0 ? indexById : event.nodeIndex;
-
-  if (targetIndex < 0) {
-    return conversation;
-  }
-
-  if (targetIndex < nextNodes.length) {
-    nextNodes[targetIndex] = event.node;
-  } else if (targetIndex === nextNodes.length) {
-    nextNodes.push(event.node);
-  } else {
-    return conversation;
-  }
-
-  return {
-    ...conversation,
-    messages: nextNodes,
-    updateAt: event.updateAt,
-    isGenerating: event.isGenerating,
-  };
-}
-
 function useConversationDetail(activeId: string | null, updateSummary: ConversationSummaryUpdater) {
   const { t } = useTranslation("page");
   const [detail, setDetail] = React.useState<ConversationDto | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [detailError, setDetailError] = React.useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = React.useState<DetailConnectionStatus>("connecting");
 
   const resetDetail = React.useCallback(() => {
     setDetail(null);
@@ -330,76 +292,46 @@ function useConversationDetail(activeId: string | null, updateSummary: Conversat
       return;
     }
 
-    let mounted = true;
+    setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
-
+    setConnectionStatus("connecting");
     const abortController = new AbortController();
+    let hasSnapshot = false;
 
-    api
-      .get<ConversationDto>(`conversations/${activeId}`)
-      .then((data) => {
-        if (!mounted) return;
-        setDetail(data);
-        updateSummary(toConversationSummaryUpdate(data));
-      })
-      .catch((err: Error) => {
-        if (!mounted) return;
-        setDetailError(err.message || t("conversations.errors.load_detail_failed"));
-        setDetail(null);
-      })
-      .finally(() => {
-        if (!mounted) return;
+    void subscribeConversationDetail({
+      id: activeId,
+      signal: abortController.signal,
+      onSnapshot: (data) => {
+        hasSnapshot = true;
+        useAppStore.getState().setClockOffset(data.serverTime);
+        setDetail(data.conversation);
+        updateSummary(toConversationSummaryUpdate(data.conversation));
+        setDetailError(null);
         setDetailLoading(false);
-      });
-
-    void sse<ConversationStreamEvent>(
-      `conversations/${activeId}/stream`,
-      {
-        onMessage: ({ event, data }) => {
-          if (!mounted) return;
-
-          if (event === "error" && data.type === "error") {
-            toast.error(data.message);
-            return;
-          }
-
-          if (event === "snapshot" && data.type === "snapshot") {
-            useAppStore.getState().setClockOffset(data.serverTime);
-            setDetail(data.conversation);
-            updateSummary(toConversationSummaryUpdate(data.conversation));
-            setDetailError(null);
-            setDetailLoading(false);
-            return;
-          }
-
-          if (event !== "node_update" || data.type !== "node_update") return;
-
-          useAppStore.getState().setClockOffset(data.serverTime);
-          setDetail((prev) => {
-            if (!prev) return prev;
-            const next = applyNodeUpdate(prev, data);
-            if (next === prev) return prev;
-            if (prev.isGenerating !== next.isGenerating) {
-              updateSummary(toConversationSummaryUpdate(next));
-            }
-            return next;
-          });
-          setDetailError(null);
-          setDetailLoading(false);
-        },
-        onError: (streamError) => {
-          if (!mounted) return;
-          console.error("Conversation detail SSE error:", streamError);
-        },
       },
-      { signal: abortController.signal },
-    );
+      onNodeUpdate: (data) => {
+        useAppStore.getState().setClockOffset(data.serverTime);
+        setDetail((prev) => {
+          if (!prev) return prev;
+          const next = applyNodeUpdate(prev, data);
+          if (prev.isGenerating !== next.isGenerating) {
+            updateSummary(toConversationSummaryUpdate(next));
+          }
+          return next;
+        });
+      },
+      onError: (error) => {
+        if (!hasSnapshot) {
+          setDetailError(error.message || t("conversations.errors.load_detail_failed"));
+          setDetailLoading(false);
+        }
+      },
+      onConversationError: (message) => toast.error(message),
+      onStatus: setConnectionStatus,
+    });
 
-    return () => {
-      mounted = false;
-      abortController.abort();
-    };
+    return () => abortController.abort();
   }, [activeId, resetDetail, t, updateSummary]);
 
   const selectedNodeMessages = React.useMemo<SelectedNodeMessage[]>(() => {
@@ -414,6 +346,7 @@ function useConversationDetail(activeId: string | null, updateSummary: Conversat
     detail,
     detailLoading,
     detailError,
+    connectionStatus,
     selectedNodeMessages,
     resetDetail,
   };
@@ -477,32 +410,26 @@ function useDraftInputController({
   const handleSubmit = React.useCallback(async () => {
     if (!draftKey) return;
 
-    const parts = getSubmitParts(draftKey);
-    if (parts.length === 0) return;
+    const conversationId = activeId ?? uuidv4();
+    const sent = await submitDraft(
+      useChatInputStore.getState,
+      draftKey,
+      (parts) => api.post<{ status: string }>(`conversations/${conversationId}/messages`, {
+        parts,
+        ...(!activeId ? { folderId } : {}),
+      }),
+      activeId ? undefined : conversationId,
+    );
+    if (!sent || activeId) return;
 
-    if (activeId) {
-      await api.post<{ status: string }>(`conversations/${activeId}/messages`, { parts });
-      clearDraft(draftKey);
-      return;
-    }
-
-    const conversationId = uuidv4();
+    // Rotate the home key only after acceptance; failures leave the visible draft intact.
     setHomeDraftId(createHomeDraftId());
-
-    await api.post<{ status: string }>(`conversations/${conversationId}/messages`, {
-      parts,
-      folderId,
-    });
-    clearDraft(draftKey);
-
     navigate(`/c/${conversationId}`);
     refreshList();
   }, [
     activeId,
-    clearDraft,
     draftKey,
     folderId,
-    getSubmitParts,
     navigate,
     refreshList,
     setHomeDraftId,
@@ -746,7 +673,7 @@ function ConversationsPageInner() {
   const [homeDraftId, setHomeDraftId] = React.useState(() => createHomeDraftId());
   const [editingSession, setEditingSession] = React.useState<EditingSession | null>(null);
 
-  const { detail, detailLoading, detailError, selectedNodeMessages, resetDetail } =
+  const { detail, detailLoading, detailError, connectionStatus, selectedNodeMessages, resetDetail } =
     useConversationDetail(activeId, updateConversationSummary);
   const { currentModel, currentProvider } = useCurrentModel(detail);
 
@@ -913,6 +840,7 @@ function ConversationsPageInner() {
     const draftParts = getCurrentSubmitParts();
     if (draftParts.length === 0) return;
 
+    const submittedDraft = draftKey ? useChatInputStore.getState().drafts[draftKey] : undefined;
     const nextParts = buildEditedParts(editingSession, draftParts);
 
     await api.post<{ status: string }>(
@@ -920,9 +848,10 @@ function ConversationsPageInner() {
       { parts: stripEditDraftMetadata(nextParts) },
     );
 
-    setEditingSession(null);
-    clearCurrentDraft();
-  }, [activeId, clearCurrentDraft, editingSession, getCurrentSubmitParts, handleSubmit]);
+    if (draftKey && finishDraftSubmission(useChatInputStore.getState(), draftKey, submittedDraft)) {
+      setEditingSession((current) => current === editingSession ? null : current);
+    }
+  }, [activeId, draftKey, editingSession, getCurrentSubmitParts, handleSubmit]);
 
   const handleTogglePinConversation = React.useCallback(
     async (conversationId: string) => {
@@ -1154,6 +1083,11 @@ function ConversationsPageInner() {
       <SidebarInset className="flex min-h-svh flex-col overflow-hidden">
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <SidebarTrigger />
+          {activeId && connectionStatus !== "connected" && (
+            <span role="status" className="text-xs text-muted-foreground">
+              {connectionStatus === "reconnecting" ? "正在重新连接…" : "正在连接…"}
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm text-muted-foreground">
               {activeConversation

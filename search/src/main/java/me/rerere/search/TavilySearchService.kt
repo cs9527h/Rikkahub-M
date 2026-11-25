@@ -106,14 +106,13 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 .post(body.toString().toRequestBody())
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val response = response.body.string().let {
-                    json.decodeFromString<SearchResponse>(it)
-                }
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val response = response.body.string().let {
+                        json.decodeFromString<SearchResponse>(it)
+                    }
 
-                return@withContext Result.success(
-                    SearchResult(
+                    return@withContext Result.success(SearchResult(
                         answer = response.answer,
                         items = response.results.map {
                             SearchResultItem(
@@ -124,8 +123,9 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                         },
                         images = response.images,
                     ))
-            } else {
-                error("response failed #${response.code}")
+                } else {
+                    error("response failed #${response.code}")
+                }
             }
         }
     }
@@ -148,23 +148,24 @@ object TavilySearchService : SearchService<SearchServiceOptions.TavilyOptions> {
                 .post(body.toString().toRequestBody())
                 .addHeader("Authorization", "Bearer $apiKey")
                 .build()
-            val response = httpClient.newCall(request).await()
-            if (response.isSuccessful) {
-                val response = response.body.string().let {
-                    json.decodeFromString<ScrapeResponse>(it)
-                }
-                return@withContext Result.success(
-                    ScrapedResult(
-                        urls = response.results.map {
-                            ScrapedResultUrl(
-                                url = it.url,
-                                content = it.rawContent,
-                            )
-                        }
+            httpClient.newCall(request).await().use { response ->
+                if (response.isSuccessful) {
+                    val response = response.body.string().let {
+                        json.decodeFromString<ScrapeResponse>(it)
+                    }
+                    return@withContext Result.success(
+                        ScrapedResult(
+                            urls = response.results.map {
+                                ScrapedResultUrl(
+                                    url = it.url,
+                                    content = it.rawContent,
+                                )
+                            }
+                        )
                     )
-                )
-            } else {
-                error("response failed #${response.code}")
+                } else {
+                    error("response failed #${response.code}")
+                }
             }
         }
     }

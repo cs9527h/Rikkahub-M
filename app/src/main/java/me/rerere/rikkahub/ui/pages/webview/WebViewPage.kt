@@ -29,6 +29,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.material3.CircularProgressIndicator
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +49,20 @@ import me.rerere.ui.webview.rememberWebViewState
 @Composable
 fun WebViewPage(url: String, contentId: String) {
     val context = LocalContext.current
+    val previewContent by produceState<Result<String>?>(null, context.cacheDir, contentId, url) {
+        value = null
+        if (url.isEmpty()) {
+            value = try {
+                Result.success(checkNotNull(WebViewContentCache.loadAsync(context.cacheDir, contentId)) {
+                    "预览缓存已失效，请返回重新打开"
+                })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
     val state = if (url.isNotEmpty()) {
         rememberWebViewState(
             url = url,
@@ -56,9 +73,7 @@ fun WebViewPage(url: String, contentId: String) {
                 loadWithOverviewMode = true
             })
     } else {
-        val content = remember(contentId) {
-            WebViewContentCache.load(context.cacheDir, contentId).orEmpty()
-        }
+        val content = previewContent?.getOrNull().orEmpty()
         rememberWebViewState(
             data = content,
             baseUrl = WEB_VIEW_BASE_URL,
@@ -142,12 +157,17 @@ fun WebViewPage(url: String, contentId: String) {
             )
         }
     ) {
-        WebView(
-            state = state,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(it),
-        )
+        when {
+            url.isEmpty() && previewContent == null -> CircularProgressIndicator(Modifier.padding(it).padding(24.dp))
+            url.isEmpty() && previewContent?.isFailure == true -> Text(
+                text = previewContent?.exceptionOrNull()?.message ?: "网页预览失败",
+                modifier = Modifier.padding(it).padding(24.dp),
+            )
+            else -> WebView(
+                state = state,
+                modifier = Modifier.fillMaxSize().padding(it),
+            )
+        }
     }
 
     if (showConsoleSheet) {

@@ -52,6 +52,14 @@ class ConversationSession(
     val state: StateFlow<Conversation> = _state.asStateFlow()
     private val initializationMutex = Mutex()
     private val writeMutex = Mutex()
+    private val taskMutationMutex = Mutex()
+
+    @Volatile
+    private var stoppingJobs = false
+
+    @Volatile
+    internal var titleRevision = 0L
+        private set
 
     @Volatile
     var isInitialized = false
@@ -104,6 +112,7 @@ class ConversationSession(
         check(isInitialized) { "Conversation $id is not loaded yet" }
         val updated = transform(_state.value) ?: return null
         require(updated.id == id)
+        if (updated.title != _state.value.title) titleRevision++
         _state.value = updated
         return updated
     }
@@ -152,10 +161,13 @@ class ConversationSession(
         transform: (Conversation) -> Conversation,
         persist: suspend (Conversation) -> Unit,
         expectedIncarnation: Int = incarnation,
+        expectedTitleRevision: Long? = null,
     ): Boolean {
         return writeMutex.withLock {
-            if (incarnation != expectedIncarnation) return@withLock false
             val (before, updated) = synchronized(this) {
+                if (incarnation != expectedIncarnation ||
+                    (expectedTitleRevision != null && titleRevision != expectedTitleRevision)
+                ) return@withLock false
                 val before = _state.value
                 before to update(transform)
             }
@@ -179,23 +191,44 @@ class ConversationSession(
         write: suspend (previous: Conversation?) -> Unit,
     ) {
         require(conversation.id == id)
-        cancelJobs().forEach { it.join() }
-        // 正在进行的加载结束后才替换，否则加载结果会盖掉替换后的状态
-        initializationMutex.withLock {
-            writeMutex.withLock {
-                write(state.value.takeIf { isInitialized })
-                synchronized(this) {
-                    _state.value = conversation
-                    isInitialized = true
-                    incarnation++
+        withStoppedJobs {
+            // 正在进行的加载结束后才替换，否则加载结果会盖掉替换后的状态
+            initializationMutex.withLock {
+                writeMutex.withLock {
+                    write(state.value.takeIf { isInitialized })
+                    synchronized(this) {
+                        _state.value = conversation
+                        isInitialized = true
+                        incarnation++
+                        titleRevision++
+                    }
+                    lastWritten = conversation
+                    this.existsInDatabase = existsInDatabase
                 }
-                lastWritten = conversation
-                this.existsInDatabase = existsInDatabase
             }
+            processingStatus.value = null
+            replyMessageId.value = null
+            generationStartedAt.value = null
         }
-        processingStatus.value = null
-        replyMessageId.value = null
-        generationStartedAt.value = null
+    }
+
+    /** 关闭任务注册后才快照取消；收尾和修改完成前，队列回调也不得注册新任务。 */
+    internal suspend fun <T> withStoppedJobs(
+        pauseInbox: Boolean = false,
+        block: suspend () -> T,
+    ): T = taskMutationMutex.withLock {
+        val jobs = synchronized(this) {
+            stoppingJobs = true
+            if (pauseInbox && activeJobs.isNotEmpty()) inbox.pause()
+            cancelJobs()
+        }
+        try {
+            // 即使调用方取消，也先等待旧任务结束，不能带着仍会写入的旧任务重新打开门禁。
+            withContext(NonCancellable) { jobs.forEach { it.join() } }
+            block()
+        } finally {
+            synchronized(this) { stoppingJobs = false }
+        }
     }
 
     // 失败和取消也必须保存已收到的内容，且保存完成前不能释放生成任务。
@@ -244,7 +277,7 @@ class ConversationSession(
      * 压缩也占任务槽，所以压缩期间同样不会开始。
      */
     val canStartNextTurn: Boolean
-        get() = _generationJob.value == null && !state.value.isAwaitingToolApproval
+        get() = !stoppingJobs && _generationJob.value == null && !state.value.isAwaitingToolApproval
 
     // 自动压缩已经为哪条回复试过；压缩失败后不再为同一条回复反复重试
     @Volatile
@@ -267,6 +300,10 @@ class ConversationSession(
 
     @Synchronized
     fun setJob(job: Job?, cancelPrevious: Boolean = true, activity: SessionActivity = SessionActivity.Generating) {
+        if (job != null && stoppingJobs) {
+            job.cancel(CancellationException("Conversation $id is closing"))
+            return
+        }
         val previous = _generationJob.value
         if (job != null) generationStartedAt.value = System.currentTimeMillis()
         // 先于任务槽更新，界面看到新任务时类型已经对了

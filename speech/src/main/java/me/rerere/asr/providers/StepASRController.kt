@@ -11,18 +11,20 @@ import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import me.rerere.asr.ASRController
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.asr.ASRState
@@ -68,6 +70,7 @@ class StepASRController(
     private val provider: ASRProviderSetting.Step
 ) : ASRController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val requests = StepAsrRequests(httpClient)
 
     private val _state = MutableStateFlow(ASRState(isAvailable = true))
     override val state: StateFlow<ASRState> = _state.asStateFlow()
@@ -125,6 +128,7 @@ class StepASRController(
                 flushJob?.join()
                 flushSegment()
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.e(TAG, "Final flush failed", e)
                 setError(e.message ?: "Step ASR final flush failed")
             } finally {
@@ -134,6 +138,8 @@ class StepASRController(
     }
 
     override fun dispose() {
+        // Closing Calls first also interrupts a callback blocked in readUtf8Line.
+        requests.dispose()
         recorderJob?.cancel()
         flushJob?.cancel()
         releaseRecorder()
@@ -283,16 +289,16 @@ class StepASRController(
         var lastError: IOException? = null
         for (attempt in 1..MAX_RETRY) {
             try {
-                return withContext(Dispatchers.IO) {
-                    httpClient.newCall(request).execute().use { resp ->
-                        if (!resp.isSuccessful) {
-                            // 只保留状态码：响应体可能回显识别文本或音频元数据，不进异常消息与日志。
-                            throw StepAsrHttpException(resp.code)
-                        }
-                        parseSseTranscript(resp.body.source())
+                currentCoroutineContext().ensureActive()
+                return requests.execute(request) { resp ->
+                    if (!resp.isSuccessful) {
+                        // 只保留状态码：响应体可能回显识别文本或音频元数据，不进异常消息与日志。
+                        throw StepAsrHttpException(resp.code)
                     }
+                    parseSseTranscript(resp.body.source())
                 }
             } catch (e: IOException) {
+                currentCoroutineContext().ensureActive()
                 lastError = e
                 // 4xx 是鉴权/参数问题，重试没有意义，直接上抛。
                 if (e is StepAsrHttpException && e.code in 400..499) throw e

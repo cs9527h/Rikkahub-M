@@ -22,10 +22,17 @@ private object MarkdownWebAssets {
             .also { cached = it }
 }
 
-fun buildMarkdownPreviewHtml(context: Context, markdown: String, colorScheme: ColorScheme): String {
-    val htmlTemplate = MarkdownWebAssets.template(context)
+suspend fun buildMarkdownPreviewHtml(context: Context, markdown: String, colorScheme: ColorScheme): String {
+    val htmlTemplate = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        MarkdownWebAssets.template(context)
+    }
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        renderMarkdownPreviewHtml(htmlTemplate, markdown, colorScheme)
+    }
+}
 
-    return htmlTemplate
+internal fun renderMarkdownPreviewHtml(htmlTemplate: String, markdown: String, colorScheme: ColorScheme): String =
+    htmlTemplate
         .replace("{{MARKDOWN_BASE64}}", markdown.base64Encode())
         .replace("{{BACKGROUND_COLOR}}", colorScheme.background.toCssHex())
         .replace("{{ON_BACKGROUND_COLOR}}", colorScheme.onBackground.toCssHex())
@@ -36,4 +43,3 @@ fun buildMarkdownPreviewHtml(context: Context, markdown: String, colorScheme: Co
         .replace("{{PRIMARY_COLOR}}", colorScheme.primary.toCssHex())
         .replace("{{OUTLINE_COLOR}}", colorScheme.outline.toCssHex())
         .replace("{{OUTLINE_VARIANT_COLOR}}", colorScheme.outlineVariant.toCssHex())
-}
