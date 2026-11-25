@@ -29,7 +29,9 @@ fun ChatTopBarCapsule(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    // 半透明而不是实底：实底 surfaceContainerLow 在浅色主题下几乎是纯白，
+    // 压在深色聊天背景/壁纸上就是一块突兀的白，这里让它透出后面的内容。
+    val containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f)
     val backgroundAlpha by animateFloatAsState(
         targetValue = if (showBackground) 1f else 0f,
         label = "ChatTopBarCapsuleBackground",
