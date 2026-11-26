@@ -145,7 +145,7 @@ internal fun MemoryAdvancedSettings(
             title = { Text(if (kind == BudgetKind.RUN) "单次整理上限" else "每日整理预算") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("按估算 Token 计算，填 0 表示不限制。达到上限会自动暂停，不会擅自继续花钱。")
+                    Text("这里修改的是全局预算配置，适用于所有助手。按估算 Token 计算，填 0 表示不限制。达到上限会自动暂停，不会擅自继续花钱。")
                     TextField(
                         value = budgetInput,
                         onValueChange = { budgetInput = it.filter { c -> c.isDigit() }.take(9) },
@@ -181,7 +181,7 @@ internal fun MemoryAdvancedSettings(
         CardGroup {
             item(
                 headlineContent = { Text("高级设置") },
-                supportingContent = { Text("整理预算、整理模型、时间提醒") },
+                supportingContent = { Text("全局整理预算与模型、此助手的召回与提醒") },
                 trailingContent = {
                     Icon(
                         imageVector = HugeIcons.ArrowDown01,
@@ -210,7 +210,7 @@ internal fun MemoryAdvancedSettings(
                 CardGroup {
                     item(
                         headlineContent = { Text("单次整理上限") },
-                        supportingContent = { Text("超出后暂停，等你确认再继续。0 表示不限制。") },
+                        supportingContent = { Text("全局设置，适用于所有助手。超出后暂停，等你确认再继续。0 表示不限制。") },
                         onClick = {
                             budgetInput = ""
                             budgetDialog = BudgetKind.RUN
@@ -218,7 +218,7 @@ internal fun MemoryAdvancedSettings(
                     )
                     item(
                         headlineContent = { Text("每日整理预算") },
-                        supportingContent = { Text("超过后当天不再自动整理。0 表示不限制。") },
+                        supportingContent = { Text("全局设置，用量按记忆库分别统计。超出时当天不再自动整理。0 表示不限制。") },
                         onClick = {
                             budgetInput = ""
                             budgetDialog = BudgetKind.DAY
@@ -236,7 +236,7 @@ internal fun MemoryAdvancedSettings(
                     )
                     item(
                         headlineContent = { Text("记忆整理模型") },
-                        supportingContent = { Text("整理历史聊天时使用的模型，未配置时使用快速模型或聊天模型。") },
+                        supportingContent = { Text("所有助手共用的整理模型；未配置时使用快速模型或聊天模型。") },
                         onClick = onOpenModels,
                     )
                 }

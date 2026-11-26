@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">Поиск по имени или типу файла</string>
+    <string name="file_manager_clear_search">Очистить поиск</string>
+    <string name="file_manager_all_types">Все типы</string>
+    <string name="file_manager_images">Изображения</string>
+    <string name="file_manager_documents">Документы</string>
+    <string name="file_manager_video">Видео</string>
+    <string name="file_manager_audio">Аудио</string>
+    <string name="file_manager_other">Другое</string>
+    <string name="file_manager_all_assistants">Все ассистенты</string>
+    <string name="file_manager_unassigned">Не связан с ассистентом</string>
+    <string name="file_manager_shared">Используется несколькими ассистентами</string>
+    <string name="file_manager_owner_unknown">Принадлежность не подтверждена</string>
+    <string name="file_manager_owner_incomplete">Некоторые истории бесед слишком велики или повреждены, поэтому принадлежность файлов определена не полностью. Эти файлы защищены от очистки несвязанных файлов.</string>
+    <string name="file_manager_unknown_assistant">Удалённый ассистент (%1$s)</string>
+    <string name="file_manager_shared_names">Общий доступ · %1$s</string>
+    <string name="file_manager_summary">Файлов: %1$d · %2$s</string>
+    <string name="file_manager_scope_summary">Показано файлов: %1$d из %2$d</string>
+    <string name="file_manager_sort">Сортировка файлов</string>
+    <string name="file_manager_sort_newest">Сначала новые</string>
+    <string name="file_manager_sort_oldest">Сначала старые</string>
+    <string name="file_manager_sort_largest">Сначала большие</string>
+    <string name="file_manager_sort_name">Имя файла</string>
+    <string name="file_manager_reset">Сбросить фильтры</string>
+    <string name="file_manager_loading">Загрузка файлов и связей с ассистентами…</string>
+    <string name="file_manager_load_error">Не удалось загрузить файлы. Повторите попытку перед управлением ими.</string>
+    <string name="file_manager_retry">Повторить</string>
+    <string name="file_manager_refresh">Обновить файлы</string>
+    <string name="file_manager_no_matches">Нет файлов, соответствующих фильтрам</string>
+    <string name="file_manager_preview">Предпросмотр</string>
+    <string name="file_manager_preview_named">Предпросмотр %1$s</string>
+    <string name="file_manager_actions_named">Действия с %1$s</string>
+    <string name="file_manager_export">Сохранить копию…</string>
+    <string name="file_manager_exporting">Сохранение копии…</string>
+    <string name="file_manager_exported">Файл сохранён</string>
+    <string name="file_manager_export_failed">Не удалось сохранить. Исходный файл сохранён без изменений.</string>
+    <string name="file_manager_delete_warning">После удаления файла вложения со ссылками на него в беседах также перестанут открываться.</string>
+    <string name="file_manager_shared_warning">Это общий файл. Его удаление затронет всех ассистентов, которые его используют.</string>
+    <string name="file_manager_clean_scope">Учитываются только файлы в рамках текущего поиска и фильтров.</string>
+    <string name="file_manager_clean_unused">Удалять только файлы, не связанные с ассистентами</string>
+    <string name="file_manager_clean_unused_hint">Рекомендуется сохранять файлы, на которые ссылаются беседы.</string>
+    <string name="file_manager_clean_summary">Выбрано файлов: %1$d · %2$s</string>
+    <string name="file_manager_clean_confirm">Удалить выбранные файлы (%1$d)?</string>
+    <string name="file_manager_clean_warning">Выбранные файлы будут удалены с устройства. Вложения со ссылками на них перестанут открываться, в том числе у других ассистентов.</string>
+    <string name="file_manager_deleting">Очистка файлов…</string>
+</resources>

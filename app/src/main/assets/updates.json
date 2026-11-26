@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-25T16:03:18Z",
+  "updatedAt": "2026-11-26T10:07:24Z",
   "releases": [
+    {
+      "version": "1.1.5",
+      "tag": "v1.1.5",
+      "title": "Rikkahub-M 1.1.5",
+      "summary": "文件支持预览、导出与助手分类，记忆设置可选择其他助手。",
+      "body": "## 新增\n\n- 文件支持图片和文档预览\n- 支持单个文件导出保存\n- 文件支持助手分类和搜索筛选\n- 记忆设置可选择其他助手\n\n## 修复\n\n- 修复记忆配置覆盖与助手失效\n\n## 优化\n\n- 更新设置与快速入门文案",
+      "publishedAt": "2026-11-26T10:07:24Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "1.1.4",
       "tag": "v1.1.4",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-25T16:03:18Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "1.1.3",

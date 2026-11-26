@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">البحث باسم الملف أو نوعه</string>
+    <string name="file_manager_clear_search">مسح البحث</string>
+    <string name="file_manager_all_types">كل الأنواع</string>
+    <string name="file_manager_images">صور</string>
+    <string name="file_manager_documents">مستندات</string>
+    <string name="file_manager_video">فيديو</string>
+    <string name="file_manager_audio">صوت</string>
+    <string name="file_manager_other">أخرى</string>
+    <string name="file_manager_all_assistants">كل المساعدين</string>
+    <string name="file_manager_unassigned">غير مرتبط بأي مساعد</string>
+    <string name="file_manager_shared">مشترك بين عدة مساعدين</string>
+    <string name="file_manager_owner_unknown">الملكية غير مؤكدة</string>
+    <string name="file_manager_owner_incomplete">بعض سجلات المحادثات كبيرة جدًا أو بتنسيق غير سليم، لذا لم يتأكد تصنيف جميع الملفات. هذه الملفات محمية من تنظيف الملفات غير المرتبطة.</string>
+    <string name="file_manager_unknown_assistant">مساعد محذوف (%1$s)</string>
+    <string name="file_manager_shared_names">مشترك · %1$s</string>
+    <string name="file_manager_summary">عدد الملفات: %1$d · %2$s</string>
+    <string name="file_manager_scope_summary">عرض %1$d من أصل %2$d من الملفات</string>
+    <string name="file_manager_sort">ترتيب الملفات</string>
+    <string name="file_manager_sort_newest">الأحدث أولًا</string>
+    <string name="file_manager_sort_oldest">الأقدم أولًا</string>
+    <string name="file_manager_sort_largest">الأكبر أولًا</string>
+    <string name="file_manager_sort_name">اسم الملف</string>
+    <string name="file_manager_reset">إعادة ضبط عوامل التصفية</string>
+    <string name="file_manager_loading">جارٍ تحميل الملفات وتحديد المساعدين المرتبطة بهم…</string>
+    <string name="file_manager_load_error">تعذر تحميل الملفات. أعد المحاولة قبل إدارتها.</string>
+    <string name="file_manager_retry">إعادة المحاولة</string>
+    <string name="file_manager_refresh">تحديث الملفات</string>
+    <string name="file_manager_no_matches">لا توجد ملفات تطابق عوامل التصفية هذه</string>
+    <string name="file_manager_preview">معاينة</string>
+    <string name="file_manager_preview_named">معاينة %1$s</string>
+    <string name="file_manager_actions_named">إجراءات %1$s</string>
+    <string name="file_manager_export">حفظ نسخة…</string>
+    <string name="file_manager_exporting">جارٍ حفظ نسخة…</string>
+    <string name="file_manager_exported">تم حفظ الملف</string>
+    <string name="file_manager_export_failed">فشل الحفظ. تم الاحتفاظ بالملف الأصلي.</string>
+    <string name="file_manager_delete_warning">سيؤدي حذف الملف أيضًا إلى تعطيل المرفقات التي تشير إليه في المحادثات.</string>
+    <string name="file_manager_shared_warning">هذا الملف مشترك. سيؤثر حذفه على جميع المساعدين الذين يستخدمونه.</string>
+    <string name="file_manager_clean_scope">تُعالج فقط الملفات المطابقة للبحث وعوامل التصفية الحالية.</string>
+    <string name="file_manager_clean_unused">تنظيف الملفات غير المرتبطة بأي مساعد فقط</string>
+    <string name="file_manager_clean_unused_hint">يُنصح بالاحتفاظ بالملفات التي تشير إليها المحادثات.</string>
+    <string name="file_manager_clean_summary">عدد الملفات المحددة: %1$d · %2$s</string>
+    <string name="file_manager_clean_confirm">هل تريد تنظيف هذه الملفات وعددها %1$d؟</string>
+    <string name="file_manager_clean_warning">سيؤدي هذا إلى حذف الملفات المحددة من هذا الجهاز. ستتوقف المرفقات التي تشير إليها عن الفتح، بما فيها المرفقات لدى المساعدين الآخرين.</string>
+    <string name="file_manager_deleting">جارٍ تنظيف الملفات…</string>
+</resources>

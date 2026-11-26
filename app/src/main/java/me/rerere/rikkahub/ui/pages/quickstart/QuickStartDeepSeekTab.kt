@@ -97,7 +97,6 @@ internal fun QuickStartDeepSeekTab(vm: QuickStartVM) {
 
             stepItem(
                 index = 2,
-                title = R.string.quick_start_page_deepseek_import_title,
                 description = R.string.quick_start_page_deepseek_import_desc,
                 descriptionArgs = listOf(assistantName),
                 state = if (imported) StepState.DONE else StepState.TODO,

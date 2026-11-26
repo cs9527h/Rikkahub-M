@@ -725,7 +725,7 @@
   <string name="setting_page_web_server">Веб-сервер</string>
   <string name="setting_page_web_server_address_note">Примечания к адресу</string>
   <string name="setting_page_web_server_address_note_desc">LAN — WiFi IP, локально — localhost</string>
-  <string name="setting_page_web_server_desc">Разрешить доступ к RikkaHub через веб</string>
+  <string name="setting_page_web_server_desc">Разрешить доступ к Rikkahub-M через веб</string>
   <string name="setting_page_web_server_error">Ошибка</string>
   <string name="setting_page_web_server_jwt_enable">Включить аутентификацию</string>
   <string name="setting_page_web_server_jwt_enable_desc">Пароль для доступа к веб-интерфейсу</string>

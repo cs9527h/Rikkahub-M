@@ -109,11 +109,12 @@ fun AssistantPicker(
 }
 
 @Composable
-private fun AssistantPickerSheet(
+internal fun AssistantPickerSheet(
     settings: Settings,
     currentAssistant: Assistant,
     onAssistantSelected: (Assistant) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onEditAssistant: ((Assistant) -> Unit)? = null,
 ) {
     val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))
     val scope = rememberCoroutineScope()
@@ -198,7 +199,11 @@ private fun AssistantPickerSheet(
                                 scope.launch {
                                     sheetState.hide()
                                     onDismiss()
-                                    navController.navigate(Screen.AssistantDetail(assistant.id.toString()))
+                                    if (onEditAssistant != null) {
+                                        onEditAssistant(assistant)
+                                    } else {
+                                        navController.navigate(Screen.AssistantDetail(assistant.id.toString()))
+                                    }
                                 }
                             }
                         )

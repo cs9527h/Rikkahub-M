@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">Dateiname oder Dateityp suchen</string>
+    <string name="file_manager_clear_search">Suche leeren</string>
+    <string name="file_manager_all_types">Alle Dateitypen</string>
+    <string name="file_manager_images">Bilder</string>
+    <string name="file_manager_documents">Dokumente</string>
+    <string name="file_manager_video">Videos</string>
+    <string name="file_manager_audio">Audiodateien</string>
+    <string name="file_manager_other">Sonstige</string>
+    <string name="file_manager_all_assistants">Alle Assistenten</string>
+    <string name="file_manager_unassigned">Mit keinem Assistenten verknüpft</string>
+    <string name="file_manager_shared">Von mehreren Assistenten genutzt</string>
+    <string name="file_manager_owner_unknown">Zuordnung unbestätigt</string>
+    <string name="file_manager_owner_incomplete">Einige Gesprächsverläufe sind zu groß oder fehlerhaft und lassen sich nicht vollständig zuordnen. Diese Dateien sind vor der Bereinigung nicht verknüpfter Dateien geschützt.</string>
+    <string name="file_manager_unknown_assistant">Entfernter Assistent (%1$s)</string>
+    <string name="file_manager_shared_names">Gemeinsam genutzt · %1$s</string>
+    <string name="file_manager_summary">%1$d Dateien · %2$s</string>
+    <string name="file_manager_scope_summary">%1$d von %2$d Dateien angezeigt</string>
+    <string name="file_manager_sort">Dateien sortieren</string>
+    <string name="file_manager_sort_newest">Neueste zuerst</string>
+    <string name="file_manager_sort_oldest">Älteste zuerst</string>
+    <string name="file_manager_sort_largest">Größte zuerst</string>
+    <string name="file_manager_sort_name">Dateiname</string>
+    <string name="file_manager_reset">Filter zurücksetzen</string>
+    <string name="file_manager_loading">Dateien und Assistentenzuordnung werden geladen…</string>
+    <string name="file_manager_load_error">Dateien konnten nicht geladen werden. Versuche es erneut, bevor du sie verwaltest.</string>
+    <string name="file_manager_retry">Erneut versuchen</string>
+    <string name="file_manager_refresh">Dateien aktualisieren</string>
+    <string name="file_manager_no_matches">Keine Dateien entsprechen diesen Filtern</string>
+    <string name="file_manager_preview">Vorschau</string>
+    <string name="file_manager_preview_named">Vorschau von %1$s</string>
+    <string name="file_manager_actions_named">Aktionen für %1$s</string>
+    <string name="file_manager_export">Kopie speichern…</string>
+    <string name="file_manager_exporting">Kopie wird gespeichert…</string>
+    <string name="file_manager_exported">Datei gespeichert</string>
+    <string name="file_manager_export_failed">Speichern fehlgeschlagen. Die Originaldatei wurde beibehalten.</string>
+    <string name="file_manager_delete_warning">Beim Löschen der Datei werden auch die darauf verweisenden Anhänge in Gesprächen unbrauchbar.</string>
+    <string name="file_manager_shared_warning">Diese Datei wird gemeinsam genutzt. Das Löschen betrifft alle Assistenten, die sie verwenden.</string>
+    <string name="file_manager_clean_scope">Es werden nur Dateien im aktuellen Such- und Filterbereich berücksichtigt.</string>
+    <string name="file_manager_clean_unused">Nur Dateien ohne Verknüpfung zu einem Assistenten bereinigen</string>
+    <string name="file_manager_clean_unused_hint">Empfohlen: Dateien behalten, auf die in Gesprächen verwiesen wird.</string>
+    <string name="file_manager_clean_summary">%1$d Dateien ausgewählt · %2$s</string>
+    <string name="file_manager_clean_confirm">Diese %1$d Dateien bereinigen?</string>
+    <string name="file_manager_clean_warning">Die ausgewählten Dateien werden von diesem Gerät gelöscht. Darauf verweisende Anhänge lassen sich nicht mehr öffnen, auch nicht bei anderen Assistenten.</string>
+    <string name="file_manager_deleting">Dateien werden bereinigt…</string>
+</resources>

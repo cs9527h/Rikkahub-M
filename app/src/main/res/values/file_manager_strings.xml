@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">Search file name or type</string>
+    <string name="file_manager_clear_search">Clear search</string>
+    <string name="file_manager_all_types">All types</string>
+    <string name="file_manager_images">Images</string>
+    <string name="file_manager_documents">Documents</string>
+    <string name="file_manager_video">Video</string>
+    <string name="file_manager_audio">Audio</string>
+    <string name="file_manager_other">Other</string>
+    <string name="file_manager_all_assistants">All assistants</string>
+    <string name="file_manager_unassigned">Not linked to an assistant</string>
+    <string name="file_manager_shared">Shared by multiple assistants</string>
+    <string name="file_manager_owner_unknown">Ownership unconfirmed</string>
+    <string name="file_manager_owner_incomplete">Some history is too large or malformed to classify completely. These files are protected from unlinked-file cleanup.</string>
+    <string name="file_manager_unknown_assistant">Removed assistant (%1$s)</string>
+    <string name="file_manager_shared_names">Shared · %1$s</string>
+    <string name="file_manager_summary">%1$d files · %2$s</string>
+    <string name="file_manager_scope_summary">Showing %1$d of %2$d files</string>
+    <string name="file_manager_sort">Sort files</string>
+    <string name="file_manager_sort_newest">Newest first</string>
+    <string name="file_manager_sort_oldest">Oldest first</string>
+    <string name="file_manager_sort_largest">Largest first</string>
+    <string name="file_manager_sort_name">File name</string>
+    <string name="file_manager_reset">Reset filters</string>
+    <string name="file_manager_loading">Loading files and assistant ownership…</string>
+    <string name="file_manager_load_error">Files could not be loaded. Retry before managing them.</string>
+    <string name="file_manager_retry">Retry</string>
+    <string name="file_manager_refresh">Refresh files</string>
+    <string name="file_manager_no_matches">No files match these filters</string>
+    <string name="file_manager_preview">Preview</string>
+    <string name="file_manager_preview_named">Preview %1$s</string>
+    <string name="file_manager_actions_named">Actions for %1$s</string>
+    <string name="file_manager_export">Save a copy…</string>
+    <string name="file_manager_exporting">Saving a copy…</string>
+    <string name="file_manager_exported">File saved</string>
+    <string name="file_manager_export_failed">Saving failed. The original file was kept.</string>
+    <string name="file_manager_delete_warning">Deleting the file also breaks its attachments in conversations.</string>
+    <string name="file_manager_shared_warning">This file is shared. Deleting it affects all assistants that use it.</string>
+    <string name="file_manager_clean_scope">Only files in the current search and filters are considered.</string>
+    <string name="file_manager_clean_unused">Only clean files not linked to an assistant</string>
+    <string name="file_manager_clean_unused_hint">Recommended: keep files referenced by conversations.</string>
+    <string name="file_manager_clean_summary">%1$d files selected · %2$s</string>
+    <string name="file_manager_clean_confirm">Clean these %1$d files?</string>
+    <string name="file_manager_clean_warning">This removes the selected files from this device. Referenced attachments will stop opening, including references from other assistants.</string>
+    <string name="file_manager_deleting">Cleaning files…</string>
+</resources>

@@ -46,14 +46,18 @@ internal class MemoryCenterVM(
     private val consolidationScheduler: MemoryConsolidationScheduler,
     private val history: HistoryMemoryManager,
 ) : ViewModel() {
-    /** 明确指定的助手；找不到（已被删除）时退回当前选中的助手。 */
-    val assistant: StateFlow<Assistant> = settingsStore.settingsFlow
-        .map { settings ->
-            assistantId
-                ?.let { id -> settings.assistants.find { it.id.toString() == id } }
-                ?: settings.getCurrentAssistant()
-        }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Assistant())
+    val settings = settingsStore.settingsFlow
+
+    /** 每个助手使用独立导航页；选择设置对象不会改动聊天当前选中的助手。 */
+    val assistant: StateFlow<Assistant> = settings.memorySettingsAssistantFlow(assistantId)
+        // If an explicit target is removed, retain its identity until the UI leaves this page.
+        // It must never turn into another assistant's editable settings or memory scope.
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            settings.value.memorySettingsAssistant(assistantId)
+                ?: Assistant(id = kotlin.uuid.Uuid.parseOrNull(assistantId.orEmpty()) ?: kotlin.uuid.Uuid.NIL),
+        )
 
     /**
      * 用户手动切换记忆库的结果：null 表示跟随助手的 useGlobalMemory。
@@ -236,16 +240,22 @@ internal class MemoryCenterVM(
 
     fun control(status: String) = launchAction { history.control(scope.value, status) }
 
+    private fun actionScope(): String? =
+        scope.value.takeIf { settings.value.memorySettingsAssistant(assistantId) != null }
+
     fun deleteMemory(memory: MemoryFile) {
-        viewModelScope.launch { memoryRepository.deleteFile(scope.value, memory.path) }
+        val target = actionScope() ?: return
+        viewModelScope.launch { memoryRepository.deleteFile(target, memory.path) }
     }
 
     fun restoreMemory(memory: MemoryFile) {
-        viewModelScope.launch { memoryRepository.restoreFile(scope.value, memory.path) }
+        val target = actionScope() ?: return
+        viewModelScope.launch { memoryRepository.restoreFile(target, memory.path) }
     }
 
     fun purgeMemory(memory: MemoryFile) {
-        viewModelScope.launch { memoryRepository.purgeFile(scope.value, memory.path) }
+        val target = actionScope() ?: return
+        viewModelScope.launch { memoryRepository.purgeFile(target, memory.path) }
     }
 
     /** 检索预览：让用户看到“问这句话时到底会带哪几条记忆”，不真的发请求。 */
@@ -268,20 +278,20 @@ internal class MemoryCenterVM(
     }
 
     /** 记忆中心只管记忆相关的开关，其余字段沿用当前值，避免把别处的修改覆盖掉。 */
-    fun updateAssistant(updated: Assistant) {
-        if (updated.useGlobalMemory != assistant.value.useGlobalMemory) scopePreference.value = null
+    fun updateAssistant(before: Assistant, updated: Assistant) {
+        val target = settings.value.memorySettingsAssistant(assistantId) ?: return
+        if (before.id != updated.id || before.id != target.id) return
+        if (updated.useGlobalMemory != before.useGlobalMemory) scopePreference.value = null
         viewModelScope.launch {
-            settingsStore.update { settings ->
-                settings.copy(
-                    assistants = settings.assistants.map { if (it.id == updated.id) updated else it }
-                )
-            }
+            // Capture the rendered assistant, then patch only changed memory fields onto the latest
+            // stored value. Rapid toggles and edits elsewhere must not overwrite each other.
+            settingsStore.update { settings -> settings.updateMemoryAssistant(before, updated) }
         }
     }
 
     /** 统一的忙碌与报错处理：任何一次点击只允许一个在飞，失败原因留在页面上。 */
     private fun launchAction(action: suspend () -> Unit) {
-        if (_busy.value) return
+        if (_busy.value || settings.value.memorySettingsAssistant(assistantId) == null) return
         _busy.value = true
         _error.value = null
         viewModelScope.launch {

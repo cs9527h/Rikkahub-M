@@ -148,7 +148,12 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    val assistant by vm.assistant.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val assistantState by vm.assistant.collectAsStateWithLifecycle()
+    // Bind callbacks to the exact snapshot rendered by this page, not a newer delegated value.
+    val assistant = assistantState
+    val resolvedAssistant = settings.memorySettingsAssistant(assistantId)
+    val assistantAvailable = resolvedAssistant != null
     val scope by vm.scope.collectAsStateWithLifecycle()
     val useGlobal by vm.useGlobalMemory.collectAsStateWithLifecycle()
     val memories by vm.memories.collectAsStateWithLifecycle()
@@ -188,9 +193,11 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
     }
 
     // 深链只在第一次进来时用：之后作用域切换不该再跳回那个文件
-    LaunchedEffect(path, scope) {
+    LaunchedEffect(path, scope, assistant, resolvedAssistant) {
         val target = path
-        if (!deepLinkHandled && target != null) {
+        if (!deepLinkHandled && target != null && assistantAvailable &&
+            assistant == resolvedAssistant && scope == assistant.memoryId
+        ) {
             deepLinkHandled = true
             navController.navigate(Screen.MemoryFile(scope, target))
         }
@@ -237,7 +244,13 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            AnimatedContent(
+            if (!assistantAvailable) {
+                MemoryAssistantUnavailable(settings = settings, requestedId = assistantId) { selected ->
+                    if (vm.settings.value.assistants.any { it.id == selected.id }) {
+                        navController.openMemoryAssistant(assistantId.orEmpty(), selected.id.toString())
+                    }
+                }
+            } else AnimatedContent(
                 targetState = section,
                 label = "memory-center-section",
                 transitionSpec = {
@@ -275,7 +288,19 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
                         onNoticeShown = { vm.noticeShown() },
                         onSelectScope = { vm.selectGlobal(it) },
                         onFollowAssistantScope = { vm.followAssistantScope() },
-                        onUpdateAssistant = { vm.updateAssistant(it) },
+                        onUpdateAssistant = { vm.updateAssistant(assistant, it) },
+                        assistantSelector = {
+                            MemoryAssistantSelector(
+                                settings = settings,
+                                assistant = assistant,
+                                enabled = !busy,
+                                onSelect = { selected ->
+                                    if (vm.settings.value.assistants.any { it.id == selected.id }) {
+                                        navController.openMemoryAssistant(assistant.id.toString(), selected.id.toString())
+                                    }
+                                },
+                            )
+                        },
                         onOpenModels = { navController.navigate(Screen.SettingModels) },
                         onOrganize = { vm.startOrganize() },
                         onReextract = { reextract = true },
@@ -330,6 +355,9 @@ fun MemoryCenterPage(assistantId: String? = null, path: String? = null) {
             }
         }
     }
+
+    // Do not leave actionable dialogs behind when an explicit assistant is deleted.
+    if (!assistantAvailable) return
 
     if (reextract) {
         MemoryReextractPicker(
@@ -438,11 +466,12 @@ private fun MemoryCenterHome(
     onResume: () -> Unit,
     onCancel: () -> Unit,
     previewRecall: suspend (String) -> List<MemoryFile>,
+    assistantSelector: @Composable () -> Unit,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var deleteTarget by remember { mutableStateOf<MemoryFile?>(null) }
-    var purgeTarget by remember { mutableStateOf<MemoryFile?>(null) }
+    var deleteTarget by remember(scopeKey) { mutableStateOf<MemoryFile?>(null) }
+    var purgeTarget by remember(scopeKey) { mutableStateOf<MemoryFile?>(null) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var advancedVisible by rememberSaveable { mutableStateOf(false) }
     // 分组折叠状态用竖线拼成字符串存：Bundle 只保证能存基本类型，Set 会在进程重建后丢
@@ -538,7 +567,9 @@ private fun MemoryCenterHome(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // 1) 使用状态：三个开关决定聊天到底用不用记忆
+            item(key = "assistant-selector") { assistantSelector() }
+
+            // 1) 使用状态：三个开关决定所选助手的聊天到底用不用记忆
             item(key = "usage-switches") {
                 MemoryStatusSwitches(assistant = assistant, onUpdateAssistant = onUpdateAssistant)
             }

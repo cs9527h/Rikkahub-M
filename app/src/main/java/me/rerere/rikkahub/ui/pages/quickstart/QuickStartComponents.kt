@@ -170,14 +170,16 @@ internal fun StatusPill(text: String, containerColor: Color, contentColor: Color
 // CardGroup 的 DSL 不是 Composable 作用域，文案传资源 id，在各自的槽位里再解析
 internal fun CardGroupScope.stepItem(
     index: Int,
-    @StringRes title: Int,
+    @StringRes title: Int? = null,
     @StringRes description: Int,
     state: StepState,
     descriptionArgs: List<Any> = emptyList(),
     content: @Composable ColumnScope.() -> Unit,
 ) = formItem(
-    headlineContent = {
-        Text(text = stringResource(title), style = MaterialTheme.typography.titleMediumEmphasized)
+    headlineContent = if (title != null) {
+        { Text(text = stringResource(title), style = MaterialTheme.typography.titleMediumEmphasized) }
+    } else {
+        null
     },
     supportingContent = { Text(stringResource(description, *descriptionArgs.toTypedArray())) },
     leadingContent = { StepBadge(index = index, state = state) },

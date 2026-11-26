@@ -1610,7 +1610,7 @@
   <string name="setting_page_web_server">Webserver</string>
   <string name="setting_page_web_server_address_note">Hinweise zu Adressen</string>
   <string name="setting_page_web_server_address_note_desc">LAN über WLAN-IP, lokal via localhost</string>
-  <string name="setting_page_web_server_desc">Ermöglicht dir den Zugriff auf RikkaHub über das Web</string>
+  <string name="setting_page_web_server_desc">Ermöglicht dir den Zugriff auf Rikkahub-M über das Web</string>
   <string name="setting_page_web_server_error">Fehler</string>
   <string name="setting_page_web_server_jwt_enable">Authentifizierung aktivieren</string>
   <string name="setting_page_web_server_jwt_enable_desc">Passwort für die Web-UI erforderlich</string>

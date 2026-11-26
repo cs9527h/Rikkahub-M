@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">ファイル名または種類で検索</string>
+    <string name="file_manager_clear_search">検索をクリア</string>
+    <string name="file_manager_all_types">すべての種類</string>
+    <string name="file_manager_images">画像</string>
+    <string name="file_manager_documents">ドキュメント</string>
+    <string name="file_manager_video">動画</string>
+    <string name="file_manager_audio">音声</string>
+    <string name="file_manager_other">その他</string>
+    <string name="file_manager_all_assistants">すべてのアシスタント</string>
+    <string name="file_manager_unassigned">アシスタントとの関連付けなし</string>
+    <string name="file_manager_shared">複数のアシスタントで共有</string>
+    <string name="file_manager_owner_unknown">所属未確認</string>
+    <string name="file_manager_owner_incomplete">一部の会話履歴が大きすぎるか形式に問題があるため、ファイルの所属をすべて確認できていません。これらのファイルは未関連付けファイルの整理対象から除外されます。</string>
+    <string name="file_manager_unknown_assistant">削除されたアシスタント（%1$s）</string>
+    <string name="file_manager_shared_names">共有 · %1$s</string>
+    <string name="file_manager_summary">%1$d 件のファイル · %2$s</string>
+    <string name="file_manager_scope_summary">全 %2$d 件中 %1$d 件を表示</string>
+    <string name="file_manager_sort">ファイルの並べ替え</string>
+    <string name="file_manager_sort_newest">新しい順</string>
+    <string name="file_manager_sort_oldest">古い順</string>
+    <string name="file_manager_sort_largest">サイズが大きい順</string>
+    <string name="file_manager_sort_name">ファイル名</string>
+    <string name="file_manager_reset">フィルターをリセット</string>
+    <string name="file_manager_loading">ファイルと所属アシスタントを読み込み中…</string>
+    <string name="file_manager_load_error">ファイルの読み込みに失敗しました。再試行してから管理してください。</string>
+    <string name="file_manager_retry">再試行</string>
+    <string name="file_manager_refresh">ファイルを更新</string>
+    <string name="file_manager_no_matches">フィルターに一致するファイルはありません</string>
+    <string name="file_manager_preview">プレビュー</string>
+    <string name="file_manager_preview_named">%1$s をプレビュー</string>
+    <string name="file_manager_actions_named">%1$s の操作</string>
+    <string name="file_manager_export">コピーを保存…</string>
+    <string name="file_manager_exporting">コピーを保存中…</string>
+    <string name="file_manager_exported">ファイルを保存しました</string>
+    <string name="file_manager_export_failed">保存に失敗しました。元のファイルは保持されています。</string>
+    <string name="file_manager_delete_warning">ファイルを削除すると、会話内でこのファイルを参照する添付ファイルも開けなくなります。</string>
+    <string name="file_manager_shared_warning">このファイルは共有されています。削除すると、使用しているすべてのアシスタントに影響します。</string>
+    <string name="file_manager_clean_scope">現在の検索条件とフィルターに一致するファイルのみが対象です。</string>
+    <string name="file_manager_clean_unused">アシスタントに関連付けられていないファイルのみ整理</string>
+    <string name="file_manager_clean_unused_hint">会話で参照されているファイルは残すことをおすすめします。</string>
+    <string name="file_manager_clean_summary">%1$d 件のファイルを選択 · %2$s</string>
+    <string name="file_manager_clean_confirm">この %1$d 件のファイルを整理しますか？</string>
+    <string name="file_manager_clean_warning">選択したファイルをこの端末から削除します。他のアシスタントからの参照も含め、このファイルを参照する添付ファイルが開けなくなります。</string>
+    <string name="file_manager_deleting">ファイルを整理中…</string>
+</resources>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="file_manager_search">搜尋檔案名稱或類型</string>
+    <string name="file_manager_clear_search">清空搜尋</string>
+    <string name="file_manager_all_types">全部類型</string>
+    <string name="file_manager_images">圖片</string>
+    <string name="file_manager_documents">文件</string>
+    <string name="file_manager_video">影片</string>
+    <string name="file_manager_audio">音訊</string>
+    <string name="file_manager_other">其他</string>
+    <string name="file_manager_all_assistants">全部助手</string>
+    <string name="file_manager_unassigned">未關聯助手</string>
+    <string name="file_manager_shared">多個助手共用</string>
+    <string name="file_manager_owner_unknown">歸屬待確認</string>
+    <string name="file_manager_owner_incomplete">部分歷史附件過大或格式異常，歸屬尚未完整確認；這些檔案不會被當作未關聯檔案自動清理。</string>
+    <string name="file_manager_unknown_assistant">已移除的助手（%1$s）</string>
+    <string name="file_manager_shared_names">共用 · %1$s</string>
+    <string name="file_manager_summary">%1$d 個檔案 · %2$s</string>
+    <string name="file_manager_scope_summary">目前顯示 %1$d / %2$d 個檔案</string>
+    <string name="file_manager_sort">檔案排序</string>
+    <string name="file_manager_sort_newest">最新優先</string>
+    <string name="file_manager_sort_oldest">最早優先</string>
+    <string name="file_manager_sort_largest">最大優先</string>
+    <string name="file_manager_sort_name">檔案名稱</string>
+    <string name="file_manager_reset">重設篩選</string>
+    <string name="file_manager_loading">正在讀取檔案及助手歸屬…</string>
+    <string name="file_manager_load_error">檔案載入失敗，請重試後再管理。</string>
+    <string name="file_manager_retry">重試</string>
+    <string name="file_manager_refresh">重新整理檔案</string>
+    <string name="file_manager_no_matches">目前篩選條件下沒有檔案</string>
+    <string name="file_manager_preview">預覽</string>
+    <string name="file_manager_preview_named">預覽 %1$s</string>
+    <string name="file_manager_actions_named">%1$s 的操作</string>
+    <string name="file_manager_export">匯出副本…</string>
+    <string name="file_manager_exporting">正在匯出副本…</string>
+    <string name="file_manager_exported">檔案已儲存</string>
+    <string name="file_manager_export_failed">匯出失敗，原始檔案已保留。</string>
+    <string name="file_manager_delete_warning">刪除後，聊天中引用此檔案的附件也會失效。</string>
+    <string name="file_manager_shared_warning">這是共用檔案，刪除會影響所有引用它的助手。</string>
+    <string name="file_manager_clean_scope">只處理目前搜尋和篩選範圍內的檔案。</string>
+    <string name="file_manager_clean_unused">僅清理未關聯助手的檔案</string>
+    <string name="file_manager_clean_unused_hint">建議保留對話中仍在引用的附件。</string>
+    <string name="file_manager_clean_summary">已選 %1$d 個檔案 · %2$s</string>
+    <string name="file_manager_clean_confirm">清理這 %1$d 個檔案？</string>
+    <string name="file_manager_clean_warning">將刪除所選本機檔案。聊天中的附件引用也會失效，包括其他助手對共用檔案的引用。</string>
+    <string name="file_manager_deleting">正在清理檔案…</string>
+</resources>

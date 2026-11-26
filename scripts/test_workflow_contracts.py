@@ -90,6 +90,8 @@ class WorkflowContractsTest(unittest.TestCase):
         self.assertIn("*/build/test-results/**", build)
         self.assertIn('--require-marker "Workspace root deletion is prohibited"', build)
         self.assertIn('--require-marker "EPUB total content too large"', build)
+        self.assertIn('--require-marker "设置助手"', build)
+        self.assertIn('--require-marker "目标位置未提供可写入的数据流"', build)
         self.assertIn("test -s app/build/outputs/mapping/githubRelease/mapping.txt", build)
         self.assertIn('zip -j "dist/mapping-${VERSION}.zip"', build)
         self.assertIn("dist/mapping-*.zip", build)
