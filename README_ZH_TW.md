@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v1.1.4**（2026-11-25，commit `b9b64c96`）
+> **最新正式版：v1.1.5**（2026-11-26，commit `553e38cd`）
 >
-> 安裝包：[Rikkahub-M-1.1.4.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.4/Rikkahub-M-1.1.4.apk) · 17.9 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-1.1.5.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.5/Rikkahub-M-1.1.5.apk) · 18.0 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`477e05fd41dfb643a82c3afba374df06ddc6dc442c8b6ff9b3e960257690413e`
+> SHA-256：`6e6856da883f10ebc96f9babf4a21a49bce9c7e11f3fbe9459ee4c2544898c78`
 >
-> 本版摘要：修复聊天记录、网页草稿、语音与文件问题，改善输入和预览体验。
+> 本版摘要：文件支持预览、导出与助手分类，记忆设置可选择其他助手。
 >
-> 完整說明見 [v1.1.4 更新日誌](docs/releases/1.1.4.md)。
+> 完整說明見 [v1.1.5 更新日誌](docs/releases/1.1.5.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
