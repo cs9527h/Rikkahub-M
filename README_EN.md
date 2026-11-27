@@ -1,32 +1,12 @@
-<p align="center">
-  <img src="docs/readme-cover.svg" width="100%" alt="Rikkahub-M" />
-</p>
+# Rikkahub-M
 
-<h1 align="center">Rikkahub-M</h1>
-<p align="center">
-  <strong>Your models. Your assistants. Your data.</strong><br />
-  Direct model APIs · local assistants and prompts · chat and long-term memory · encrypted backups
-</p>
+**An open-source AI client for Android. Choose your models, customize your assistants, and manage your data.**
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/cs9527h/Rikkahub-M?display_name=tag&label=release&color=4169e1" /></a>
-  <a href="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml"><img alt="Release workflow" src="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml/badge.svg" /></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-7b61ff" /></a>
-</p>
+Independently maintained, based on [RikkaHub](https://github.com/rikkahub/rikkahub), built with Kotlin, Jetpack Compose and Material 3 Expressive.
 
-<p align="center">
-  <a href="README.md">简体中文</a> · <strong>English</strong> · <a href="README_ZH_TW.md">繁體中文</a>
-</p>
+[简体中文](README.md) · English · [繁體中文](README_ZH_TW.md)
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>Download</strong></a>　·　
-  <a href="CHANGELOG_MATE.md">Changelog</a>　·　
-  <a href="docs/MATE_USER_GUIDE.md">User guide</a>　·　
-  <a href="docs/RM_VS_RB.md">Differences from upstream</a>　·　
-  <a href="https://github.com/cs9527h/Rikkahub-M/issues">Issues</a>
-</p>
-
----
+[Download](https://github.com/cs9527h/Rikkahub-M/releases) · [Changelog](CHANGELOG_MATE.md) · [User guide](docs/MATE_USER_GUIDE.md) · [Issues](https://github.com/cs9527h/Rikkahub-M/issues)
 
 <!-- RELEASE-BLOCK:BEGIN -->
 > **Latest stable release: v1.1.6** (2026-11-27, commit `cddb5bee`)
@@ -35,44 +15,38 @@
 >
 > SHA-256: `a845185bc145efb777c1b8717ce557a25d1cff702e3fc19cbf37b4a8cf0b5813`
 >
-> Summary: see the release notes for this version.
+> Summary: separate avatar storage, improved attachment ownership tracking, and fixes for missing backup images.
 >
 > Details: [v1.1.6 release notes](docs/releases/1.1.6.md).
 <!-- RELEASE-BLOCK:END -->
 
-## What is this
+## Features
 
-Rikkahub-M is an **independently maintained open-source Android AI client** forked from [RikkaHub](https://github.com/rikkahub/rikkahub), built with Kotlin, Jetpack Compose and Material 3 Expressive. Chats go directly to the model APIs you configure — no legacy Mate/AstrBot gateway, device pairing or cloud persona injection.
+| Area | Capabilities |
+| --- | --- |
+| Models | Direct OpenAI-, Gemini- and Claude-compatible APIs, DeepSeek, NewAPI and custom endpoints; no extra gateway required |
+| Assistants | Custom models, avatars, personas and prompts; Markdown, TXT and JSON rule imports with configurable injection order |
+| Chat | Conversation search, message branching, favorites, translation, text-to-speech, speech recognition and custom backgrounds |
+| Memory | Local long-term memory extraction, organization, editing and recall; independent assistant memory settings |
+| Files | Assistant-based attachment organization, search, filters, previews, export and reference-aware cleanup; separate avatar storage |
+| Documents | Image zoom, PDF pages, text and Markdown previews, and text previews for DOCX, PPTX and EPUB |
+| Migration | Local, WebDAV, S3 and automatic backups; imports from upstream RikkaHub, Chatbox, DeepSeek and Cherry Studio |
+| Updates | Multiple download sources with fallback; SHA-256, package name, version code and signature verification |
 
-## Core features
+## Data and migration
 
-- **Bring your own models**: OpenAI-compatible, DeepSeek, Gemini-compatible, Claude-compatible, NewAPI-style relays and custom endpoints. Model lists and API errors are reported as they are.
-- **Local assistants**: custom name, avatar, persona prompt and model binding; your existing assistant configuration is never rewritten.
-- **Prompt injection**: import `.md` / `.txt` / `.json`, edit priority, injection position and assistant binding.
-- **Chat and memory**: conversation history, search, message actions; local long-term memory extraction, editing, deletion and recall.
-- **Backup and restore**: single-page backup, no manual passphrase, Keystore-backed recovery key, automatic backup, local / WebDAV / S3.
-- **Safe updates**: GitHub → Atom → China mirror → cache fallback; SHA-256, package name, version code and signature are all verified before handing the APK to the system installer.
+Full backups include settings, chats, attachments and API credentials in an ordinary ZIP archive. No passphrase or recovery key is required. Backups are not encrypted: store them securely and never share them publicly. Legacy encrypted backups are no longer supported. Full backups are not guaranteed to restore into upstream RikkaHub.
 
-## Project status
+## Project notes
 
-- Automated gates run on every release: compile, JVM unit tests, emulator instrumented tests, Android Lint, signature and universal-APK checks, and the historical-version upgrade data contract.
-- **Anything not verified on a physical device is labelled as such**: notification progress and cancel, background download, install-permission return, safe-mode export/import, cross-device restore, and real-device performance numbers.
-- Performance figures are published only when measured on a device; this repository contains no estimated percentages.
-
-## Differences from upstream
-
-- Keeps upstream native capabilities and design language; no sponsorships, donations or promoted providers.
-- Independent package name `com.rikkahub.mate`, independent signing and release chain, one universal APK only.
-- Backup and update systems are rebuilt around this project's feedback: single-page backup, no passphrase prompt, four-step verified install.
-- See [docs/RM_VS_RB.md](docs/RM_VS_RB.md) and [docs/RM_VS_RB_FILE_DIFF.md](docs/RM_VS_RB_FILE_DIFF.md).
+- Retains the upstream design language without sponsorship, donation or promoted-provider entries.
+- Independent package name `com.rikkahub.mate`, signing and release pipeline; one universal arm64-v8a + x86_64 APK.
+- Releases undergo automated tests, Lint, signature and upgrade checks. See release notes for physical-device testing and performance limitations.
 
 ## Documentation
 
-- [User guide](docs/MATE_USER_GUIDE.md)
-- [Changelog](CHANGELOG_MATE.md) · [Release notes](docs/releases/)
-- [Quality ledger](docs/QUALITY_LEDGER.md)
-- [Backup and architecture notes](docs/STANDALONE_BACKUP_ONLY.md)
+[Memory](docs/HISTORY_MEMORY.md) · [Upstream differences](docs/RM_VS_RB.md) · [File-level comparison](docs/RM_VS_RB_FILE_DIFF.md) · [Release notes](docs/releases/) · [Quality ledger](docs/QUALITY_LEDGER.md) · [Backup architecture](docs/STANDALONE_BACKUP_ONLY.md)
 
 ## License
 
-Released under [AGPL-3.0](LICENSE), retaining upstream RikkaHub copyright and attribution. Modified distributions must comply with AGPL-3.0 as well.
+[AGPL-3.0](LICENSE), retaining upstream RikkaHub copyright and attribution. Modifications and distributions must comply with the license.
