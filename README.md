@@ -1,33 +1,12 @@
-<p align="center">
-  <img src="docs/readme-cover.svg" width="100%" alt="Rikkahub-M" />
-</p>
+# Rikkahub-M
 
-<h1 align="center">Rikkahub-M</h1>
-<p align="center">
-  <strong>模型自己选，助手自己定，数据自己管。</strong><br />
-  原生模型直连 · 本地助手与提示词 · 聊天与长期记忆 · 加密备份
-</p>
+**面向 Android 的开源 AI 客户端，自由选择模型，灵活配置助手，掌控自己的数据。**
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/cs9527h/Rikkahub-M?display_name=tag&label=release&color=4169e1" /></a>
-  <a href="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml"><img alt="Release workflow" src="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml/badge.svg" /></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-7b61ff" /></a>
-</p>
+基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 独立维护，采用 Kotlin、Jetpack Compose 与 Material 3 Expressive。
 
-<p align="center">
-  <strong>简体中文</strong> · <a href="README_EN.md">English</a> · <a href="README_ZH_TW.md">繁體中文</a>
-</p>
+简体中文 · [English](README_EN.md) · [繁體中文](README_ZH_TW.md)
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>下载安装包</strong></a>　·　
-  <a href="CHANGELOG_MATE.md">更新日志</a>　·　
-  <a href="docs/MATE_USER_GUIDE.md">使用指南</a>　·　
-  <a href="docs/HISTORY_MEMORY.md">历史记忆</a>　·　
-  <a href="docs/RM_VS_RB.md">与上游的差异</a>　·　
-  <a href="https://github.com/cs9527h/Rikkahub-M/issues">反馈问题</a>
-</p>
-
----
+[下载安装](https://github.com/cs9527h/Rikkahub-M/releases) · [更新日志](CHANGELOG_MATE.md) · [使用指南](docs/MATE_USER_GUIDE.md) · [问题反馈](https://github.com/cs9527h/Rikkahub-M/issues)
 
 <!-- RELEASE-BLOCK:BEGIN -->
 > **最新正式版：v1.1.6**（2026-11-27，commit `cddb5bee`）
@@ -41,39 +20,33 @@
 > 完整说明见 [v1.1.6 更新日志](docs/releases/1.1.6.md)。
 <!-- RELEASE-BLOCK:END -->
 
-## 这是什么
+## 功能
 
-Rikkahub-M 是基于 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**独立维护开源 Android AI 客户端**，使用 Kotlin + Jetpack Compose + Material 3 Expressive。聊天走你配置的原生模型 API，不需要旧版 Mate/AstrBot 网关、设备配对或云端人格注入。
+| 模块 | 体验 |
+| --- | --- |
+| 模型接入 | 直连 OpenAI、Gemini、Claude 兼容接口、DeepSeek、NewAPI 及自定义 API 地址，无需额外网关 |
+| AI 助手 | 自定义模型、头像、人格与提示词，支持 Markdown、TXT、JSON 规则导入及注入顺序设置 |
+| 聊天体验 | 会话搜索、消息分支、收藏、翻译、朗读、语音识别及个性化背景 |
+| 长期记忆 | 本地记忆提取、整理、编辑与召回，支持独立管理其他助手的记忆设置 |
+| 文件管理 | 按助手归类附件，搜索、筛选、预览、导出及关联保护清理；头像独立管理 |
+| 文档预览 | 图片缩放、PDF 翻页、文本与 Markdown，以及 DOCX、PPTX、EPUB 文字预览 |
+| 备份迁移 | 本机、WebDAV、S3 与自动备份，支持导入原版 RikkaHub、Chatbox、DeepSeek、Cherry Studio |
+| 应用更新 | 多源回退下载，安装前校验 SHA-256、包名、版本码与签名 |
 
-## 核心功能
+## 数据与迁移
 
-- **多模型直连**：OpenAI 兼容、DeepSeek、Gemini 兼容、Claude 兼容、NewAPI 类中转与自定义地址，模型列表与错误信息如实呈现。
-- **本地助手**：自定义名称、头像、人格提示词与模型绑定；不改动你已有的助手配置。
-- **提示词注入**：`.md` / `.txt` / `.json` 导入，可编辑优先级、注入位置与助手绑定。
-- **聊天与记忆**：会话历史、搜索、消息操作；本地长期记忆的提取、编辑、删除与召回。
-- **备份与恢复**：单页备份、免手输口令、Keystore 恢复密钥、自动备份、本地 / WebDAV / S3。
-- **安全更新**：GitHub → Atom → 国内备用源 → 缓存回退；SHA-256、包名、版本码、签名四重校验后才交给系统安装器。
+完整备份包含设置、聊天记录、附件与 API 凭据，采用普通 ZIP 格式，无需口令或恢复密钥。备份未加密，请妥善保管，不要公开分享。旧版加密备份已不受支持；本项目的完整备份不保证能恢复至原版 RikkaHub。
 
-## 当前状态
+## 项目说明
 
-- 可自动验证的部分（编译、单元测试、模拟器仪器测试、Lint、签名与 universal APK 校验、历史版本覆盖升级数据契约）每次发布都会跑。
-- **未做真机验收的部分会明确标注**：通知栏下载进度与取消、切后台下载、安装授权返回后续装、安全模式导出导入、备份跨设备恢复、真机性能指标。
-- 性能数字只在有真机测量时公布，仓库里没有推测的提升百分比。
+- 保留上游设计语言，不引入赞助、捐赠或推广服务商入口。
+- 独立包名 `com.rikkahub.mate`、签名与发布流程，提供 arm64-v8a + x86_64 通用 APK。
+- 正式发布经过自动化测试、Lint、签名及覆盖升级检查。真机验收与性能测量的边界见各版本说明。
 
-## 与上游的区别
+## 更多文档
 
-- 保留上游原生能力与设计语言，不引入赞助、捐赠、推广服务商。
-- 独立包名 `com.rikkahub.mate`、独立签名与发布链，只发单一 universal APK。
-- 备份与更新系统按本项目使用者反馈重做：单页备份 + 免口令 + 四重校验安装。
-- 差异清单与逐文件对照见 [docs/RM_VS_RB.md](docs/RM_VS_RB.md)、[docs/RM_VS_RB_FILE_DIFF.md](docs/RM_VS_RB_FILE_DIFF.md)。
+[历史记忆](docs/HISTORY_MEMORY.md) · [与上游的差异](docs/RM_VS_RB.md) · [逐文件对照](docs/RM_VS_RB_FILE_DIFF.md) · [版本说明](docs/releases/) · [质量台账](docs/QUALITY_LEDGER.md) · [备份架构](docs/STANDALONE_BACKUP_ONLY.md)
 
-## 文档
+## 开源许可
 
-- [使用指南](docs/MATE_USER_GUIDE.md)
-- [更新日志](CHANGELOG_MATE.md) · [版本说明](docs/releases/)
-- [质量与需求台账](docs/QUALITY_LEDGER.md)
-- [备份与架构说明](docs/STANDALONE_BACKUP_ONLY.md)
-
-## 版权与许可
-
-本项目以 [AGPL-3.0](LICENSE) 发布，保留上游 RikkaHub 版权与署名。分发修改版本时同样需要遵守 AGPL-3.0。
+采用 [AGPL-3.0](LICENSE)，保留上游 RikkaHub 版权与署名。修改与分发须遵守相同许可。
