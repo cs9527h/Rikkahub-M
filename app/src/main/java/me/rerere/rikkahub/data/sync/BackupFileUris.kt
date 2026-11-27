@@ -17,7 +17,9 @@ internal object BackupFileUris {
         if (index < 0) return null
         val relative = path.substring(index + marker.length)
         val parts = relative.split('/')
-        if (parts.size < 2 || parts.first() !in folders || parts.any { it.isBlank() || it == "." || it == ".." } ||
+        if (parts.size < 2 || parts.first() !in folders ||
+            (parts.size > 2 && parts.first() !in setOf("skills", "media_creation")) ||
+            parts.any { it.isBlank() || it == "." || it == ".." } ||
             relative.any { it == '\\' || it.isISOControl() }
         ) {
             return null

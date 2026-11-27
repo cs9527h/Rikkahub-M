@@ -89,7 +89,17 @@ class BackupManager(
                 val settings = settingsStore.awaitLoaded()
                 val backupSettings = kind != BackupKind.CHATS
                 val backupDatabase = kind == BackupKind.CHATS || (kind == BackupKind.FULL && includeDatabase)
-                val coreAssets = if (backupSettings) localCoreAssetFiles(settings) else emptyMap()
+                val coreAssets = if (backupSettings) {
+                    val coroutineContext = currentCoroutineContext()
+                    BackupAssetSnapshots.capture(
+                        assets = localCoreAssetFiles(settings),
+                        filesRoot = context.filesDir,
+                        snapshotRoot = File(staging, "core-assets"),
+                        onBlock = { coroutineContext.ensureActive() },
+                    )
+                } else {
+                    emptyMap()
+                }
                 val entries = mutableListOf<BackupManifestEntry>()
                 var settingsJsonForFingerprint: String? = null
                 ZipOutputStream(FileOutputStream(archive)).use { zip ->
@@ -126,14 +136,18 @@ class BackupManager(
                         DatabaseBackup.stripLocalMemoryWork(context, snapshot)
                         entries += addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
                     }
-                    if (backupSettings && !includeFiles) {
-                        for ((name, file) in coreAssets) {
-                            if (name.substringBefore('/') !in CORE_ASSET_FOLDERS) entries += addFile(zip, file, name)
-                        }
+                    // Always archive the captured revision, even when full attachment export is enabled.
+                    // A newer avatar may have replaced/deleted the live source while exporting settings/database.
+                    for ((name, file) in coreAssets) {
+                        entries += addFile(zip, file, name)
                     }
                     run {
                         val folders = when {
-                            !backupSettings && includeFiles -> listOf(FileFolders.UPLOAD, FileFolders.MEDIA_CREATION)
+                            !backupSettings && includeFiles -> listOf(
+                                FileFolders.UPLOAD,
+                                FileFolders.MEDIA_CREATION,
+                                FileFolders.AVATARS
+                            )
                             !backupSettings -> emptyList()
                             includeFiles -> ATTACHMENT_FOLDERS
                             else -> CORE_ASSET_FOLDERS
@@ -147,6 +161,7 @@ class BackupManager(
                             }
                             for (file in files.filter { it.isFile }) {
                                 currentCoroutineContext().ensureActive()
+                                if (folder == FileFolders.AVATARS && file.name.endsWith(".partial")) continue
                                 // A media result still being downloaded is incomplete and gets renamed when it finishes.
                                 if (folder == FileFolders.MEDIA_CREATION &&
                                     file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
@@ -154,8 +169,10 @@ class BackupManager(
                                     continue
                                 }
                                 val relative = file.relativeTo(directory).invariantSeparatorsPath
+                                val name = "$folder/$relative"
+                                if (name in coreAssets) continue // Already written from its private snapshot.
                                 PendingRestore.resolveInside(directory, relative)
-                                entries += addFile(zip, file, "$folder/$relative")
+                                entries += addFile(zip, file, name)
                             }
                         }
                     }
@@ -497,11 +514,17 @@ class BackupManager(
          */
         private const val STALE_TEMP_MILLIS = 6L * 60 * 60 * 1000
 
-        private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS)
+        private val CORE_ASSET_FOLDERS = listOf(FileFolders.SKILLS, FileFolders.FONTS, FileFolders.AVATARS)
         private const val TAG = "BackupManager"
 
         internal val ATTACHMENT_FOLDERS =
-            listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
+            listOf(
+                FileFolders.UPLOAD,
+                FileFolders.SKILLS,
+                FileFolders.FONTS,
+                FileFolders.MEDIA_CREATION,
+                FileFolders.AVATARS
+            )
 
         /** Backed up with their subdirectories; the other folders only contain top-level files. */
         private val NESTED_ATTACHMENT_FOLDERS = setOf(FileFolders.SKILLS, FileFolders.MEDIA_CREATION)

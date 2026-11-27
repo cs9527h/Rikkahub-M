@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">Файлы чатов</string>
+  <string name="file_manager_area_avatars">Аватары</string>
+  <string name="file_manager_avatars_hint">Аватары хранятся отдельно. Старые изображения удаляются, только когда на них больше нет ссылок. Сетевые аватары не копируются в эту папку.</string>
+  <string name="file_manager_avatars_all">Все аватары</string>
+  <string name="file_manager_avatar_user">Мой аватар</string>
+  <string name="file_manager_avatars_shared">Общие аватары</string>
+  <string name="file_manager_avatar_historical">Прежний аватар</string>
+  <string name="file_manager_avatar_in_use">Используется: %1$s</string>
+  <string name="file_manager_avatar_retained">Аватар ещё используется или не может быть удалён. Исходный файл сохранён.</string>
+  <string name="file_manager_avatar_empty">Нет локальных аватаров</string>
+</resources>

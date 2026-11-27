@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.di
 
 import android.content.Context
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.repository.ConversationRepository
@@ -100,6 +101,17 @@ val repositoryModule = module {
 
     single {
         FilesManager(get(), get(), get())
+    }
+
+    single {
+        AvatarStorage(
+            context = get(),
+            settingsStore = get(),
+            filesManager = get(),
+            database = get(),
+            json = get(),
+            runtimeReferences = { get<me.rerere.rikkahub.service.ChatService>().protectedLocalFileReferencesOrNull() },
+        )
     }
 
     single {

@@ -325,8 +325,9 @@ class FilesManager(
     suspend fun syncFolder(folder: String = FileFolders.UPLOAD): SyncResult = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, folder)
         val diskFiles = if (dir.exists()) {
-            dir.listFiles()?.filter { it.isFile }
-                ?: return@withContext SyncResult(inserted = 0, removed = 0)
+            dir.listFiles()?.filter {
+                it.isFile && !(folder == FileFolders.AVATARS && it.name.endsWith(".partial"))
+            } ?: return@withContext SyncResult(inserted = 0, removed = 0)
         } else {
             emptyList()
         }
@@ -522,6 +523,7 @@ data class SyncResult(
 
 object FileFolders {
     const val UPLOAD = "upload"
+    const val AVATARS = "avatars"
     const val SKILLS = "skills"
     const val BUILTIN_SKILLS = "builtin_skills"
     const val FONTS = "fonts"

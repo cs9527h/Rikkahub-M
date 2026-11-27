@@ -9,7 +9,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 与原版 RikkaHub 备份的双向兼容性。
+ * 原版 RikkaHub 备份布局的导入兼容性（不是高版本数据库向上游回退的保证）。
  *
  * 原版（rikkahub/rikkahub，DB schema 34）的备份就是一个普通 zip：
  * `settings.json` + `rikka_hub.db` + `upload/…` 等附件目录，**没有 manifest.json、也没有加密**。
@@ -56,9 +56,10 @@ class UpstreamBackupCompatTest {
     }
 
     @Test
-    fun `our archive layout matches upstream folder names`() {
-        // 上游与我们的附件目录必须一致，否则互相导入会丢附件
-        val expected = setOf("upload", "skills", "fonts", "media_creation")
+    fun `legacy archive folders stay unchanged and local avatars have a dedicated folder`() {
+        // Existing import names stay intact; avatars is an intentional app layout extension.
+        // AvatarStorageTest covers actual archive inclusion and restore staging of the new folder.
+        val expected = setOf("upload", "skills", "fonts", "media_creation", "avatars")
         assertEquals(expected, BackupManager.ATTACHMENT_FOLDERS.toSet())
         assertEquals("rikka_hub.db", DatabaseBackup.ARCHIVE_DATABASE)
     }

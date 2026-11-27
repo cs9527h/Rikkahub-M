@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">ملفات المحادثات</string>
+  <string name="file_manager_area_avatars">الصور الشخصية</string>
+  <string name="file_manager_avatars_hint">تُحفظ الصور الشخصية بشكل منفصل، وتُحذف الصور القديمة عندما لا يعود أي محتوى يستخدمها. لا يتم نسخ الصور عبر الإنترنت إلى هذا المجلد.</string>
+  <string name="file_manager_avatars_all">كل الصور الشخصية</string>
+  <string name="file_manager_avatar_user">صورتي الشخصية</string>
+  <string name="file_manager_avatars_shared">الصور الشخصية المشتركة</string>
+  <string name="file_manager_avatar_historical">صورة شخصية سابقة</string>
+  <string name="file_manager_avatar_in_use">قيد الاستخدام: %1$s</string>
+  <string name="file_manager_avatar_retained">الصورة لا تزال مستخدمة أو تعذر حذفها، لذلك تم الاحتفاظ بالملف الأصلي.</string>
+  <string name="file_manager_avatar_empty">لا توجد صور شخصية محلية</string>
+</resources>

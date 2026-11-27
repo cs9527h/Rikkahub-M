@@ -9,8 +9,12 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import me.rerere.ai.core.MessageRole
+import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.db.dao.ManagedFileCatalogReference
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
+import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -239,6 +243,105 @@ class ManagedFileCatalogTest {
         val index = ManagedFileCatalogIndex(root, listOf(invalid))
         index.add("a", messages(parts(attachment("image", "file:///data/user/0/test.app/cache/uuid.png"))))
         assertFalse(index.files().single().assistantIds.isNotEmpty())
+    }
+
+    @Test
+    fun acceptedRuntimeReferencesSupersedeStalePersistedHistoryWithoutGuessingUnknownOwner() = runTest {
+        val persisted = ManagedFileCatalogReference(
+            1,
+            "old",
+            messages(parts(attachment("image", uri(image)))),
+            scanEndRowId = 1,
+            conversationId = "conversation",
+        )
+        val catalog = ManagedFileCatalog(root, { after, _ ->
+            if (after < 1) listOf(persisted) else emptyList()
+        }, StandardTestDispatcher(testScheduler))
+        val live = LiveConversationFileReferences(
+            conversationId = "conversation",
+            assistantId = "new",
+            paths = setOf(normalizeLocalFileReference(uri(document))!!),
+            replacesPersistedHistory = true,
+        )
+        val result = catalog.read(listOf(image, document), listOf(live))
+        assertTrue(result.first().isUnassigned) // Removed from live history, not attributed to stale DB owner.
+        assertEquals(setOf("new"), result.last().assistantIds)
+        val unknown = catalog.read(listOf(document), listOf(live.copy(assistantId = null)))
+        assertTrue(unknown.single().assistantIds.isEmpty())
+        assertFalse(unknown.single().isUnassigned)
+    }
+
+    @Test
+    fun typedRuntimeAndProductionStoredReferencesAgreeForNestedAttachments() = runTest {
+        val parts = listOf<UIMessagePart>(
+            UIMessagePart.Text(uri(document)),
+            UIMessagePart.Tool(
+                toolCallId = "call",
+                toolName = "test",
+                input = uri(document),
+                output = listOf(UIMessagePart.Image(uri(image))),
+            ),
+        )
+        val live = collectLiveFileReferences(parts.asSequence())
+        val encoded = JsonInstant.encodeToString(listOf(UIMessage(role = MessageRole.USER, parts = parts)))
+        var supplied = false
+        val stored = scanMessageFileReferences({ if (supplied) null else encoded.also { supplied = true } })
+        assertEquals(stored, live)
+        assertEquals(setOf(normalizeLocalFileReference(uri(image))), live.paths)
+    }
+
+    @Test
+    fun productionSerializationRetainsNestedAttachmentsAcrossEveryChunkBoundary() = runTest {
+        val encoded = JsonInstant.encodeToString(listOf(UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(
+                UIMessagePart.Text("Not a reference: ${uri(image)} \\\" \\n 中文 😀"),
+                UIMessagePart.Tool(
+                    toolCallId = "call",
+                    toolName = "test",
+                    input = uri(document),
+                    output = listOf(UIMessagePart.Image(uri(image))),
+                ),
+                UIMessagePart.Document(uri(document), "notes.txt"),
+            ),
+        )))
+        for (size in listOf(1, 2, 7, 127, encoded.length)) {
+            val chunks = encoded.chunked(size).iterator()
+            val result = scanMessageFileReferences({ if (chunks.hasNext()) chunks.next() else null })
+            assertTrue("chunk size $size", result.complete)
+            assertEquals(setOf(
+                normalizeLocalFileReference(uri(image)),
+                normalizeLocalFileReference(uri(document)),
+            ), result.paths)
+        }
+    }
+
+    @Test
+    fun oversizedProductionNodeFindsAttachmentAfterLongTextWithoutCapturingIt() = runTest {
+        val encoded = JsonInstant.encodeToString(listOf(UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(
+                UIMessagePart.Text("😀x".repeat(200_000)),
+                UIMessagePart.Image(uri(image)),
+            ),
+        )))
+        val chunks = encoded.chunked(ManagedFileCatalog.REFERENCE_CHUNK_CHARS).iterator()
+        val result = scanMessageFileReferences({ if (chunks.hasNext()) chunks.next() else null })
+        assertTrue(result.complete)
+        assertEquals(setOf(normalizeLocalFileReference(uri(image))), result.paths)
+    }
+
+    @Test
+    fun truncatedChunkStreamsNeverProveUnassignedAndCancelledStreamsPropagate() = runTest {
+        val chunks = listOf("[{\"parts\":[{\"type\":\"image\",\"url\":\"file:/").iterator()
+        val result = scanMessageFileReferences({ if (chunks.hasNext()) chunks.next() else null })
+        assertFalse(result.complete)
+        assertTrue(result.paths.isEmpty())
+        val work = async { scanMessageFileReferences({ awaitCancellation() }) }
+        runCurrent()
+        work.cancel()
+        work.join()
+        assertTrue(work.isCancelled)
     }
 
     private fun entity(path: String, name: String, mime: String) = ManagedFileEntity(

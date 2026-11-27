@@ -39,7 +39,7 @@ fun AssistantMcpPage(id: String) {
             parametersOf(id)
         }
     )
-    val assistant by vm.assistant.collectAsStateWithLifecycle()
+    val assistant = vm.assistant.collectAsStateWithLifecycle().value
     val mcpServerConfigs by vm.mcpServerConfigs.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -87,7 +87,7 @@ fun AssistantMcpPage(id: String) {
             ),
             assistant = assistant,
             servers = mcpServerConfigs,
-            onUpdateAssistant = { vm.update(it) }
+            onUpdateAssistant = { vm.update(assistant, it) }
         )
     }
 }

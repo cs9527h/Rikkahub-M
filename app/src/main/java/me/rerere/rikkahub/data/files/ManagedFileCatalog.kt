@@ -9,24 +9,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import me.rerere.rikkahub.data.db.dao.ManagedFileCatalogReference
 import me.rerere.rikkahub.data.db.dao.ManagedFileDAO
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import java.io.File
-import java.net.URI
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
-/** Ownership means a persisted conversation actually references this attachment, in any branch. */
+/** Ownership is a real history/accepted-queue reference, in any branch; editor drafts do not count. */
 data class CatalogFile(
     val entity: ManagedFileEntity,
     val assistantIds: Set<String>,
@@ -93,23 +87,35 @@ private val documentMimeTypes = setOf(
 
 /**
  * No denormalized ownership/schema migration: deletion and conversation moves are reflected by
- * Room invalidations. One scan per emission, not one scan per file. Only a small page of raw JSON
- * and one node's parse tree are retained, alongside the catalog and its ownership sets.
+ * Room invalidations and accepted runtime input. One scan per emission, not per file. A small
+ * page/chunk of JSON is retained; text is skipped rather than building an unbounded parse tree.
  * [readReferences] makes the bounded scanner testable without Android/Room.
  */
 class ManagedFileCatalog(
     private val filesDir: File,
     private val readReferences: suspend (afterRowId: Long, limit: Int) -> List<ManagedFileCatalogReference>,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val readReferenceChunk: (suspend (rowId: Long, start: Long, length: Int) -> String?)? = null,
 ) {
-    constructor(dao: ManagedFileDAO, filesDir: File) : this(filesDir, dao::catalogReferences)
+    constructor(dao: ManagedFileDAO, filesDir: File) : this(
+        filesDir,
+        dao::catalogReferences,
+        readReferenceChunk = dao::catalogReferenceChunk,
+    )
 
-    fun observe(dao: ManagedFileDAO, folder: String): Flow<List<CatalogFile>> = flow {
+    fun observe(dao: ManagedFileDAO, folder: String): Flow<List<CatalogFile>> =
+        observe(dao, folder, flowOf(emptyList()))
+
+    internal fun observe(
+        dao: ManagedFileDAO,
+        folder: String,
+        liveReferences: Flow<List<LiveConversationFileReferences>>,
+    ): Flow<List<CatalogFile>> = flow {
         val revision = AtomicLong()
-        emitAll(combine(dao.listByFolder(folder), dao.observeCatalogReferences()) { files, _ ->
-            files to revision.incrementAndGet()
-        }.conflate().map { (files, startedAtRevision) ->
-            val result = read(files)
+        emitAll(combine(dao.listByFolder(folder), dao.observeCatalogReferences(), liveReferences) { files, _, live ->
+            Triple(files, live, revision.incrementAndGet())
+        }.conflate().map { (files, live, startedAtRevision) ->
+            val result = read(files, live)
             // Keep delivering during streaming writes, but never classify a non-snapshot scan
             // as definitely unassigned when an invalidation arrived while it was running.
             if (startedAtRevision == revision.get()) {
@@ -120,8 +126,19 @@ class ManagedFileCatalog(
         })
     }.flowOn(ioDispatcher)
 
-    suspend fun read(files: List<ManagedFileEntity>): List<CatalogFile> = withContext(ioDispatcher) {
+    suspend fun read(files: List<ManagedFileEntity>): List<CatalogFile> = read(files, emptyList())
+
+    internal suspend fun read(
+        files: List<ManagedFileEntity>,
+        liveReferences: List<LiveConversationFileReferences>,
+    ): List<CatalogFile> = withContext(ioDispatcher) {
         val index = ManagedFileCatalogIndex(filesDir, files)
+        val liveHistories = liveReferences.filter { it.replacesPersistedHistory && it.complete }.mapTo(
+            hashSetOf()
+        ) { it.conversationId }
+        for (reference in liveReferences) {
+            index.addPaths(reference.assistantId, reference.paths, reference.complete)
+        }
         if (files.isNotEmpty()) {
             var afterRowId = Long.MIN_VALUE
             var endRowId: Long? = null
@@ -134,7 +151,31 @@ class ManagedFileCatalog(
                     if (reference.rowId > scanEnd) break
                     currentCoroutineContext().ensureActive()
                     check(reference.rowId > afterRowId) { "Catalog references must be ordered by increasing rowId" }
-                    index.add(reference.assistantId, reference.messages)
+                    if (reference.conversationId in liveHistories) {
+                        afterRowId = reference.rowId
+                        continue
+                    }
+                    if (reference.messages != null || readReferenceChunk == null || reference.messageChars <= 0) {
+                        index.add(reference.assistantId, reference.messages)
+                    } else {
+                        var start = 1L
+                        var complete = true
+                        index.addChunks(reference.assistantId) {
+                            if (start > reference.messageChars) {
+                                null
+                            } else {
+                                val length = minOf(
+                                    REFERENCE_CHUNK_CHARS.toLong(),
+                                    reference.messageChars - start + 1
+                                ).toInt()
+                                val chunk = readReferenceChunk.invoke(reference.rowId, start, length)
+                                if (chunk == null || chunk.codePointCount(0, chunk.length) != length) complete = false
+                                start += length
+                                chunk
+                            }
+                        }
+                        if (!complete) index.markIncomplete()
+                    }
                     afterRowId = reference.rowId
                 }
                 if (page.last().rowId >= scanEnd) break
@@ -145,15 +186,16 @@ class ManagedFileCatalog(
 
     companion object {
         internal const val REFERENCE_PAGE_SIZE = 16
+        internal const val REFERENCE_CHUNK_CHARS = 32_768
     }
 }
 
 /** Package-private pure classification logic. Parsing failures do not invent an owner. */
 internal class ManagedFileCatalogIndex(filesDir: File, private val entities: List<ManagedFileEntity>) {
-    private val root = normalizePrivatePath(filesDir.absolutePath).trimEnd('/')
+    private val root = normalizePrivateFilePath(filesDir.absolutePath).trimEnd('/')
     private val paths = entities.associateBy { entity ->
         val path = try {
-            normalizePrivatePath(File(filesDir, entity.relativePath).absolutePath)
+            normalizePrivateFilePath(File(filesDir, entity.relativePath).absolutePath)
         } catch (_: IllegalArgumentException) {
             null
         }
@@ -164,114 +206,38 @@ internal class ManagedFileCatalogIndex(filesDir: File, private val entities: Lis
 
     suspend fun add(assistantId: String, messages: String?) {
         currentCoroutineContext().ensureActive()
-        // Mirrors the SQL CASE ceiling, also protecting injected/test sources.
-        if (assistantId.isBlank() || messages == null || messages.length > MAX_MESSAGE_CHARS) {
-            ownershipComplete = false
-            return
-        }
-        if (!hasBoundedNesting(messages)) {
-            ownershipComplete = false
-            return
-        }
-        val parsed = try {
-            Json.parseToJsonElement(messages) as? JsonArray
-        } catch (_: SerializationException) {
-            null
-        } catch (_: IllegalArgumentException) {
-            null
-        }
-        if (parsed == null) {
-            ownershipComplete = false
-            return
-        }
-        for (message in parsed) {
-            currentCoroutineContext().ensureActive()
-            val parts = (message as? JsonObject)?.get("parts") as? JsonArray
-            if (parts == null) ownershipComplete = false else visitParts(parts, assistantId)
-        }
-    }
-
-    private suspend fun visitParts(parts: JsonArray, assistantId: String) {
-        // Iterative traversal also handles nested tools without adding recursion to the JVM stack.
-        val pending = ArrayDeque<Iterator<JsonElement>>()
-        pending.addLast(parts.iterator())
-        while (pending.isNotEmpty()) {
-            currentCoroutineContext().ensureActive()
-            val iterator = pending.last()
-            if (!iterator.hasNext()) {
-                pending.removeLast()
-                continue
-            }
-            val part = iterator.next() as? JsonObject
-            if (part == null) {
-                ownershipComplete = false
-                continue
-            }
-            when ((part["type"] as? JsonPrimitive)?.content) {
-                "image", "video", "audio", "document" -> {
-                    val url = part["url"] as? JsonPrimitive
-                    if (url != null && url.isString) {
-                        record(url.content, assistantId)
-                    } else {
-                        ownershipComplete = false
-                    }
-                }
-                "tool", "server_tool" -> (part["output"] as? JsonArray)?.let { pending.addLast(it.iterator()) }
-                "tool_result" -> (part["content"] as? JsonArray)?.let { pending.addLast(it.iterator()) }
-                // Future attachment types are not attribution evidence, nor proof of no owner.
-                else -> if (part.containsKey("url")) ownershipComplete = false
-            }
-        }
-    }
-
-    private suspend fun hasBoundedNesting(json: String): Boolean {
-        var depth = 0
-        var inString = false
-        var escaped = false
-        json.forEachIndexed { index, char ->
-            if (index % 1024 == 0) currentCoroutineContext().ensureActive()
-            if (inString) {
-                if (escaped) {
-                    escaped = false
-                } else if (char == '\\') {
-                    escaped = true
-                } else if (char == '"') {
-                    inString = false
-                }
-            } else {
-                when (char) {
-                    '"' -> inString = true
-                    '[', '{' -> if (++depth > 128) return false
-                    ']', '}' -> depth--
-                }
-            }
-        }
-        return true
-    }
-
-    private fun record(url: String, assistantId: String) {
-        val uri = try {
-            URI(url)
-        } catch (_: IllegalArgumentException) {
-            return
-        } catch (_: java.net.URISyntaxException) {
-            if (url.startsWith("file:", ignoreCase = true)) ownershipComplete = false
-            return
-        }
-        if (!uri.scheme.equals("file", ignoreCase = true) ||
-            !uri.authority.isNullOrEmpty() || uri.query != null || uri.fragment != null
+        if (messages == null || messages.length > MAX_MESSAGE_CHARS * 2 ||
+            messages.codePointCount(0, messages.length) > MAX_MESSAGE_CHARS
         ) {
+            markIncomplete()
             return
         }
-        val path = uri.path?.takeIf { it.startsWith('/') } ?: return
-        val normalized = try {
-            normalizePrivatePath(path)
-        } catch (_: IllegalArgumentException) {
-            ownershipComplete = false
+        var supplied = false
+        addChunks(assistantId) {
+            if (supplied) null else messages.also { supplied = true }
+        }
+    }
+
+    internal suspend fun addChunks(assistantId: String, nextChunk: suspend () -> String?) {
+        if (assistantId.isBlank()) {
+            markIncomplete()
             return
         }
-        val entity = paths[normalized] ?: return
-        owners.getOrPut(entity.relativePath) { linkedSetOf() }.add(assistantId)
+        val references = scanMessageFileReferences(nextChunk) { it in paths }
+        addPaths(assistantId, references.paths, references.complete)
+    }
+
+    internal fun addPaths(assistantId: String?, referencedPaths: Set<String>, complete: Boolean) {
+        if (!complete || (assistantId.isNullOrBlank() && referencedPaths.isNotEmpty())) markIncomplete()
+        if (assistantId.isNullOrBlank()) return
+        referencedPaths.forEach { path ->
+            val entity = paths[path] ?: return@forEach
+            owners.getOrPut(entity.relativePath) { linkedSetOf() }.add(assistantId)
+        }
+    }
+
+    internal fun markIncomplete() {
+        ownershipComplete = false
     }
 
     fun files(): List<CatalogFile> = entities.map { entity ->
@@ -280,15 +246,5 @@ internal class ManagedFileCatalogIndex(filesDir: File, private val entities: Lis
 
     companion object {
         internal const val MAX_MESSAGE_CHARS = 262_144
-    }
-}
-
-/** Only the equivalent Android user-0 private-data roots are aliased; never match a basename. */
-private fun normalizePrivatePath(path: String): String {
-    val normalized = File(path).toPath().normalize().toString()
-    return if (normalized.startsWith("/data/data/")) {
-        "/data/user/0/" + normalized.removePrefix("/data/data/")
-    } else {
-        normalized
     }
 }

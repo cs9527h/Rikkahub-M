@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.core.net.toUri
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -27,9 +28,8 @@ import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
-import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.model.Assistant
-import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
@@ -57,7 +57,7 @@ class ChatVM(
     private val settingsStore: SettingsStore,
     private val chatService: ChatService,
     val updateChecker: UpdateChecker,
-    private val filesManager: FilesManager,
+    private val avatarStorage: AvatarStorage,
     private val favoriteRepository: FavoriteRepository,
     private val backgroundShellManager: BackgroundShellManager,
 ) : ViewModel() {
@@ -67,6 +67,7 @@ class ChatVM(
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
+    private val draftReferenceOwner = Uuid.random()
 
     val voiceSession = VoiceSessionController(viewModelScope, context::getString) {
         chatService.enqueueVoiceMessage(_conversationId, it)
@@ -92,6 +93,12 @@ class ChatVM(
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
     init {
+        chatService.registerDraftAttachmentReferenceProvider(draftReferenceOwner) { inputState.getContents() }
+        viewModelScope.launch {
+            snapshotFlow { inputState.getContents() }.collect { parts ->
+                chatService.updateDraftAttachmentReferences(draftReferenceOwner, parts)
+            }
+        }
         // 添加对话引用
         chatService.addConversationReference(_conversationId)
 
@@ -105,6 +112,7 @@ class ChatVM(
     }
 
     override fun onCleared() {
+        chatService.clearDraftAttachmentReferences(draftReferenceOwner)
         voiceSession.stop()
         super.onCleared()
         // 移除对话引用
@@ -173,18 +181,7 @@ class ChatVM(
                     newSettings = new
                 }
             }
-            // 检查用户头像是否有变化，如果有则删除旧头像
-            checkUserAvatarDelete(oldSettings ?: return@launch, newSettings ?: return@launch)
-        }
-    }
-
-    // 检查用户头像删除
-    private fun checkUserAvatarDelete(oldSettings: Settings, newSettings: Settings) {
-        val oldAvatar = oldSettings.displaySetting.userAvatar
-        val newAvatar = newSettings.displaySetting.userAvatar
-
-        if (oldAvatar is Avatar.Image && oldAvatar != newAvatar) {
-            filesManager.deleteChatFiles(listOf(oldAvatar.url.toUri()))
+            avatarStorage.onSettingsSaved(oldSettings ?: return@launch, newSettings ?: return@launch)
         }
     }
 

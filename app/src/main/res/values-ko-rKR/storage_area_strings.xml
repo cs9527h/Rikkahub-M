@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">채팅 파일</string>
+  <string name="file_manager_area_avatars">아바타</string>
+  <string name="file_manager_avatars_hint">아바타는 따로 저장되며 더 이상 참조되지 않는 이전 이미지만 자동 정리됩니다. 온라인 아바타는 이 폴더에 복사되지 않습니다.</string>
+  <string name="file_manager_avatars_all">모든 아바타</string>
+  <string name="file_manager_avatar_user">내 아바타</string>
+  <string name="file_manager_avatars_shared">공유 아바타</string>
+  <string name="file_manager_avatar_historical">이전 아바타</string>
+  <string name="file_manager_avatar_in_use">사용 중: %1$s</string>
+  <string name="file_manager_avatar_retained">아직 사용 중이거나 정리할 수 없어 원본 파일을 유지했습니다.</string>
+  <string name="file_manager_avatar_empty">로컬 아바타 없음</string>
+</resources>

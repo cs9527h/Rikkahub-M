@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.components.ui
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -33,6 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,10 +55,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Edit03
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.ui.components.ai.useCropLauncher
 import me.rerere.rikkahub.ui.hooks.rememberAvatarShape
@@ -100,16 +107,40 @@ fun UIAvatar(
     onUpdate: ((Avatar) -> Unit)? = null,
     onClick: (() -> Unit)? = null
 ) {
-    val filesManager: FilesManager = koinInject()
+    val avatarStorage: AvatarStorage = koinInject()
+    val scope = rememberCoroutineScope()
+    val latestOnUpdate by rememberUpdatedState(onUpdate)
+    var saveGeneration by remember { mutableStateOf(0) }
     var showPickOption by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     var showUrlInput by remember { mutableStateOf(false) }
     var urlInput by remember { mutableStateOf("") }
 
+    fun updateAvatar(avatar: Avatar) {
+        saveGeneration += 1
+        latestOnUpdate?.invoke(avatar)
+    }
+
     fun saveAvatarImage(uri: Uri) {
-        val localUris = filesManager.createChatFilesByContents(listOf(uri))
-        localUris.firstOrNull()?.let { localUri ->
-            onUpdate?.invoke(Avatar.Image(localUri.toString()))
+        val generation = ++saveGeneration
+        scope.launch {
+            var pendingImage: Avatar.Image? = null
+            try {
+                val image = avatarStorage.save(uri).also { pendingImage = it }
+                val callback = latestOnUpdate
+                if (generation == saveGeneration && callback != null) {
+                    callback(image)
+                    pendingImage = null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("UIAvatar", "Failed to save avatar; keeping current avatar", e)
+            } finally {
+                pendingImage?.let { image ->
+                    withContext(NonCancellable) { avatarStorage.discardPending(image) }
+                }
+            }
         }
     }
 
@@ -240,7 +271,7 @@ fun UIAvatar(
                     Button(
                         onClick = {
                             showPickOption = false
-                            onUpdate?.invoke(Avatar.Dummy)
+                            updateAvatar(Avatar.Dummy)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -269,7 +300,7 @@ fun UIAvatar(
         ) {
             EmojiPicker(
                 onEmojiSelected = { emoji ->
-                    onUpdate?.invoke(Avatar.Emoji(content = emoji.emoji))
+                    updateAvatar(Avatar.Emoji(content = emoji.emoji))
                     showEmojiPicker = false
                 },
                 modifier = Modifier
@@ -301,7 +332,7 @@ fun UIAvatar(
                 TextButton(
                     onClick = {
                         if (urlInput.isNotBlank()) {
-                            onUpdate?.invoke(Avatar.Image(urlInput.trim()))
+                            updateAvatar(Avatar.Image(urlInput.trim()))
                             showUrlInput = false
                         }
                     }

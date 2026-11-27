@@ -67,7 +67,7 @@ fun AssistantBasicPage(id: String) {
             parametersOf(id)
         }
     )
-    val assistant by vm.assistant.collectAsStateWithLifecycle()
+    val assistant = vm.assistant.collectAsStateWithLifecycle().value
     val providers by vm.providers.collectAsStateWithLifecycle()
     val tags by vm.tags.collectAsStateWithLifecycle()
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
@@ -95,7 +95,7 @@ fun AssistantBasicPage(id: String) {
             providers = providers,
             tags = tags,
             workspaces = workspaces,
-            onUpdate = { vm.update(it) },
+            onUpdate = { vm.update(assistant, it) },
             vm = vm
         )
     }
@@ -177,7 +177,7 @@ internal fun AssistantBasicContent(
                     value = assistant.tags,
                     tags = tags,
                     onValueChange = { tagIds, tagList ->
-                        vm.updateTags(tagIds, tagList)
+                        vm.updateTags(assistant, tagIds, tagList)
                     },
                 )
             }

@@ -1,7 +1,6 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import android.util.Log
-import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -18,9 +17,8 @@ import me.rerere.rikkahub.data.ai.MemoryConsolidationStatus
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
-import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.model.Assistant
-import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.MemoryFile
 import me.rerere.rikkahub.data.model.Tag
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -36,7 +34,7 @@ class AssistantDetailVM(
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
     private val memoryConsolidationScheduler: MemoryConsolidationScheduler,
-    private val filesManager: FilesManager,
+    private val avatarStorage: AvatarStorage,
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
 ) : ViewModel() {
@@ -131,14 +129,14 @@ class AssistantDetailVM(
             initialValue = emptyList(),
         )
 
-    fun updateTags(tagIds: List<Uuid>, tags: List<Tag>) {
+    fun updateTags(before: Assistant, tagIds: List<Uuid>, tags: List<Tag>) {
+        if (before.id != assistantId) return
+        val updated = before.copy(tags = tagIds.toList())
         viewModelScope.launch {
-            settingsStore.update { it.copy(assistantTags = tags) }
-            update(
-                assistant.value.copy(
-                    tags = tagIds.toList()
-                )
-            )
+            settingsStore.update { settings ->
+                if (settings.assistants.none { it.id == assistantId }) settings else settings.copy(assistantTags = tags)
+            }
+            update(before, updated)
             Log.d(TAG, "updateTags: ${tagIds.joinToString(",")}")
             cleanupUnusedTags()
         }
@@ -185,22 +183,27 @@ class AssistantDetailVM(
         }
     }
 
-    fun update(assistant: Assistant) {
+    fun update(before: Assistant, updated: Assistant) {
+        if (before.id != assistantId || updated.id != assistantId) return
         viewModelScope.launch {
-            var replaced: Assistant? = null
-            settingsStore.update { settings ->
-                settings.copy(assistants = settings.assistants.map {
-                    if (it.id == assistant.id) {
-                        replaced = it
-                        assistant
-                    } else {
-                        it
-                    }
-                })
+            var previousSettings: Settings? = null
+            var savedSettings: Settings? = null
+            settingsStore.update transform@{ settings ->
+                val latest = settings.assistants.find { it.id == assistantId }
+                val merged = mergeAssistantDetailUpdate(assistantId, before, updated, latest)
+                    ?: return@transform settings
+                previousSettings = settings
+                settings.copy(assistants = settings.assistants.map { current ->
+                    if (current.id == assistantId) merged else current
+                }).also { savedSettings = it }
             }
-            replaced?.let { old ->
-                checkAvatarDelete(old = old, new = assistant) // 删除旧头像
-                checkBackgroundDelete(old = old, new = assistant) // 删除旧背景
+            val previous = previousSettings ?: return@launch
+            val saved = savedSettings ?: return@launch
+            avatarStorage.onSettingsSaved(previous, saved)
+            val oldBackground = previous.assistants.find { it.id == assistantId }?.background
+            val savedBackground = saved.assistants.find { it.id == assistantId }?.background
+            if (oldBackground != null && oldBackground != savedBackground) {
+                avatarStorage.deleteLocalUriIfUnused(oldBackground)
             }
         }
     }
@@ -246,28 +249,6 @@ class AssistantDetailVM(
     fun purgeDeletedMemories() {
         viewModelScope.launch {
             memoryRepository.purgeDeletedFiles(memoryIdOf(assistant.value))
-        }
-    }
-
-    fun checkAvatarDelete(old: Assistant, new: Assistant) {
-        if (old.avatar is Avatar.Image && old.avatar != new.avatar) {
-            filesManager.deleteChatFiles(listOf(old.avatar.url.toUri()))
-        }
-    }
-
-    fun checkBackgroundDelete(old: Assistant, new: Assistant) {
-        val oldBackground = old.background
-        val newBackground = new.background
-
-        if (oldBackground != null && oldBackground != newBackground) {
-            try {
-                val oldUri = oldBackground.toUri()
-                if (oldUri.scheme == "content" || oldUri.scheme == "file") {
-                    filesManager.deleteChatFiles(listOf(oldUri))
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to delete background file: $oldBackground", e)
-            }
         }
     }
 }

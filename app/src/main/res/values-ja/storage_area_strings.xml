@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">チャットファイル</string>
+  <string name="file_manager_area_avatars">アバター</string>
+  <string name="file_manager_avatars_hint">アバターは別に保存され、参照されなくなった古い画像だけが自動削除されます。ネット上のアバターはこのフォルダーにはコピーされません。</string>
+  <string name="file_manager_avatars_all">すべてのアバター</string>
+  <string name="file_manager_avatar_user">自分のアバター</string>
+  <string name="file_manager_avatars_shared">共有アバター</string>
+  <string name="file_manager_avatar_historical">以前のアバター</string>
+  <string name="file_manager_avatar_in_use">使用中：%1$s</string>
+  <string name="file_manager_avatar_retained">使用中または削除できないため、元のファイルを保持しました。</string>
+  <string name="file_manager_avatar_empty">端末にアバターがありません</string>
+</resources>

@@ -33,7 +33,6 @@ import me.rerere.hugeicons.stroke.Link01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.DEEPSEEK_PROVIDER_ID
-import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -50,7 +49,6 @@ internal fun QuickStartDeepSeekTab(vm: QuickStartVM) {
     val navController = LocalNavController.current
     val context = LocalContext.current
 
-    val assistantName = settings.getCurrentAssistant().name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }
     val deepSeekProvider = settings.providers.find { it.id == DEEPSEEK_PROVIDER_ID } as? ProviderSetting.ApiKey
     val deepSeekReady = deepSeekProvider != null && deepSeekProvider.enabled &&
         deepSeekProvider.apiKey.isNotBlank() && deepSeekProvider.models.isNotEmpty()
@@ -98,7 +96,6 @@ internal fun QuickStartDeepSeekTab(vm: QuickStartVM) {
             stepItem(
                 index = 2,
                 description = R.string.quick_start_page_deepseek_import_desc,
-                descriptionArgs = listOf(assistantName),
                 state = if (imported) StepState.DONE else StepState.TODO,
             ) {
                 when (val state = importState) {

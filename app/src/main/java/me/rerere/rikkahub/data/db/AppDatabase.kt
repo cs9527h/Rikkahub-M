@@ -10,10 +10,10 @@ import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.FavoriteDAO
 import me.rerere.rikkahub.data.db.dao.FolderDAO
 import me.rerere.rikkahub.data.db.dao.GenMediaDAO
+import me.rerere.rikkahub.data.db.dao.HistoryMemoryDAO
 import me.rerere.rikkahub.data.db.dao.ManagedFileDAO
 import me.rerere.rikkahub.data.db.dao.MediaCreationDAO
 import me.rerere.rikkahub.data.db.dao.MemoryConsolidationDAO
-import me.rerere.rikkahub.data.db.dao.HistoryMemoryDAO
 import me.rerere.rikkahub.data.db.dao.MemoryDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.dao.TranslationHistoryDAO
@@ -23,20 +23,20 @@ import me.rerere.rikkahub.data.db.entity.ConversationEntity
 import me.rerere.rikkahub.data.db.entity.FavoriteEntity
 import me.rerere.rikkahub.data.db.entity.FolderEntity
 import me.rerere.rikkahub.data.db.entity.GenMediaEntity
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
+import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
+import me.rerere.rikkahub.data.db.entity.HistoryMemoryTaskLog
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.db.entity.MediaCreationNodeEntity
 import me.rerere.rikkahub.data.db.entity.MediaCreationRecordEntity
 import me.rerere.rikkahub.data.db.entity.MediaCreationSessionEntity
+import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
 import me.rerere.rikkahub.data.db.entity.MemoryConsolidationEntity
-import me.rerere.rikkahub.data.db.entity.HistoryMemoryJob
-import me.rerere.rikkahub.data.db.entity.HistoryMemoryCandidate
-import me.rerere.rikkahub.data.db.entity.HistoryMemoryBatch
+import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
 import me.rerere.rikkahub.data.db.entity.MemoryScopeState
-import me.rerere.rikkahub.data.db.entity.MemoryBulkUndo
-import me.rerere.rikkahub.data.db.entity.HistoryMemorySeen
-import me.rerere.rikkahub.data.db.entity.HistoryMemoryTaskLog
-import me.rerere.rikkahub.data.db.entity.MemoryFileEntity
 import me.rerere.rikkahub.data.db.entity.MessageNodeEntity
 import me.rerere.rikkahub.data.db.entity.TranslationHistoryEntity
 import me.rerere.rikkahub.data.db.entity.UsageRecordEntity
@@ -114,6 +114,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun genMediaDao(): GenMediaDAO
 
     abstract fun messageNodeDao(): MessageNodeDAO
+
+    abstract fun fileReferenceDao(): me.rerere.rikkahub.data.db.dao.FileReferenceDAO
 
     abstract fun managedFileDao(): ManagedFileDAO
 

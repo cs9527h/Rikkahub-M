@@ -858,7 +858,7 @@
   <string name="setting_theme_page_import_success">Theme erfolgreich importiert</string>
   <string name="setting_theme_page_dynamic_color_hint">Dynamische Farbe ist aktiviert. Deaktiviere sie unter Einstellungen &gt; Theme, um benutzerdefinierte Themes zu verwenden.</string>
   <string name="setting_page_tts_service">Sprachdienste</string>
-  <string name="setting_page_tts_service_desc">TTS- und Spracherkennungs-Anbieter</string>
+  <string name="setting_page_tts_service_desc">TTS- und Spracherkennungsdienste konfigurieren</string>
   <string name="setting_provider_page_save">Speichern</string>
   <string name="setting_provider_page_save_success">Erfolgreich gespeichert</string>
   <string name="setting_provider_page_scan_qr_code">QR-Code scannen</string>
@@ -1759,7 +1759,7 @@
   <string name="quick_start_page_deepseek_export_desc">Öffne die DeepSeek-Website in einem Browser und melde dich an, gehe zu Einstellungen → Datenverwaltung, wähle den Export aller Chats und speichere die heruntergeladene ZIP-Datei. Du musst sie nicht entpacken.</string>
   <string name="quick_start_page_deepseek_open_web">DeepSeek-Website öffnen</string>
   <string name="quick_start_page_deepseek_import_title">In RikkaHub importieren</string>
-  <string name="quick_start_page_deepseek_import_desc">Wähle die ZIP-Datei aus dem vorherigen Schritt. Für jeden Chat wird der aktuell angezeigte Branch importiert – einschließlich Reasoning und Anhängen – in den aktuellen Assistenten \"%1$s\". Bereits importierte Chats werden übersprungen, ein erneuter Import ist also sicher.</string>
+  <string name="quick_start_page_deepseek_import_desc">Wähle die ZIP-Datei aus dem vorherigen Schritt. Für jeden Chat wird der aktuell angezeigte Branch einschließlich Reasoning und Anhängen in den aktuellen Assistenten importiert. Bereits importierte Chats werden übersprungen, ein erneuter Import ist also sicher.</string>
   <string name="quick_start_page_deepseek_importing">Wird importiert…</string>
   <string name="quick_start_page_deepseek_import_another">Weitere ZIP importieren</string>
   <string name="quick_start_page_title">Schnellstart</string>

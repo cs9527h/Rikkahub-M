@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">Chatdateien</string>
+  <string name="file_manager_area_avatars">Avatare</string>
+  <string name="file_manager_avatars_hint">Avatare werden getrennt gespeichert. Alte Bilder werden nur ohne verbleibende Verweise entfernt. Online-Avatare werden nicht in dieses Verzeichnis kopiert.</string>
+  <string name="file_manager_avatars_all">Alle Avatare</string>
+  <string name="file_manager_avatar_user">Mein Avatar</string>
+  <string name="file_manager_avatars_shared">Geteilte Avatare</string>
+  <string name="file_manager_avatar_historical">Früherer Avatar</string>
+  <string name="file_manager_avatar_in_use">Verwendet: %1$s</string>
+  <string name="file_manager_avatar_retained">Der Avatar wird noch verwendet oder konnte nicht entfernt werden. Die Originaldatei bleibt erhalten.</string>
+  <string name="file_manager_avatar_empty">Keine lokalen Avatare</string>
+</resources>

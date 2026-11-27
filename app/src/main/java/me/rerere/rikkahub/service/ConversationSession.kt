@@ -78,6 +78,28 @@ class ConversationSession(
         private set
 
     val inbox = ConversationInbox()
+    private val attachmentCache = SessionAttachmentReferenceCache()
+    private val _attachmentRevision = MutableStateFlow(0L)
+    internal val attachmentRevision: StateFlow<Long> = _attachmentRevision.asStateFlow()
+    private var historySubmitted = false
+
+    /** Read current sources together, never a stale combined inbox/history pair during dispatch. */
+    @Synchronized
+    internal fun attachmentReferenceSnapshot(): SessionAttachmentReferences = attachmentCache.snapshot(
+        conversation = state.value,
+        historyComplete = isInitialized,
+        historySubmitted = historySubmitted,
+        inbox = inbox.state.value,
+        submitting = submittingMessage,
+    )
+
+    @Synchronized
+    internal fun updateSubmittedHistory(transform: (Conversation) -> Conversation): Conversation {
+        val updated = update(transform)
+        historySubmitted = true
+        _attachmentRevision.value++
+        return updated
+    }
 
     /**
      * 页面切换和 SSE 重连只加载一次。[load] 返回 null 表示数据库里没有这个会话，改用 [create] 新建。
@@ -99,6 +121,8 @@ class ConversationSession(
             synchronized(this) {
                 _state.value = conversation
                 isInitialized = true
+                historySubmitted = loaded != null
+                _attachmentRevision.value++
             }
         }
     }
@@ -133,7 +157,11 @@ class ConversationSession(
             val current = update(store.prepareWrite())
             store.write(previous = lastWritten.takeIf { existsInDatabase }, current = current)
             lastWritten = current
-            existsInDatabase = true
+            synchronized(this) {
+                existsInDatabase = true
+                historySubmitted = true
+                _attachmentRevision.value++
+            }
             current
         }
     }
@@ -199,6 +227,8 @@ class ConversationSession(
                     synchronized(this) {
                         _state.value = conversation
                         isInitialized = true
+                        historySubmitted = existsInDatabase
+                        _attachmentRevision.value++
                         incarnation++
                         titleRevision++
                     }
@@ -245,9 +275,15 @@ class ConversationSession(
     }
 
     // 从队列取出到写入会话历史之间，附件仍需作为有效引用保留。
-    @Volatile
-    var submittingMessage: QueuedMessage? = null
-        internal set
+    private var _submittingMessage: QueuedMessage? = null
+    var submittingMessage: QueuedMessage?
+        get() = synchronized(this) { _submittingMessage }
+        internal set(value) {
+            synchronized(this) {
+                _submittingMessage = value
+                _attachmentRevision.value++
+            }
+        }
 
     // 原子引用计数
     private val refCount = AtomicInteger(0)

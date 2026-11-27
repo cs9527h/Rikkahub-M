@@ -39,6 +39,7 @@ private const val MAX_UPLOAD_TOTAL_BYTES = 64L * 1024 * 1024 // 64 MB
  */
 private val WEB_READABLE_FOLDERS = setOf(
     FileFolders.UPLOAD,
+    FileFolders.AVATARS,
     FileFolders.MEDIA_CREATION,
     FileFolders.TOOL_OUTPUTS,
     "images",

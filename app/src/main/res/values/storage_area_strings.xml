@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">Chat files</string>
+  <string name="file_manager_area_avatars">Avatars</string>
+  <string name="file_manager_avatars_hint">Avatars are stored separately, replaced images are removed only when no longer referenced, and remote avatars are not copied into this directory.</string>
+  <string name="file_manager_avatars_all">All avatars</string>
+  <string name="file_manager_avatar_user">My avatar</string>
+  <string name="file_manager_avatars_shared">Shared avatars</string>
+  <string name="file_manager_avatar_historical">Previous avatar</string>
+  <string name="file_manager_avatar_in_use">In use: %1$s</string>
+  <string name="file_manager_avatar_retained">The avatar is still referenced or could not be removed. The original file was retained.</string>
+  <string name="file_manager_avatar_empty">No local avatars</string>
+</resources>

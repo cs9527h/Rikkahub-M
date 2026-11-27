@@ -80,6 +80,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.flowWithLifecycle
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
@@ -100,6 +102,8 @@ import me.rerere.hugeicons.stroke.View
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
+import me.rerere.rikkahub.data.files.AvatarReferences
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.files.CatalogAssistantFilter
 import me.rerere.rikkahub.data.files.CatalogFile
 import me.rerere.rikkahub.data.files.FileFolders
@@ -107,6 +111,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.ManagedFileType
 import me.rerere.rikkahub.data.files.exportManagedFile
 import me.rerere.rikkahub.data.repository.FilesRepository
+import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.file.ManagedFilePreviewDialog
 import me.rerere.rikkahub.ui.components.nav.BackButton
@@ -123,6 +128,8 @@ fun SettingFilesPage(
     filesManager: FilesManager = koinInject(),
     repository: FilesRepository = koinInject(),
     settingsStore: SettingsStore = koinInject(),
+    avatarStorage: AvatarStorage = koinInject(),
+    chatService: ChatService = koinInject(),
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -132,26 +139,43 @@ fun SettingFilesPage(
     val gridState = rememberLazyStaggeredGridState()
     val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
     var refresh by remember { mutableStateOf(0) }
-    val catalogResult by produceState<Result<List<CatalogFile>>?>(null, repository, filesManager, lifecycle, refresh) {
+    var storageArea by rememberSaveable { mutableStateOf(STORAGE_AREA_CHAT) }
+    val avatarArea = storageArea == STORAGE_AREA_AVATARS
+    val avatarOwners = remember(settings) { AvatarReferences.localAvatarOwners(settings, context.filesDir) }
+    val liveReferences = remember(chatService) { chatService.observeManagedFileReferences().map { it.catalogReferences() } }
+    val catalogResult by produceState<Result<List<CatalogFile>>?>(null, repository, filesManager, avatarStorage, liveReferences, lifecycle, refresh) {
         value = null
         try {
-            filesManager.syncFolder(FileFolders.UPLOAD)
-            repository.observeCatalog(FileFolders.UPLOAD, context.filesDir).flowWithLifecycle(lifecycle).collect {
-                value = Result.success(it)
+            try {
+                avatarStorage.synchronize()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // A failed migration must not hide the original files; settings still classify them.
             }
+            filesManager.syncFolder(FileFolders.UPLOAD)
+            filesManager.syncFolder(FileFolders.AVATARS)
+            combine(
+                repository.observeCatalog(FileFolders.UPLOAD, context.filesDir, liveReferences),
+                repository.listByFolder(FileFolders.AVATARS),
+            ) { attachments, avatars ->
+                attachments + avatars.map { CatalogFile(it, emptySet()) }
+            }.flowWithLifecycle(lifecycle).collect { value = Result.success(it) }
         } catch (e: CancellationException) {
             throw e
         } catch (error: Exception) {
             value = Result.failure(error)
         }
     }
-    val catalogFiles = catalogResult?.getOrNull().orEmpty()
+    val catalogFiles = remember(catalogResult, storageArea, avatarOwners) {
+        storageAreaFiles(catalogResult?.getOrNull().orEmpty(), storageArea, avatarOwners.keys)
+    }
     val catalogLoading = catalogResult == null
     val catalogFailed = catalogResult?.isFailure == true
     var query by rememberSaveable { mutableStateOf("") }
     var selectedTypeName by rememberSaveable { mutableStateOf<String?>(null) }
     val selectedType = selectedTypeName?.let { name -> ManagedFileType.entries.find { it.name == name } }
-    var ownerKey by rememberSaveable { mutableStateOf("all") }
+    var ownerKey by rememberSaveable(storageArea) { mutableStateOf("all") }
     val ownerFilter = when {
         ownerKey == "unassigned" -> CatalogAssistantFilter.Unassigned
         ownerKey == "shared" -> CatalogAssistantFilter.Shared
@@ -160,8 +184,9 @@ fun SettingFilesPage(
         else -> CatalogAssistantFilter.All
     }
     var sort by rememberSaveable { mutableStateOf(FileManagerSort.NEWEST) }
-    val visible = remember(catalogFiles, selectedType, ownerFilter, query, sort) {
-        filterManagedFiles(catalogFiles, selectedType, ownerFilter, query, sort)
+    val visible = remember(catalogFiles, avatarArea, avatarOwners, selectedType, ownerKey, query, sort) {
+        if (avatarArea) filterAvatarFiles(catalogFiles, avatarOwners, selectedType, ownerKey, query, sort)
+        else filterManagedFiles(catalogFiles, selectedType, ownerFilter, query, sort)
     }
     val defaultAssistantName = stringResource(R.string.assistant_page_default_assistant)
     val assistantNames = remember(settings.assistants, defaultAssistantName) {
@@ -173,9 +198,9 @@ fun SettingFilesPage(
         )
     }
     var preview by remember { mutableStateOf<ManagedFileEntity?>(null) }
-    var pendingDelete by remember { mutableStateOf<CatalogFile?>(null) }
-    var cleanupSnapshot by remember { mutableStateOf<List<CatalogFile>?>(null) }
-    var confirmedCleanup by remember { mutableStateOf<List<CatalogFile>?>(null) }
+    var pendingDelete by remember(storageArea) { mutableStateOf<CatalogFile?>(null) }
+    var cleanupSnapshot by remember(storageArea) { mutableStateOf<List<CatalogFile>?>(null) }
+    var confirmedCleanup by remember(storageArea) { mutableStateOf<List<CatalogFile>?>(null) }
     var busyDeleting by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
     var pendingExportId by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -185,6 +210,16 @@ fun SettingFilesPage(
     val deleteFailedMessage = stringResource(R.string.setting_files_page_delete_failed_toast)
     val cleanedMessage = stringResource(R.string.setting_files_page_cleaned_toast)
     val cleanFailedMessage = stringResource(R.string.setting_files_page_clean_failed_toast)
+    val avatarRetainedMessage = stringResource(R.string.file_manager_avatar_retained)
+    suspend fun deleteFile(target: CatalogFile): Boolean {
+        val current = filesManager.get(target.entity.id) ?: return false
+        val activeAvatars = AvatarReferences.localAvatarPaths(settingsStore.settingsFlow.value, context.filesDir)
+        return if (current.folder == FileFolders.AVATARS || current.relativePath in activeAvatars || target.isUnassigned) {
+            avatarStorage.deleteIfUnused(current.relativePath)
+        } else {
+            filesManager.delete(current.id)
+        }
+    }
     val exportLauncher = rememberLauncherForActivityResult(ManagedFileExportContract()) { uri ->
         val id = pendingExportId
         pendingExportId = null
@@ -240,8 +275,8 @@ fun SettingFilesPage(
                     scope.launch {
                         busyDeleting = true
                         try {
-                            val ok = filesManager.delete(target.entity.id)
-                            toaster.show(if (ok) deletedMessage else deleteFailedMessage)
+                            val ok = deleteFile(target)
+                            toaster.show(if (ok) deletedMessage else if (avatarArea) avatarRetainedMessage else deleteFailedMessage)
                         } catch (e: CancellationException) { throw e }
                         catch (_: Exception) { toaster.show(deleteFailedMessage) }
                         finally { busyDeleting = false }
@@ -273,7 +308,7 @@ fun SettingFilesPage(
                         var allDeleted = true
                         try {
                             targets.forEach { file ->
-                                try { if (!filesManager.delete(file.entity.id)) allDeleted = false }
+                                try { if (!deleteFile(file)) allDeleted = false }
                                 catch (e: CancellationException) { throw e }
                                 catch (_: Exception) { allDeleted = false }
                             }
@@ -294,8 +329,10 @@ fun SettingFilesPage(
                     IconButton(onClick = { refresh++ }, enabled = !catalogLoading && !busyDeleting) {
                         Icon(HugeIcons.Refresh01, stringResource(R.string.file_manager_refresh))
                     }
-                    IconButton(onClick = { cleanupSnapshot = visible.toList() }, enabled = visible.isNotEmpty() && !busyDeleting && !catalogLoading) {
-                        Icon(HugeIcons.Clean, stringResource(R.string.setting_files_page_clean_content_description))
+                    if (!avatarArea) {
+                        IconButton(onClick = { cleanupSnapshot = visible.toList() }, enabled = visible.isNotEmpty() && !busyDeleting && !catalogLoading) {
+                            Icon(HugeIcons.Clean, stringResource(R.string.setting_files_page_clean_content_description))
+                        }
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -321,12 +358,24 @@ fun SettingFilesPage(
         ) {
             item(key = "filters", span = StaggeredGridItemSpan.FullLine, contentType = "filters") {
                 Column {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(STORAGE_AREA_CHAT, STORAGE_AREA_AVATARS).forEach { area ->
+                            FilterChip(
+                                selected = storageArea == area,
+                                onClick = { storageArea = area; ownerKey = "all"; selectedTypeName = null; query = "" },
+                                label = { Text(stringResource(if (area == STORAGE_AREA_AVATARS) R.string.file_manager_area_avatars else R.string.file_manager_area_chat)) },
+                            )
+                        }
+                    }
+                    if (avatarArea) {
+                        Text(stringResource(R.string.file_manager_avatars_hint), Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     FileManagerFilters(
                         query = query, onQuery = { query = it },
                         selectedType = selectedType, onType = { selectedTypeName = it?.name },
                         ownerKey = ownerKey, onOwner = { ownerKey = it },
                         assistantNames = assistantNames, ownerIds = ownerIds,
-                        sort = sort, onSort = { sort = it },
+                        sort = sort, onSort = { sort = it }, avatarArea = avatarArea,
                     )
                     Text(stringResource(R.string.file_manager_summary, visible.size, managedFilesSize(visible).fileSizeToString()), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (visible.size != catalogFiles.size) {
@@ -360,7 +409,7 @@ fun SettingFilesPage(
                 }
                 visible.isEmpty() -> item(key = "empty", span = StaggeredGridItemSpan.FullLine) {
                     ExtensionEmptyState(
-                        message = stringResource(if (catalogFiles.isEmpty()) R.string.setting_files_page_no_files else R.string.file_manager_no_matches),
+                        message = stringResource(if (catalogFiles.isNotEmpty()) R.string.file_manager_no_matches else if (avatarArea) R.string.file_manager_avatar_empty else R.string.setting_files_page_no_files),
                         icon = HugeIcons.FolderOpen,
                         buttonText = if (catalogFiles.isNotEmpty()) stringResource(R.string.file_manager_reset) else null,
                         onAction = { query = ""; selectedTypeName = null; ownerKey = "all" },
@@ -369,11 +418,12 @@ fun SettingFilesPage(
                 else -> items(visible, key = { it.entity.id }, contentType = { it.type }) { file ->
                     FileItem(
                         file = file, fileOnDisk = filesManager.getFile(file.entity),
-                        owner = catalogOwnerLabel(file, assistantNames),
+                        owner = if (avatarArea) avatarOwnerLabel(avatarOwners[file.entity.relativePath].orEmpty(), assistantNames) else catalogOwnerLabel(file, assistantNames),
                         onPreview = { preview = file.entity },
                         onExport = { exportFile(file.entity) },
                         onDelete = { pendingDelete = file },
                         actionsEnabled = !busyDeleting && !exporting && pendingExportId == null,
+                        deleteEnabled = !busyDeleting && !exporting && pendingExportId == null && (!avatarArea || avatarOwners[file.entity.relativePath].isNullOrEmpty()),
                     )
                 }
             }
@@ -388,6 +438,7 @@ private fun FileManagerFilters(
     ownerKey: String, onOwner: (String) -> Unit,
     assistantNames: Map<String, String>, ownerIds: List<String>,
     sort: FileManagerSort, onSort: (FileManagerSort) -> Unit,
+    avatarArea: Boolean = false,
 ) {
     OutlinedTextField(
         value = query, onValueChange = onQuery, singleLine = true,
@@ -408,12 +459,12 @@ private fun FileManagerFilters(
             FilledTonalButton(onClick = { ownerMenu = true }, modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 12.dp)) {
                 Icon(HugeIcons.UserCircle, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(ownerFilterLabel(ownerKey, assistantNames), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(ownerFilterLabel(ownerKey, assistantNames, avatarArea), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(HugeIcons.ArrowDown01, null, Modifier.size(16.dp))
             }
             DropdownMenu(expanded = ownerMenu, onDismissRequest = { ownerMenu = false }, modifier = Modifier.heightIn(max = 360.dp)) {
-                listOf("all", "unassigned", "shared", "unknown").forEach { key ->
-                    DropdownMenuItem(text = { Text(ownerFilterLabel(key, assistantNames)) }, onClick = { onOwner(key); ownerMenu = false })
+                (if (avatarArea) listOf("all", "user", "shared", "unassigned") else listOf("all", "unassigned", "shared", "unknown")).forEach { key ->
+                    DropdownMenuItem(text = { Text(ownerFilterLabel(key, assistantNames, avatarArea)) }, onClick = { onOwner(key); ownerMenu = false })
                 }
                 ownerIds.forEach { id ->
                     DropdownMenuItem(text = { Text(assistantNames[id] ?: stringResource(R.string.file_manager_unknown_assistant, id.take(6))) }, onClick = { onOwner("assistant:$id"); ownerMenu = false })
@@ -435,12 +486,27 @@ private fun FileManagerFilters(
 }
 
 @Composable
-private fun ownerFilterLabel(key: String, names: Map<String, String>): String = when (key) {
+private fun ownerFilterLabel(key: String, names: Map<String, String>, avatarArea: Boolean = false): String = when {
+    avatarArea && key == "all" -> stringResource(R.string.file_manager_avatars_all)
+    avatarArea && key == "user" -> stringResource(R.string.file_manager_avatar_user)
+    avatarArea && key == "shared" -> stringResource(R.string.file_manager_avatars_shared)
+    avatarArea && key == "unassigned" -> stringResource(R.string.file_manager_avatar_historical)
+    else -> when (key) {
     "all" -> stringResource(R.string.file_manager_all_assistants)
     "unassigned" -> stringResource(R.string.file_manager_unassigned)
     "shared" -> stringResource(R.string.file_manager_shared)
     "unknown" -> stringResource(R.string.file_manager_owner_unknown)
     else -> names[key.removePrefix("assistant:")] ?: stringResource(R.string.file_manager_unknown_assistant, key.removePrefix("assistant:").take(6))
+    }
+}
+
+@Composable
+private fun avatarOwnerLabel(owners: Set<String>, names: Map<String, String>): String {
+    if (owners.isEmpty()) return stringResource(R.string.file_manager_avatar_historical)
+    val user = stringResource(R.string.file_manager_avatar_user)
+    val removed = stringResource(R.string.file_manager_unknown_assistant, "…")
+    val labels = owners.sorted().map { if (it == "user") user else names[it.removePrefix("assistant:")] ?: removed }
+    return stringResource(R.string.file_manager_avatar_in_use, labels.joinToString("、"))
 }
 
 @Composable
@@ -480,6 +546,7 @@ private fun FileItem(
     onExport: () -> Unit,
     onDelete: () -> Unit,
     actionsEnabled: Boolean,
+    deleteEnabled: Boolean = actionsEnabled,
 ) {
     val entity = file.entity
     val previewDescription = stringResource(R.string.file_manager_preview_named, entity.displayName)
@@ -510,7 +577,7 @@ private fun FileItem(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text(stringResource(R.string.file_manager_preview)) }, leadingIcon = { Icon(HugeIcons.View, null) }, onClick = { menu = false; onPreview() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.file_manager_export)) }, leadingIcon = { Icon(HugeIcons.Download01, null) }, onClick = { menu = false; onExport() }, enabled = actionsEnabled)
-                            DropdownMenuItem(text = { Text(stringResource(R.string.setting_files_page_delete_action)) }, leadingIcon = { Icon(HugeIcons.Delete01, null) }, onClick = { menu = false; onDelete() }, enabled = actionsEnabled)
+                            DropdownMenuItem(text = { Text(stringResource(R.string.setting_files_page_delete_action)) }, leadingIcon = { Icon(HugeIcons.Delete01, null) }, onClick = { menu = false; onDelete() }, enabled = deleteEnabled)
                         }
                     }
                 }

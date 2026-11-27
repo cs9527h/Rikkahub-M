@@ -720,7 +720,7 @@
   <string name="setting_theme_page_save">保存</string>
   <string name="setting_theme_page_dynamic_color_hint">ダイナミックカラーが有効です。カスタムテーマを使用するには、設定 &gt; テーマで無効にしてください。</string>
   <string name="setting_page_tts_service">音声サービス</string>
-  <string name="setting_page_tts_service_desc">音声合成と音声認識の設定</string>
+  <string name="setting_page_tts_service_desc">音声合成と音声認識サービスの設定</string>
   <string name="setting_page_tts_settings">TTS設定</string>
   <string name="setting_page_web_server">Webサーバー</string>
   <string name="setting_page_web_server_address_note">アドレスメモ</string>
@@ -1778,7 +1778,7 @@
   <string name="quick_start_page_deepseek_export_desc">ブラウザで DeepSeek のウェブサイトを開いてサインインし、「設定」→「データ管理」に進み、「すべてのチャットをエクスポート」を選択して、ダウンロードした ZIP ファイルを保存します。解凍は不要です。</string>
   <string name="quick_start_page_deepseek_open_web">DeepSeek のウェブサイトを開く</string>
   <string name="quick_start_page_deepseek_import_title">RikkaHub にインポート</string>
-  <string name="quick_start_page_deepseek_import_desc">前の手順の ZIP を選択します。各チャットでは、現在表示されているブランチが、推論と添付ファイルを含めて現在のアシスタント \"%1$s\" にインポートされます。すでにインポート済みのチャットはスキップされるため、再度インポートしても安全です。</string>
+  <string name="quick_start_page_deepseek_import_desc">前の手順の ZIP を選択します。各チャットでは、現在表示されているブランチが、推論と添付ファイルを含めて現在のアシスタントにインポートされます。すでにインポート済みのチャットはスキップされるため、再度インポートしても安全です。</string>
   <string name="quick_start_page_deepseek_importing">インポート中…</string>
   <string name="quick_start_page_deepseek_import_another">別の ZIP をインポート</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>

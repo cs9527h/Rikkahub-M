@@ -24,7 +24,7 @@ permissions:
   contents: read
 
 env:
-  VERSION: '1.1.5'
+  VERSION: '1.1.6'
   EXPECTED_CERT_SHA256: 'e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a'
 
 jobs:
@@ -168,7 +168,7 @@ jobs:
           apk=${apks[0]}
           test -x "$APKANALYZER"
           test "$("$APKANALYZER" manifest version-name "$apk")" = "$VERSION"
-          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 61
+          test "$("$APKANALYZER" manifest version-code "$apk")" -gt 62
           base=$(basename "$apk")
           abis=$(unzip -l "$apk" | awk '{print $4}' | grep -o 'lib/[^/]*/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           echo "--- $base abis: $abis"
@@ -212,7 +212,9 @@ jobs:
             --require-marker "Workspace root deletion is prohibited" \
             --require-marker "EPUB total content too large" \
             --require-marker "设置助手" \
-            --require-marker "目标位置未提供可写入的数据流"
+            --require-marker "目标位置未提供可写入的数据流" \
+            --require-marker "Avatar directory is not local" \
+            --require-marker "Backup asset changed during snapshot"
 
       - name: Upload verified APKs
         id: signed_apk_upload

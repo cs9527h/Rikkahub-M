@@ -720,7 +720,7 @@
   <string name="setting_theme_page_save">저장</string>
   <string name="setting_theme_page_dynamic_color_hint">동적 색상이 활성화되어 있습니다. 사용자 지정 테마를 사용하려면 기본 설정 &gt; 테마에서 비활성화하세요.</string>
   <string name="setting_page_tts_service">음성 서비스</string>
-  <string name="setting_page_tts_service_desc">음성 합성·인식 설정</string>
+  <string name="setting_page_tts_service_desc">음성 합성·인식 서비스 설정</string>
   <string name="setting_page_tts_settings">TTS 설정</string>
   <string name="setting_page_web_server">웹 서버</string>
   <string name="setting_page_web_server_address_note">주소 메모</string>
@@ -1778,7 +1778,7 @@
   <string name="quick_start_page_deepseek_export_desc">브라우저에서 DeepSeek 웹사이트를 열고 로그인한 뒤 설정 → 데이터 관리로 이동하여 모든 채팅 내보내기를 선택하고 다운로드한 ZIP 파일을 저장하세요. 압축을 풀 필요는 없습니다.</string>
   <string name="quick_start_page_deepseek_open_web">DeepSeek 웹사이트 열기</string>
   <string name="quick_start_page_deepseek_import_title">RikkaHub로 가져오기</string>
-  <string name="quick_start_page_deepseek_import_desc">이전 단계의 ZIP을 선택하세요. 각 채팅에 대해 현재 표시된 브랜치가 추론 및 첨부 파일을 포함하여 현재 어시스턴트 \"%1$s\"로 가져와집니다. 이미 가져온 채팅은 건너뛰므로 다시 가져와도 안전합니다.</string>
+  <string name="quick_start_page_deepseek_import_desc">이전 단계의 ZIP을 선택하세요. 각 채팅에 대해 현재 표시된 브랜치가 추론 및 첨부 파일을 포함하여 현재 어시스턴트로 가져와집니다. 이미 가져온 채팅은 건너뛰므로 다시 가져와도 안전합니다.</string>
   <string name="quick_start_page_deepseek_importing">가져오는 중…</string>
   <string name="quick_start_page_deepseek_import_another">다른 ZIP 가져오기</string>
   <string name="setting_page_share_text">Rikkahub-M · Open-source Android AI client\nSource: https://github.com/cs9527h/Rikkahub-M</string>

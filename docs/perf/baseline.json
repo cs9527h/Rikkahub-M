@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
+  "version": "1.1.6",
   "measured": false,
   "source": "未采集真机帧时（本版按回归测试修复；不宣称帧率或耗电改善幅度）",
   "device": "",

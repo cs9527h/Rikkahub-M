@@ -33,6 +33,75 @@ class FileManagerContractsTest(unittest.TestCase):
         self.assertIn("title: Int? = null", component)
         self.assertIn("headlineContent", component)
 
+    def test_deepseek_import_description_uses_current_assistant_without_a_name(self):
+        current_assistant = {
+            "values": "current assistant",
+            "values-zh": "当前助手",
+            "values-zh-rTW": "目前的助理",
+            "values-ja": "現在のアシスタント",
+            "values-ko-rKR": "현재 어시스턴트",
+            "values-ru": "текущего ассистента",
+            "values-de": "aktuellen Assistenten",
+            "values-ar": "المساعد الحالي",
+        }
+        for locale, assistant in current_assistant.items():
+            with self.subTest(locale=locale):
+                entry = ET.parse(RES / locale / "strings.xml").getroot().find(
+                    "string[@name='quick_start_page_deepseek_import_desc']"
+                )
+                self.assertIsNotNone(entry)
+                text = "".join(entry.itertext())
+                self.assertIn(assistant, text)
+                self.assertIn("ZIP", text)
+                self.assertNotIn("%", text)
+                self.assertNotIn("李鱼", text)
+        page = (QUICKSTART / "QuickStartDeepSeekTab.kt").read_text()
+        self.assertNotIn("descriptionArgs", page)
+        self.assertNotIn("assistantName", page)
+        self.assertNotIn("getCurrentAssistant", page)
+        self.assertNotIn("assistant_page_default_assistant", page)
+        self.assertIn("uri?.let(vm::importDeepSeek)", page)
+        self.assertIn('pickZipLauncher.launch(arrayOf("application/zip"))', page)
+
+    def test_simplified_chinese_import_description_has_only_commas_and_final_period(self):
+        entry = ET.parse(RES / "values-zh/strings.xml").getroot().find(
+            "string[@name='quick_start_page_deepseek_import_desc']"
+        )
+        text = "".join(entry.itertext())
+        self.assertEqual(
+            text,
+            "选择刚才的 ZIP，每个会话导入当前显示的那条分支，包括思考过程和附件，"
+            "导入的聊天会放进当前助手，已导入的会话会自动跳过，可以放心重复导入。",
+        )
+        self.assertEqual(re.findall(r"[^\w\s]", text), ["，"] * 5 + ["。"])
+
+    def test_speech_description_configures_services_not_providers(self):
+        service_terms = {
+            "values": "services",
+            "values-zh": "服务",
+            "values-zh-rTW": "服務",
+            "values-ja": "サービス",
+            "values-ko-rKR": "서비스",
+            "values-ru": "служб",
+            "values-de": "dienste",
+            "values-ar": "خدمات",
+        }
+        for locale, service in service_terms.items():
+            with self.subTest(locale=locale):
+                entry = ET.parse(RES / locale / "strings.xml").getroot().find(
+                    "string[@name='setting_page_tts_service_desc']"
+                )
+                self.assertIsNotNone(entry)
+                text = "".join(entry.itertext())
+                self.assertIn(service, text.casefold())
+                self.assertNotRegex(
+                    text.casefold(),
+                    r"provider|提供商|供應商|供应商|プロバイダ|프로바이더|공급자|"
+                    r"провайдер|anbieter|مزود|مزوّد|موفر",
+                )
+                if locale == "values-zh":
+                    self.assertEqual(text, "配置语音合成与语音识别服务")
+
     def test_new_file_management_resources_have_matching_localized_keys(self):
         def entries(folder):
             items = list(ET.parse(RES / folder / "file_manager_strings.xml").getroot())

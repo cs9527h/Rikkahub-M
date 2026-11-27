@@ -28,6 +28,7 @@ import me.rerere.common.android.appTempFolder
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.files.AvatarStorage
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.remote.ModelsDevUpdater
@@ -105,6 +106,7 @@ class RikkaHubApp : Application() {
 
         // 冷启动阶段只做必须抢在首帧之前的事；清理类任务统一推迟到首帧之后串行执行，
         // 否则十几个协程同时读写磁盘/数据库，会把白屏和首屏列表都拖慢。
+        get<AvatarStorage>().start(get<AppScope>())
         startDeferredMaintenance()
 
         // 预热 SharedPreferences，避免首屏读偏好时在主线程做第一次磁盘读

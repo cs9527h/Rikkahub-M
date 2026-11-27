@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -213,7 +215,51 @@ class ChatService(
     private val _generationDoneFlow = MutableSharedFlow<Uuid>()
     val generationDoneFlow: SharedFlow<Uuid> = _generationDoneFlow.asSharedFlow()
 
-    fun cleanup() = runCatching { sessionManager.cleanup() }
+    private val draftAttachmentSources = DraftAttachmentReferenceSources()
+
+    /** Read-only overlay: queued/submitting/unsaved history is visible without flushing or starting a turn. */
+    fun observeManagedFileReferences(): Flow<RuntimeAttachmentReferences> = observeRuntimeAttachmentReferences(
+        sessions = sessionManager.activeSessions,
+        drafts = draftAttachmentSources.references,
+        presets = settingsStore.settingsFlow.map(::presetAttachmentReferences).distinctUntilChanged(),
+    )
+
+    /** Register once per input VM; provider is read synchronously before any deletion decision. */
+    fun registerDraftAttachmentReferenceProvider(ownerId: Uuid, provider: () -> List<UIMessagePart>) {
+        draftAttachmentSources.register(ownerId, provider)
+    }
+
+    /** Call from input snapshotFlow to invalidate catalog protection when draft parts change. */
+    fun updateDraftAttachmentReferences(ownerId: Uuid, parts: List<UIMessagePart>) {
+        draftAttachmentSources.update(ownerId, parts)
+    }
+
+    /** Unregister on VM disposal, not merely when navigating away from a retained input VM. */
+    fun clearDraftAttachmentReferences(ownerId: Uuid) {
+        draftAttachmentSources.clear(ownerId)
+    }
+
+    private fun runtimeAttachmentReferenceSnapshot(): RuntimeAttachmentReferences = mergeRuntimeAttachmentReferences(
+        sessions = sessionManager.activeSessions.value.mapValues { it.value.attachmentReferenceSnapshot() },
+        drafts = draftAttachmentSources.snapshot(),
+        presetReferences = presetAttachmentReferences(settingsStore.settingsFlow.value),
+    )
+
+    /** A truncated/invalid scan is not negative evidence: deletion callers must retain on null or failure. */
+    fun protectedLocalFileReferencesOrNull(): Set<String>? = runtimeAttachmentReferenceSnapshot()
+        .takeIf { it.complete }?.protectedUrls
+
+    fun protectedLocalFileReferences(): Set<String> = checkNotNull(protectedLocalFileReferencesOrNull()) {
+        "Runtime attachment references are incomplete"
+    }
+
+    fun isLocalFileReferenced(relativePath: String): Boolean = runtimeAttachmentReferenceSnapshot()
+        .isLocalFileReferenced(context.filesDir, relativePath)
+
+    fun cleanup() = runCatching {
+        draftAttachmentSources.clearAll()
+        sessionManager.cleanup()
+    }
 
     init {
         appScope.launch {
@@ -519,7 +565,7 @@ class ChatService(
                 // 等待中的通知存成用户消息之前的节点：写进回复的话，重新生成时就丢了。
                 // 不回复时留在收件箱，这一轮结束后单独开一轮
                 val notices = if (queued.answer) session.inbox.takeNotices() else emptyList()
-                session.update {
+                session.updateSubmittedHistory {
                     it.copy(
                         messageNodes = it.messageNodes +
                             listOfNotNull(notices.takeIf { n -> n.isNotEmpty() }?.toNoticeNode()) +
@@ -579,7 +625,7 @@ class ChatService(
                 val notices = session.inbox.takeNotices()
                 if (notices.isEmpty()) return@launchGenerationJob
                 // 存成 user 节点：重新生成和分支都和普通消息一样
-                session.update { it.copy(messageNodes = it.messageNodes + notices.toNoticeNode()) }
+                session.updateSubmittedHistory { it.copy(messageNodes = it.messageNodes + notices.toNoticeNode()) }
                 session.flush()
                 runTurn(session)
                 _generationDoneFlow.emit(conversationId)

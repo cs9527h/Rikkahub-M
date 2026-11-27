@@ -1,0 +1,12 @@
+<resources>
+  <string name="file_manager_area_chat">聊天檔案</string>
+  <string name="file_manager_area_avatars">頭像</string>
+  <string name="file_manager_avatars_hint">頭像獨立儲存，舊圖不再被其他內容引用時會自動清理，網路頭像不會複製到此目錄。</string>
+  <string name="file_manager_avatars_all">全部頭像</string>
+  <string name="file_manager_avatar_user">我的頭像</string>
+  <string name="file_manager_avatars_shared">共用頭像</string>
+  <string name="file_manager_avatar_historical">歷史頭像</string>
+  <string name="file_manager_avatar_in_use">使用中：%1$s</string>
+  <string name="file_manager_avatar_retained">頭像仍被使用或暫未清理，原始檔案已保留。</string>
+  <string name="file_manager_avatar_empty">尚無本機頭像</string>
+</resources>
