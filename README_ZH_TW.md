@@ -1,32 +1,12 @@
-<p align="center">
-  <img src="docs/readme-cover.svg" width="100%" alt="Rikkahub-M" />
-</p>
+# Rikkahub-M
 
-<h1 align="center">Rikkahub-M</h1>
-<p align="center">
-  <strong>模型自己選，助手自己定，資料自己管。</strong><br />
-  原生模型直連 · 本地助手與提示詞 · 聊天與長期記憶 · 加密備份
-</p>
+**面向 Android 的開源 AI 用戶端，自由選擇模型、靈活設定助手、掌控自己的資料。**
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/cs9527h/Rikkahub-M?display_name=tag&label=release&color=4169e1" /></a>
-  <a href="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml"><img alt="Release workflow" src="https://github.com/cs9527h/Rikkahub-M/actions/workflows/release.yml/badge.svg" /></a>
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-7b61ff" /></a>
-</p>
+基於 [RikkaHub](https://github.com/rikkahub/rikkahub) 獨立維護，採用 Kotlin、Jetpack Compose 與 Material 3 Expressive。
 
-<p align="center">
-  <a href="README.md">简体中文</a> · <a href="README_EN.md">English</a> · <strong>繁體中文</strong>
-</p>
+[简体中文](README.md) · [English](README_EN.md) · 繁體中文
 
-<p align="center">
-  <a href="https://github.com/cs9527h/Rikkahub-M/releases"><strong>下載安裝包</strong></a>　·　
-  <a href="CHANGELOG_MATE.md">更新日誌</a>　·　
-  <a href="docs/MATE_USER_GUIDE.md">使用指南</a>　·　
-  <a href="docs/RM_VS_RB.md">與上游的差異</a>　·　
-  <a href="https://github.com/cs9527h/Rikkahub-M/issues">回報問題</a>
-</p>
-
----
+[下載安裝](https://github.com/cs9527h/Rikkahub-M/releases) · [更新日誌](CHANGELOG_MATE.md) · [使用指南](docs/MATE_USER_GUIDE.md) · [回報問題](https://github.com/cs9527h/Rikkahub-M/issues)
 
 <!-- RELEASE-BLOCK:BEGIN -->
 > **最新正式版：v1.1.6**（2026-11-27，commit `cddb5bee`）
@@ -35,44 +15,38 @@
 >
 > SHA-256：`a845185bc145efb777c1b8717ce557a25d1cff702e3fc19cbf37b4a8cf0b5813`
 >
-> 本版摘要：头像独立管理，修复图片归属延迟、头像替换与备份缺图。
+> 本版摘要：頭像獨立管理，修正圖片歸屬延遲、頭像替換與備份缺圖。
 >
 > 完整說明見 [v1.1.6 更新日誌](docs/releases/1.1.6.md)。
 <!-- RELEASE-BLOCK:END -->
 
-## 這是什麼
+## 功能
 
-Rikkahub-M 是基於 [RikkaHub](https://github.com/rikkahub/rikkahub) 的**獨立維護開源 Android AI 用戶端**，使用 Kotlin + Jetpack Compose + Material 3 Expressive。聊天直接連你設定的原生模型 API，不需要舊版 Mate/AstrBot 閘道、裝置配對或雲端人格注入。
+| 模組 | 體驗 |
+| --- | --- |
+| 模型接入 | 直連 OpenAI、Gemini、Claude 相容介面、DeepSeek、NewAPI 及自訂 API 位址，無需額外閘道 |
+| AI 助手 | 自訂模型、頭像、人格與提示詞，支援 Markdown、TXT、JSON 規則匯入及注入順序設定 |
+| 聊天體驗 | 工作階段搜尋、訊息分支、收藏、翻譯、朗讀、語音辨識及個人化背景 |
+| 長期記憶 | 本地記憶擷取、整理、編輯與召回，支援獨立管理其他助手的記憶設定 |
+| 檔案管理 | 依助手分類附件、搜尋、篩選、預覽、匯出及關聯保護清理；頭像獨立管理 |
+| 文件預覽 | 圖片縮放、PDF 翻頁、文字與 Markdown，以及 DOCX、PPTX、EPUB 文字預覽 |
+| 備份遷移 | 本機、WebDAV、S3 與自動備份，支援匯入原版 RikkaHub、Chatbox、DeepSeek、Cherry Studio |
+| 應用程式更新 | 多來源備援下載，安裝前驗證 SHA-256、套件名稱、版本碼與簽章 |
 
-## 核心功能
+## 資料與遷移
 
-- **多模型直連**：OpenAI 相容、DeepSeek、Gemini 相容、Claude 相容、NewAPI 類中轉與自訂位址，模型清單與錯誤訊息如實呈現。
-- **本地助手**：自訂名稱、頭像、人格提示詞與模型綁定；不會改寫你既有的助手設定。
-- **提示詞注入**：`.md` / `.txt` / `.json` 匯入，可編輯優先級、注入位置與助手綁定。
-- **聊天與記憶**：工作階段歷史、搜尋、訊息操作；本地長期記憶的擷取、編輯、刪除與召回。
-- **備份與還原**：單頁備份、免手動輸入口令、Keystore 還原金鑰、自動備份、本地 / WebDAV / S3。
-- **安全更新**：GitHub → Atom → 國內備用來源 → 快取退回；SHA-256、套件名、版本碼、簽章四重驗證後才交給系統安裝程式。
+完整備份包含設定、聊天記錄、附件與 API 憑證，採用一般 ZIP 格式，無需密碼或還原金鑰。備份未加密，請妥善保管，勿公開分享。舊版加密備份已不受支援；本專案的完整備份不保證能還原至原版 RikkaHub。
 
-## 目前狀態
+## 專案說明
 
-- 可自動驗證的部分（編譯、單元測試、模擬器儀器測試、Lint、簽章與 universal APK 驗證、歷史版本覆蓋升級資料契約）每次發佈都會執行。
-- **未於實機驗證的項目會明確標註**：通知列下載進度與取消、背景下載、安裝授權返回後續裝、安全模式匯出匯入、跨裝置還原、實機效能數據。
-- 效能數字只在有實機量測時公佈，倉庫內沒有推測的提升百分比。
+- 保留上游設計語言，不引入贊助、捐贈或推廣服務商入口。
+- 獨立套件名稱 `com.rikkahub.mate`、簽章與發佈流程，提供 arm64-v8a + x86_64 通用 APK。
+- 正式發佈經過自動化測試、Lint、簽章及覆蓋升級檢查。實機驗收與效能量測的限制見各版本說明。
 
-## 與上游的差異
+## 更多文件
 
-- 保留上游原生能力與設計語言，不引入贊助、捐贈、推廣服務商。
-- 獨立套件名 `com.rikkahub.mate`、獨立簽章與發佈流程，只發佈單一 universal APK。
-- 備份與更新系統依本專案使用者回饋重做：單頁備份 + 免口令 + 四重驗證安裝。
-- 差異清單與逐檔對照見 [docs/RM_VS_RB.md](docs/RM_VS_RB.md)、[docs/RM_VS_RB_FILE_DIFF.md](docs/RM_VS_RB_FILE_DIFF.md)。
+[歷史記憶](docs/HISTORY_MEMORY.md) · [與上游的差異](docs/RM_VS_RB.md) · [逐檔對照](docs/RM_VS_RB_FILE_DIFF.md) · [版本說明](docs/releases/) · [品質台帳](docs/QUALITY_LEDGER.md) · [備份架構](docs/STANDALONE_BACKUP_ONLY.md)
 
-## 文件
+## 開源授權
 
-- [使用指南](docs/MATE_USER_GUIDE.md)
-- [更新日誌](CHANGELOG_MATE.md) · [版本說明](docs/releases/)
-- [品質與需求台帳](docs/QUALITY_LEDGER.md)
-- [備份與架構說明](docs/STANDALONE_BACKUP_ONLY.md)
-
-## 版權與授權
-
-本專案以 [AGPL-3.0](LICENSE) 發佈，保留上游 RikkaHub 版權與署名。散佈修改版本時同樣需要遵守 AGPL-3.0。
+採用 [AGPL-3.0](LICENSE)，保留上游 RikkaHub 版權與署名。修改與散佈須遵守相同授權。
