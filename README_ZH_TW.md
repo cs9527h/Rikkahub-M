@@ -29,15 +29,15 @@
 ---
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **最新正式版：v1.1.5**（2026-11-26，commit `553e38cd`）
+> **最新正式版：v1.1.6**（2026-11-27，commit `cddb5bee`）
 >
-> 安裝包：[Rikkahub-M-1.1.5.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.5/Rikkahub-M-1.1.5.apk) · 18.0 MB · universal（arm64-v8a + x86_64）
+> 安裝包：[Rikkahub-M-1.1.6.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.6/Rikkahub-M-1.1.6.apk) · 18.0 MB · universal（arm64-v8a + x86_64）
 >
-> SHA-256：`6e6856da883f10ebc96f9babf4a21a49bce9c7e11f3fbe9459ee4c2544898c78`
+> SHA-256：`a845185bc145efb777c1b8717ce557a25d1cff702e3fc19cbf37b4a8cf0b5813`
 >
-> 本版摘要：文件支持预览、导出与助手分类，记忆设置可选择其他助手。
+> 本版摘要：头像独立管理，修复图片归属延迟、头像替换与备份缺图。
 >
-> 完整說明見 [v1.1.5 更新日誌](docs/releases/1.1.5.md)。
+> 完整說明見 [v1.1.6 更新日誌](docs/releases/1.1.6.md)。
 <!-- RELEASE-BLOCK:END -->
 
 ## 這是什麼
