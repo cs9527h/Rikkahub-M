@@ -9,15 +9,15 @@ Independently maintained, based on [RikkaHub](https://github.com/rikkahub/rikkah
 [Download](https://github.com/cs9527h/Rikkahub-M/releases) · [Changelog](CHANGELOG_MATE.md) · [User guide](docs/MATE_USER_GUIDE.md) · [Issues](https://github.com/cs9527h/Rikkahub-M/issues)
 
 <!-- RELEASE-BLOCK:BEGIN -->
-> **Latest stable release: v1.1.7** (2026-11-28, commit `9f22b192`)
+> **Latest stable release: v1.1.8** (2026-11-28, commit `19020983`)
 >
-> APK: [Rikkahub-M-1.1.7.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.7/Rikkahub-M-1.1.7.apk) · 18.1 MB · universal (arm64-v8a + x86_64)
+> APK: [Rikkahub-M-1.1.8.apk](https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.8/Rikkahub-M-1.1.8.apk) · 18.1 MB · universal (arm64-v8a + x86_64)
 >
-> SHA-256: `b8e2b5ce36cb22a268b6bcdb21232887a4b175a12c321e49436e95e3191578e4`
+> SHA-256: `490bd7acb7c3969ef55c37769eebae6db810aca01a027170b5a6da299cd7007d`
 >
 > Summary: see the release notes for this version.
 >
-> Details: [v1.1.7 release notes](docs/releases/1.1.7.md).
+> Details: [v1.1.8 release notes](docs/releases/1.1.8.md).
 <!-- RELEASE-BLOCK:END -->
 
 ## Features
