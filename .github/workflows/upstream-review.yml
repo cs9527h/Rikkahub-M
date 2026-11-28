@@ -1,0 +1,58 @@
+name: Monthly upstream review
+
+on:
+  schedule:
+    # UTC 01:00 on day 1 = Asia/Shanghai 09:00 on day 1.
+    - cron: '0 1 1 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: monthly-upstream-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      REVIEW_OUTPUT: ${{ runner.temp }}/upstream-review
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out trusted default branch and full history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          # Needed only for this repository's create-only push; never fetch upstream scripts.
+          persist-credentials: true
+      - name: Verify planner with isolated temporary repositories
+        run: python3 -B -m unittest discover -s scripts -p test_upstream_review.py -v
+      - name: Plan, attempt clean fixes and open a draft review PR
+        run: >-
+          python3 -B scripts/upstream_review.py
+          --base "$BASE_BRANCH"
+          --output-dir "$REVIEW_OUTPUT"
+          --apply --publish
+      - name: Publish decision and failure evidence to job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$REVIEW_OUTPUT/review.md" ]; then
+            cat "$REVIEW_OUTPUT/review.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' 'Review did not reach planning. Inspect the failed step log.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Keep machine-readable and human-readable review artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: upstream-review-${{ github.run_id }}
+          path: ${{ runner.temp }}/upstream-review/
+          if-no-files-found: warn
+          retention-days: 90

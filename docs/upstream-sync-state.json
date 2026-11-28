@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "reviewed_upstream": "c08d720036857445038249220a9168009e3160a0",
+  "reviewed_at": "2026-11-27",
+  "upstream_url": "https://github.com/rikkahub/rikkahub.git",
+  "policy": "Human-reviewed baseline. Monthly planning and clean cherry-picks do not advance it.",
+  "last_review": null
+}
