@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.AssistantSearchDefault
 import me.rerere.rikkahub.data.model.Avatar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -82,6 +83,38 @@ class AssistantDetailUpdateTest {
         )!!
         assertEquals(Avatar.Dummy, cleared.avatar)
         assertNull(cleared.background)
+    }
+
+    @Test
+    fun `old rendered media callback preserves latest search preference unless explicitly changed`() {
+        val before = rendered()
+        val latest = before.copy(searchDefault = AssistantSearchDefault.LOCAL)
+        val updated = before.copy(avatar = Avatar.Image("file:///app/avatars/chosen.png"))
+        val saved = mergeAssistantDetailUpdate(before.id, before, updated, latest)!!
+        assertEquals(AssistantSearchDefault.LOCAL, saved.searchDefault)
+        assertEquals(updated.avatar, saved.avatar)
+        val explicit = mergeAssistantDetailUpdate(
+            before.id,
+            before,
+            before.copy(searchDefault = AssistantSearchDefault.OFF),
+            latest,
+        )!!
+        assertEquals(AssistantSearchDefault.OFF, explicit.searchDefault)
+    }
+
+    @Test
+    fun `concurrent name edit keeps the complete latest local or off preference pair`() {
+        val before = rendered().copy(enableWebSearch = true, searchDefault = AssistantSearchDefault.LOCAL)
+        for (latest in listOf(
+            before.copy(enableWebSearch = false, searchDefault = AssistantSearchDefault.OFF),
+            before.copy(enableWebSearch = false, searchDefault = null),
+            before.copy(enableWebSearch = true, searchDefault = AssistantSearchDefault.LOCAL),
+        )) {
+            val saved = mergeAssistantDetailUpdate(before.id, before, before.copy(name = "Edited"), latest)!!
+            assertEquals("Edited", saved.name)
+            assertEquals(latest.enableWebSearch, saved.enableWebSearch)
+            assertEquals(latest.searchDefault, saved.searchDefault)
+        }
     }
 
     @Test

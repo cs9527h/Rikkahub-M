@@ -98,7 +98,13 @@ fun Settings.getStoredAssistantOf(conversation: Conversation): Assistant =
 /** 会话所属的助手（会话视角）。 */
 fun Settings.getAssistantOf(conversation: Conversation): Assistant {
     val assistant = getStoredAssistantOf(conversation).withConversation(conversation)
-    if (conversation.config == null) return assistant
+    if (conversation.config == null) {
+        return when (assistant.searchDefault) {
+            AssistantSearchDefault.LOCAL -> assistant.copy(enableWebSearch = true)
+            AssistantSearchDefault.OFF -> assistant.copy(enableWebSearch = false)
+            null -> assistant
+        }
+    }
     // 助手自身的失效引用在读取设置时已清理，会话上固定的这份在这里滤掉
     return assistant.copy(
         mcpServers = assistant.mcpServers.filterTo(mutableSetOf()) { id -> mcpServers.any { it.id == id } },
@@ -111,7 +117,13 @@ fun Settings.getAssistantOf(conversation: Conversation): Assistant {
 /** 会话使用的聊天模型；会话开始后内置搜索以会话上固定的开关为准。 */
 fun Settings.getChatModelOf(conversation: Conversation): Model? {
     val assistantModel = findModelById(getStoredAssistantOf(conversation).chatModelId ?: chatModelId)
-    val config = conversation.config ?: return assistantModel
+    val config = conversation.config ?: return when (getStoredAssistantOf(conversation).searchDefault) {
+        // This is a conversation view, never a mutation of the shared provider/model default.
+        AssistantSearchDefault.LOCAL, AssistantSearchDefault.OFF -> assistantModel?.let {
+            it.copy(tools = it.tools - BuiltInTools.Search)
+        }
+        null -> assistantModel
+    }
     // 固定的模型被删除后退回助手当前的模型，内置搜索也跟随该模型自身的开关
     val model = findModelById(config.chatModelId) ?: return assistantModel
     return model.copy(

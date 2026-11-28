@@ -1,7 +1,18 @@
 {
   "format": 1,
-  "updatedAt": "2026-11-28T06:09:06Z",
+  "updatedAt": "2026-11-28T19:32:34Z",
   "releases": [
+    {
+      "version": "1.1.8",
+      "tag": "v1.1.8",
+      "title": "Rikkahub-M 1.1.8",
+      "summary": "记住每个助手的联网搜索开关，新对话自动继承。",
+      "body": "## 修复\n\n- 修复每次新对话都要重新开启本地联网搜索，按助手记住开启或关闭的选择\n- 新默认不会改变已有对话，也不会关闭其他助手共享模型的内置搜索\n- 修复迟到的模型或名称编辑覆盖刚保存的搜索偏好\n\n## 优化\n\n- 网页搜索开关与助手默认值保持一致\n- 兼容旧配置，保留模型内置搜索的既有生命周期\n\n## 其他\n\n- 版本 1.1.8 / versionCode 65，包名和签名不变，可覆盖升级\n- 真机性能与长稳沿用用户跳过状态，没有新增实测指标",
+      "publishedAt": "2026-11-28T19:32:34Z",
+      "prerelease": false,
+      "source": "bundled",
+      "featured": true
+    },
     {
       "version": "1.1.7",
       "tag": "v1.1.7",
@@ -11,7 +22,7 @@
       "publishedAt": "2026-11-28T06:09:06Z",
       "prerelease": false,
       "source": "bundled",
-      "featured": true
+      "featured": false
     },
     {
       "version": "1.1.6",

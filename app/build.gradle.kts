@@ -26,8 +26,8 @@ android {
         applicationId = "com.rikkahub.mate"
         minSdk = 26
         targetSdk = 37
-        versionCode = 64
-        versionName = "1.1.7"
+        versionCode = 65
+        versionName = "1.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

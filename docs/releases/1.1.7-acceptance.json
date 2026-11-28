@@ -1,0 +1,71 @@
+{
+  "version": "1.1.7",
+  "candidate_sha": "9f22b1928cf2749b38e3f49c229c6e4fb4e594a4",
+  "device_kind": "ci-only",
+  "physical_device_verified": false,
+  "physical_device_status": "skipped_by_user",
+  "ci_run": {
+    "run_id": 46116396876,
+    "url": "https://github.com/cs9527h/Rikkahub-M/actions/runs/46116396876",
+    "conclusion": "success"
+  },
+  "gates": {
+    "compile_unit_static": {
+      "status": "passed",
+      "evidence": "Run 46116396876 build success; actual Release-unit-static-results XML: 1757 JVM tests, 0 failures, 0 errors, 1 existing PDF skip; Python 101 passed; frontend 11 tests/typecheck/oxlint passed; Lint 0 errors, 264 warnings, 3 hints."
+    },
+    "ui_database_migration": {
+      "status": "passed",
+      "evidence": "Actual Release-instrumented-results XML: Android API35 emulator 107/107 passed, no skipped; includes 6 SettingFilesInteractionTest, 4 MediaComposerInteractionTest, 3 MessageMigrationRetentionTest and newAndImportedAssistantsPersistCroppedAvatarAfterDelayedCopy. These are emulator results, not physical-device results."
+    },
+    "signed_in_place_upgrade": {
+      "status": "passed",
+      "evidence": "Run 46116396876 Verify signed upgrade from 0.2.4 job succeeded using pinned baseline APK SHA256 a634efbdc42dedb37ca5507a65a0cc88b18ab7b33c65ca979a3d63b99f84f13f; actual signed APK installed and legacy data contract verified on emulator."
+    },
+    "universal_apk_version_signature": {
+      "status": "passed",
+      "evidence": "Official Release APK independently downloaded: package com.rikkahub.mate, versionName 1.1.7/versionCode64, arm64-v8a+x86_64, apksigner verify true with original certificate, official SHA256SUMS and mapping verified; actual mirror manifest/size/SHA256 and downloaded APK byte-identical."
+    }
+  },
+  "tests": {
+    "jvm": {"total": 1757, "failures": 0, "errors": 0, "skipped": 1},
+    "android_emulator": {"total": 107, "failures": 0, "errors": 0, "skipped": 0},
+    "python": {"total": 101, "failures": 0},
+    "lint": {"errors": 0, "warnings": 264, "hints": 3}
+  },
+  "apk": {
+    "name": "Rikkahub-M-1.1.7.apk",
+    "size": 18934717,
+    "sha256": "b8e2b5ce36cb22a268b6bcdb21232887a4b175a12c321e49436e95e3191578e4",
+    "certificate_sha256": "e4b90a5f274074e2d8dbfa4d68226c0941635b6792716b89fd805a2318f2c94a",
+    "official_url": "https://github.com/cs9527h/Rikkahub-M/releases/download/v1.1.7/Rikkahub-M-1.1.7.apk",
+    "mirror_url": "https://8.133.167.195/updates/Rikkahub-M-1.1.7.apk",
+    "mirror_verified_byte_identical": true,
+    "mapping_sha256": "a4840762a8b2702fd489d17ce90cb6db0a13827cdc10dd946059589b17ffa590"
+  },
+  "upstream_automation": {
+    "run_id": 46113426481,
+    "conclusion": "success",
+    "observed_head": "c08d720036857445038249220a9168009e3160a0",
+    "new_commits": 0,
+    "branch_or_pr_created": false,
+    "note": "Real no-update path verified. Positive PR creation and conflicts have real temporary-Git fixtures but no claim of a live positive-PR run."
+  },
+  "unverified_gates": [
+    "physical_device_stability",
+    "physical_device_performance",
+    "physical_delete_latency",
+    "physical_device_chat_stream_attachments_notifications",
+    "cross_session_prompt_injection",
+    "local_memory_recall_edit_isolation",
+    "encrypted_cross_device_restore",
+    "production_backup_storage",
+    "physical_gallery_picker_interaction"
+  ],
+  "performance": {
+    "measured": false,
+    "note": "User explicitly skipped this phone connection and physical-device performance/soak/deletion-latency acceptance. No further phone control, installation or alternate-channel replay was performed. CI emulator tests are not physical measurements."
+  },
+  "release_url": "https://github.com/cs9527h/Rikkahub-M/releases/tag/v1.1.7",
+  "note": "This verifies the bounded 1.1.7 repair/release scope, not completion of every item in the separate 85-item optimization plan. The subsequently reported per-new-chat search preference issue requires a separate fix; published 1.1.7 bytes remain immutable."
+}

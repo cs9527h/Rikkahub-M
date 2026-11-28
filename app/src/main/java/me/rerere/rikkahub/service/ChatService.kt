@@ -34,7 +34,6 @@ import me.rerere.ai.agent.AgentFinishReason
 import me.rerere.ai.agent.RetryAttempt
 import me.rerere.ai.agent.runAgent
 import me.rerere.ai.core.MessageRole
-import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.ui.ToolApprovalState
@@ -1294,7 +1293,8 @@ class ChatService(
             val settings = settingsStore.awaitLoaded()
             val conversation = session.state.value
             val stored = settings.getStoredAssistantOf(conversation)
-            val updated = update(settings.getAssistantOf(conversation))
+            val before = settings.getAssistantOf(conversation)
+            val updated = update(before)
             val assistant = updated.withoutConversationFields(conversation, stored)
             session.updateMetadata(
                 transform = { it.withAssistantUpdate(updated, settings) },
@@ -1302,7 +1302,14 @@ class ChatService(
             )
             if (assistant != stored) {
                 settingsStore.update { latest ->
-                    latest.copy(assistants = latest.assistants.map { if (it.id == assistant.id) assistant else it })
+                    latest.copy(assistants = latest.assistants.map {
+                        if (it.id ==
+                            assistant.id) {
+                            assistant.mergeUnchangedChatSearchDefault(before, updated, it)
+                        } else {
+                            it
+                        }
+                    })
                 }
             }
         }
@@ -1310,7 +1317,8 @@ class ChatService(
 
     /**
      * 切换搜索方式，传 null 的一项保持不变。
-     * 模型内置搜索在会话开始前是模型自身的开关，开始后固定在会话上。
+     * LOCAL/OFF同时记作所属助手的新会话默认，不改共享模型；已绑定会话仍只更新自己的Config。
+     * 显式开启模型内置搜索保留原草稿生命周期，开始后只改当前会话。
      */
     suspend fun updateChatSearch(
         conversationId: Uuid,
@@ -1318,51 +1326,13 @@ class ChatService(
         builtInSearch: Boolean? = null,
     ) {
         withLoadedSession(conversationId) { session ->
-            val conversation = session.state.value
-            if (conversation.config != null) {
-                session.updateMetadata(
-                    transform = {
-                        it.copy(
-                            config = it.config?.let { config ->
-                                config.copy(
-                                    enableWebSearch = enableWebSearch ?: config.enableWebSearch,
-                                    builtInSearch = builtInSearch ?: config.builtInSearch,
-                                )
-                            }
-                        )
-                    },
-                    persist = conversationRepo::updateConversationConfig,
-                )
-                return@withLoadedSession
-            }
-            settingsStore.update { settings ->
-                val assistant = settings.getAssistantOf(conversation)
-                val model = settings.getChatModelOf(conversation)
-                settings.copy(
-                    assistants = if (enableWebSearch == null) {
-                        settings.assistants
-                    } else {
-                        settings.assistants.map {
-                            if (it.id == assistant.id) it.copy(enableWebSearch = enableWebSearch) else it
-                        }
-                    },
-                    providers = if (builtInSearch == null || model == null) {
-                        settings.providers
-                    } else {
-                        settings.providers.map { provider ->
-                            provider.editModel(
-                                model.copy(
-                                    tools = if (builtInSearch) {
-                                        model.tools + BuiltInTools.Search
-                                    } else {
-                                        model.tools - BuiltInTools.Search
-                                    }
-                                )
-                            )
-                        }
-                    },
-                )
-            }
+            updateChatSearchPreferences(
+                session = session,
+                enableWebSearch = enableWebSearch,
+                builtInSearch = builtInSearch,
+                updateSettings = settingsStore::update,
+                persistConfig = conversationRepo::updateConversationConfig,
+            )
         }
     }
 

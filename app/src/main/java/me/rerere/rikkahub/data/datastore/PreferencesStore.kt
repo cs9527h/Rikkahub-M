@@ -40,6 +40,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.AssistantSearchDefault
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -345,7 +346,9 @@ class SettingsStore internal constructor(
     }
 
     suspend fun updateAssistantWebSearch(assistantId: Uuid, enabled: Boolean) {
-        updateAssistant(assistantId) { it.copy(enableWebSearch = enabled) }
+        updateAssistant(assistantId) {
+            it.copy(enableWebSearch = enabled, searchDefault = if (enabled) AssistantSearchDefault.LOCAL else AssistantSearchDefault.OFF)
+        }
     }
 
     suspend fun updateAssistantMcpServers(assistantId: Uuid, mcpServers: Set<Uuid>) {
