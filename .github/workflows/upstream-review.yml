@@ -20,10 +20,11 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      REVIEW_OUTPUT: ${{ runner.temp }}/upstream-review
       BASE_BRANCH: ${{ github.event.repository.default_branch }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Set isolated review output directory
+        run: printf 'REVIEW_OUTPUT=%s/upstream-review\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out trusted default branch and full history
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:

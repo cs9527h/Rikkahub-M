@@ -25,6 +25,12 @@
 - 已有PyYAML解析工作流，并校验cron/手动入口/job权限/串行并发/always artifacts/state基线：通过，exit 0。
 - `git diff --check`限定本任务文件：通过。未安装额外依赖、未运行Gradle或formatter。
 
+## Lead实际部署检查点
+
+- 已独立提交并推送机制提交`b9b063b6`，没有夹带未完成的应用代码；保留远端同期README与质量计划文档。
+- 第一次真实workflow_dispatch被GitHub明确以HTTP 422阻断：job级env中`${{ runner.temp }}`不在允许的表达式context。未产生成功运行，不将此记录为验收通过。
+- 已改为step中从`RUNNER_TEMP`写入`GITHUB_ENV`初始化目录，并增加对应Python契约回归；待修正提交推送后再次真实派发。原22项真实Git回归保留。
+
 ## 仍待Lead真实部署验证
 
 1. 统一提交/推送后，对新workflow执行真实workflow_dispatch，保留run URL和artifact。
