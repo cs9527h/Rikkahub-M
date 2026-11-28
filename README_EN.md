@@ -15,7 +15,7 @@ Independently maintained, based on [RikkaHub](https://github.com/rikkahub/rikkah
 >
 > SHA-256: `a845185bc145efb777c1b8717ce557a25d1cff702e3fc19cbf37b4a8cf0b5813`
 >
-> Summary: separate avatar storage, improved attachment ownership tracking, and fixes for missing backup images.
+> Summary: see the release notes for this version.
 >
 > Details: [v1.1.6 release notes](docs/releases/1.1.6.md).
 <!-- RELEASE-BLOCK:END -->
