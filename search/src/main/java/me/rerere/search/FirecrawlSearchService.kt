@@ -21,6 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -90,7 +91,7 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.FirecrawlOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
 
             val sources = params["sources"].asStringList()
@@ -161,7 +162,7 @@ object FirecrawlSearchService : SearchService<SearchServiceOptions.FirecrawlOpti
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.FirecrawlOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val url = params["url"]?.jsonPrimitive?.content ?: error("url is required")
             val onlyMainContent = params["onlyMainContent"]?.jsonPrimitive?.contentOrNull?.toBoolean() ?: true
 

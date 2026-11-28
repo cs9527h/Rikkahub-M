@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.jsonPrimitiveOrNull
 
@@ -40,6 +41,19 @@ internal val partTypeMapping = mapOf(
     "UIMessagePart.Tool" to "tool",
     "me.rerere.ai.ui.UIMessagePart.Tool" to "tool",
 )
+
+/** Destructive migrations must decode every source row before clearing/replacing it. */
+internal fun legacyNodesForMigration(nodesJson: String): JsonArray {
+    val nodes = JsonInstant.parseToJsonElement(nodesJson) as? JsonArray
+        ?: error("Legacy message nodes must be an array")
+    require(nodes.all { it is JsonObject && it["messages"] is JsonArray }) {
+        "Legacy message nodes contain an invalid node"
+    }
+    return nodes
+}
+
+internal fun messagesForMigration(messagesJson: String): List<UIMessage> =
+    JsonInstant.decodeFromString<List<UIMessage>>(messagesJson)
 
 internal fun migrateMessagesJson(messagesJson: String): String {
     return runCatching {

@@ -96,7 +96,7 @@ class ChatFloatingWindows(
             try {
                 context.startActivity(intent)
             } catch (e: ActivityNotFoundException) {
-                Log.w(TAG, "openUri: no activity for $uri", e)
+                Log.w(TAG, me.rerere.common.util.formatExceptionForLog("floating.link.open", e))
             }
         }
     }

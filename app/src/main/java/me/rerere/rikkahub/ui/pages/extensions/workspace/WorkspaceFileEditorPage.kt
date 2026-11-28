@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
+import android.util.Log
+import me.rerere.common.util.runCatchingCancellable
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -70,12 +75,13 @@ fun WorkspaceFileEditorPage(
     LaunchedEffect(id, area, path) {
         loading = true
         loadError = null
-        runCatching {
+        runCatchingCancellable {
             repository.readTextForPreview(id, area, path)
         }.onSuccess { content ->
             textState.setTextAndPlaceCursorAtEnd(content)
             loading = false
         }.onFailure {
+            Log.e("WorkspaceFileEditor", formatExceptionForLog("Workspace.readText", it))
             loadError = it.message ?: "读取文件失败"
             loading = false
         }
@@ -104,7 +110,7 @@ fun WorkspaceFileEditorPage(
                                 if (saving) return@TextButton
                                 saving = true
                                 scope.launch {
-                                    runCatching {
+                                    runUiOperation("Workspace.saveText", { Log.e("WorkspaceFileEditor", it) }, { saving = false }) {
                                         repository.writeText(
                                             id = id,
                                             path = path,

@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.hooks
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.export.ExportSerializer
+import me.rerere.rikkahub.ui.components.runUiOperation
 import java.io.File
 
 @Stable
@@ -65,11 +67,13 @@ class ExporterState<T>(
 
     internal fun writeToUri(uri: Uri) {
         scope.launch(Dispatchers.IO) {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { output ->
+            runUiOperation("Export.writeDocument", { Log.e("ExportHooks", it) }) {
+                requireNotNull(
+                    context.contentResolver.openOutputStream(uri)
+                ) { "Cannot open export document" }.use { output ->
                     output.write(value.toByteArray())
                 }
-            }.onFailure { it.printStackTrace() }
+            }
         }
     }
 }
@@ -119,8 +123,11 @@ class ImporterState<T>(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 val fileName = serializer.getUriFileName(context, uri)
-                if (fileName != null && fileName.substringAfterLast('.', "").lowercase() !in serializer.importExtensions) {
-                    return@withContext Result.failure<T>(IllegalArgumentException("支持的文件格式：" + serializer.importExtensions.joinToString()))
+                if (fileName != null &&
+                    fileName.substringAfterLast('.', "").lowercase() !in serializer.importExtensions) {
+                    return@withContext Result.failure<T>(
+                        IllegalArgumentException("支持的文件格式：" + serializer.importExtensions.joinToString())
+                    )
                 }
                 serializer.import(context, uri)
             }

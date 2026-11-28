@@ -15,6 +15,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
@@ -168,11 +170,11 @@ class UpdateChecker(
         // 统一丢到 IO 线程执行，主线程只保留构造本身；检查更新复用同一条后台任务。
         appScope.launch(Dispatchers.IO) {
             pruneStaleDownloads()
-            partialBytes.value = runCatching {
+            partialBytes.value = runCatchingCancellable {
                 File(File(context.cacheDir, "updates"), "Rikkahub-M-update.apk")
                     .takeIf { it.isFile }?.length() ?: 0L
             }.getOrDefault(0L)
-            runCatching { refresh(force = false) }
+            runCatchingCancellable { refresh(force = false) }
         }
     }
 
@@ -180,7 +182,7 @@ class UpdateChecker(
     private fun pruneStaleDownloads() {
         val dir = File(context.cacheDir, "updates")
         val cutoff = System.currentTimeMillis() - 3L * 24 * 60 * 60 * 1000
-        runCatching {
+        runCatchingCancellable {
             dir.listFiles()?.forEach { file ->
                 if (file.isFile && file.lastModified() < cutoff) file.delete()
             }
@@ -282,6 +284,8 @@ class UpdateChecker(
         try {
             val cached = loadCache()
             if (cached.isNotEmpty()) return cached
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             failures += "本地缓存不可用"
         }
@@ -310,7 +314,7 @@ class UpdateChecker(
         val sumsUrl = "https://github.com/$REPO/releases/download/${note.tag.ifBlank {
             "v${note.version}"
         }}/SHA256SUMS.txt"
-        return runCatching {
+        return runCatchingCancellable {
             val body = httpGet(sumsUrl, accept = "text/plain")
             val expected = apkName(note.version)
             body.lineSequence()
@@ -330,7 +334,11 @@ class UpdateChecker(
     }
 
     private suspend fun saveCache(notes: List<ReleaseNote>) = withContext(Dispatchers.IO) {
-        runCatching { cacheFile.writeText(json.encodeToString(ListSerializer(ReleaseNote.serializer()), notes)) }
+        runCatchingCancellable {
+            cacheFile.writeText(
+                json.encodeToString(ListSerializer(ReleaseNote.serializer()), notes)
+            )
+        }
         Unit
     }
 
@@ -370,7 +378,7 @@ class UpdateChecker(
      * 避免哪天从 Compose 里直接调用时把磁盘读留在主线程。
      */
     suspend fun bundledNotes(): List<ReleaseNote> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val text = context.assets.open("updates.json").bufferedReader().use { it.readText() }
             json.decodeFromString(MirrorManifest.serializer(), text).releases
         }.getOrNull() ?: emptyList()
@@ -472,8 +480,7 @@ class UpdateChecker(
                 // 阶段 + 异常类型写进日志：用户反馈「下载失败」时能直接定位是连接、写盘还是校验
                 Log.w(
                     TAG,
-                    "更新下载失败 阶段=${lastStage.label} 版本=${info.version} " +
-                        "错误=${error?.javaClass?.name}: ${error?.message}",
+                    formatExceptionForLog("update.download", error ?: IllegalStateException()),
                 )
                 UpdateDownloadState.Failed(
                     info.version,
@@ -622,10 +629,12 @@ class UpdateChecker(
                 .header("Accept", accept)
                 .header("User-Agent", "Rikkahub-M/${BuildConfig.VERSION_NAME}")
                 .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body.string()
-                if (!response.isSuccessful) throw UpdateHttpException(response.code, body)
-                body
+            withCancellableHttpCall(client.newCall(request)) { call ->
+                call.execute().use { response ->
+                    val body = response.body.string()
+                    if (!response.isSuccessful) throw UpdateHttpException(response.code, body)
+                    body
+                }
             }
         }
 

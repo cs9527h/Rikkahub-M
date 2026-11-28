@@ -28,18 +28,19 @@ fun <T : Number> OutlinedNumberInput(
         onValueChange = { newValue ->
             textFieldValue = newValue
             if (textFieldValue.isValidNumberInput()) {
-                try {
+                val newVal = try {
                     @Suppress("UNCHECKED_CAST")
-                    val newVal = when (value) {
+                    when (value) {
                         is Int -> newValue.toInt() as T
                         is Float -> newValue.toFloat() as T
                         is Double -> newValue.toDouble() as T
                         else -> throw IllegalArgumentException("Unsupported number type")
                     }
-                    onValueChange(newVal)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                } catch (_: NumberFormatException) {
+                    // Overflow or an unfinished number is expected while typing.
+                    null
                 }
+                newVal?.let(onValueChange)
             }
         },
         label = { Text(label) },

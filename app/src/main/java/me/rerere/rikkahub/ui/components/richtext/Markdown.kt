@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+
 import android.content.ClipData
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -350,11 +354,13 @@ private fun TableCard(table: MarkdownBlock.Table) {
         uri?.let {
             scope.launch {
                 try {
-                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                    requireNotNull(context.contentResolver.openOutputStream(it)) { "Cannot open export document" }.use { outputStream ->
                         outputStream.write(tableCsv.toByteArray())
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("Markdown", formatExceptionForLog("Table.exportCsv", e))
                 }
             }
         }

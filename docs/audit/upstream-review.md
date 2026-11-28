@@ -1,6 +1,6 @@
 # 月度上游审查机制实施与验证
 
-本页是实现验收记录；首次实际月度分支运行后，脚本会在该隔离分支用逐提交决策台账替换本页。当前**未声称真实GitHub Actions/PR已运行成功**。
+本页是实现验收记录；实际月度分支创建后，脚本会在该隔离分支用逐提交决策台账替换本页。真实Actions的“上游无新增”路径已成功；有更新时的实际PR创建仍待后续自然增量验证，不以本地模拟代替。
 
 ## 已完成
 
@@ -29,7 +29,9 @@
 
 - 已独立提交并推送机制提交`b9b063b6`，没有夹带未完成的应用代码；保留远端同期README与质量计划文档。
 - 第一次真实workflow_dispatch被GitHub明确以HTTP 422阻断：job级env中`${{ runner.temp }}`不在允许的表达式context。未产生成功运行，不将此记录为验收通过。
-- 已改为step中从`RUNNER_TEMP`写入`GITHUB_ENV`初始化目录，并增加对应Python契约回归；待修正提交推送后再次真实派发。原22项真实Git回归保留。
+- 修正提交`6fa35fe5`已推送：step中从`RUNNER_TEMP`写入`GITHUB_ENV`初始化目录，新增context契约回归；原22项真实Git回归保留。
+- 真实运行[46113426481](https://github.com/cs9527h/Rikkahub-M/actions/runs/46113426481)结论success；已下载并解析`status.json/review.json/review.md`，状态complete，观察到上游仍为`c08d720036857445038249220a9168009e3160a0`，新增提交0，因此按设计没有创建月度分支或PR（pr_url=null）。不把无更新路径说成已实际验证有更新PR创建。
+- 仓库Actions创建PR开关已启用且GET复核；自动approve/merge代码未增加。带更新/冲突/权限失败分支仍有22项真实临时Git回归，未来出现新上游提交时还需保留正向PR的实际运行证据。
 
 ## 仍待Lead真实部署验证
 

@@ -1,5 +1,6 @@
 package me.rerere.tts.controller
 
+import me.rerere.common.util.formatExceptionForLog
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -251,7 +252,7 @@ class TtsController(
                         awaitOrCreate(chunk, provider)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
-                        Log.e(TAG, "Synthesis error", e)
+                        Log.e(TAG, formatExceptionForLog("speech.TtsController.Synthesis.error", e))
                         _error.update { e.message ?: "TTS synthesis error" }
                         processedCount++
                         continue
@@ -263,7 +264,7 @@ class TtsController(
                         audio.play(response)
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
-                        Log.e(TAG, "Playback error", e)
+                        Log.e(TAG, formatExceptionForLog("speech.TtsController.Playback.error", e))
                         _error.update { e.message ?: "Audio playback error" }
                     } finally {
                         // play suspends through pause/resume and seeking. Evict only
@@ -298,6 +299,7 @@ class TtsController(
         return try {
             deferred.await()
         } catch (e: Exception) {
+                if (e is CancellationException) throw e
             // 避免后续复用已经失败或取消的 Deferred
             cache.remove(chunk.id)
             throw e
@@ -324,14 +326,14 @@ class TtsController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 if (!e.isRetryableSynthesisError() || attempt >= MAX_SYNTHESIS_ATTEMPTS) throw e
 
                 val retryDelayMs = SYNTHESIS_RETRY_BASE_DELAY_MS * (1L shl (attempt - 1))
                 Log.w(
                     TAG,
-                    "Synthesis attempt $attempt/$MAX_SYNTHESIS_ATTEMPTS failed for chunk ${chunk.index}; " +
-                        "retrying in ${retryDelayMs}ms",
-                    e
+                    "Synthesis attempt $attempt/$MAX_SYNTHESIS_ATTEMPTS retrying in ${retryDelayMs}ms\n" +
+                        formatExceptionForLog("speech.synthesis.retry", e)
                 )
                 delay(retryDelayMs)
                 attempt++

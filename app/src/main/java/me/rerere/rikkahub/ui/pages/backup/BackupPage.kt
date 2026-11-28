@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.pages.backup
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
@@ -136,7 +141,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
             busy = true
             restoreFraction = null
             busyLabel = "正在打包备份…"
-            runCatching {
+            runUiOperation("Backup.exportLocal", { Log.e("BackupPage", it) }, { busy = false }) {
                 val export = vm.exportToFile()
                 try {
                     // 200MB 级的包写到 SAF 上必须离开主线程：原来这段同步 copy 直接把界面冻住，
@@ -174,7 +179,10 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 }
                 toast("恢复完成")
                 showRestart = true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                Log.e("BackupPage", formatExceptionForLog("Backup.restoreLocal", e))
                 toast("恢复失败：" + (e.message ?: "未知错误"), error = true)
             } finally {
                 busy = false
@@ -239,7 +247,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                             )
                             else -> scope.launch {
                                 busy = true
-                                runCatching { vm.backupNow(target) }
+                                runUiOperation("Backup.upload", { Log.e("BackupPage", it) }, { busy = false }) { vm.backupNow(target) }
                                     .onSuccess {
                                         toast("备份已完成")
                                         vm.loadBackupFileItems()
@@ -373,7 +381,10 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                         toast("恢复完成")
                         showRecords = false
                         showRestart = true
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
+                        Log.e("BackupPage", formatExceptionForLog("Backup.restoreRemote", e))
                         toast("恢复失败：" + (e.message ?: "未知错误"), error = true)
                     } finally {
                         restoringName = null
@@ -413,7 +424,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                     deleteTarget = null
                     action?.let { runDelete ->
                         scope.launch {
-                            runCatching { runDelete() }
+                            runUiOperation("Backup.deleteRemote", { Log.e("BackupPage", it) }) { runDelete() }
                                 .onSuccess {
                                     toast("已删除")
                                     vm.loadBackupFileItems()
@@ -540,7 +551,7 @@ private fun StorageSheet(
                         onClick = {
                             scope.launch {
                                 testing = true
-                                runCatching { vm.testWebDav() }
+                                runUiOperation("Backup.testWebDav", { Log.w("BackupPage", it) }, { testing = false }) { vm.testWebDav() }
                                     .onSuccess { toaster.show(resources.getString(R.string.backup_page_connection_success), type = ToastType.Success) }
                                     .onFailure { toaster.show(resources.getString(R.string.backup_page_connection_failed, it.message ?: ""), type = ToastType.Error) }
                                 testing = false
@@ -555,7 +566,7 @@ private fun StorageSheet(
                         onClick = {
                             scope.launch {
                                 testing = true
-                                runCatching { vm.testS3() }
+                                runUiOperation("Backup.testS3", { Log.w("BackupPage", it) }, { testing = false }) { vm.testS3() }
                                     .onSuccess { toaster.show(resources.getString(R.string.backup_page_connection_success), type = ToastType.Success) }
                                     .onFailure { toaster.show(resources.getString(R.string.backup_page_connection_failed, it.message ?: ""), type = ToastType.Error) }
                                 testing = false
@@ -748,7 +759,7 @@ private fun ImportSheet(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
             busy = true
-            runCatching {
+            runUiOperation("Backup.import", { Log.e("BackupPage", it) }, { busy = false }) {
                 when (type) {
                     "chatbox" -> {
                         val temp = File(context.cacheDir, "chatbox_${System.currentTimeMillis()}.zip")

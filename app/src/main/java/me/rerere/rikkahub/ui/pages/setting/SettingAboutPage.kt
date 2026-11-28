@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import me.rerere.common.util.runCatchingCancellable
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -318,14 +320,23 @@ fun SettingAboutPage() {
 
             needsInstallPermission?.let { apk ->
                 val lifecycleOwner = LocalLifecycleOwner.current
-                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner, apk, context) {
                     val observer = LifecycleEventObserver { _, event ->
                         if (event == Lifecycle.Event.ON_RESUME &&
                             UpdateInstaller.canRequestPackageInstalls(context)
                         ) {
-                            runCatching { UpdateInstaller.startSystemInstall(context, apk) }
-                            needsInstallPermission = null
-                            toaster.show("已获取安装权限，正在打开系统安装器", type = ToastType.Success)
+                            runCatchingCancellable { UpdateInstaller.startSystemInstall(context, apk) }
+                                .onSuccess {
+                                    needsInstallPermission = null
+                                    toaster.show("已获取安装权限，正在打开系统安装器", type = ToastType.Success)
+                                }
+                                .onFailure { error ->
+                                    if (error !is InstallPermissionRequiredException) {
+                                        reportSettingsFailure("settings.update.install.resume", error)
+                                        needsInstallPermission = null
+                                        installFailure = error.message ?: "安装器启动失败"
+                                    }
+                                }
                         }
                     }
                     lifecycleOwner.lifecycle.addObserver(observer)
@@ -362,7 +373,8 @@ fun SettingAboutPage() {
                     dismissButton = {
                         TextButton(onClick = {
                             installFailure = null
-                            runCatching { context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases") }
+                            runCatchingCancellable { context.openUrl("https://github.com/cs9527h/Rikkahub-M/releases") }
+                                .onFailure { reportSettingsFailure("settings.update.release-page", it) }
                         }) { Text("打开发布页") }
                     },
                 )
@@ -463,7 +475,8 @@ fun SettingAboutPage() {
                                 TextButton(onClick = {
                                     val page = downloadState.let { (it as? UpdateDownloadState.Failed)?.pageUrl }
                                         ?: "https://github.com/cs9527h/Rikkahub-M/releases"
-                                    runCatching { context.openUrl(page) }
+                                    runCatchingCancellable { context.openUrl(page) }
+                                        .onFailure { reportSettingsFailure("settings.update.browser", it) }
                                 }) { Text("浏览器下载") }
                                 TextButton(onClick = { updateChecker.retryDownload() }) { Text("重试") }
                             }
@@ -472,8 +485,11 @@ fun SettingAboutPage() {
                                 // 系统安装器被取消后还能再点一次，不会因为状态被清空而只能重新下载
                                 TextButton(onClick = {
                                     val ready = downloadState as? UpdateDownloadState.Ready ?: return@TextButton
-                                    val result = runCatching { UpdateInstaller.startSystemInstall(context, ready.apk) }
+                                    val result = runCatchingCancellable { UpdateInstaller.startSystemInstall(context, ready.apk) }
                                     val error = result.exceptionOrNull()
+                                    if (error != null && error !is InstallPermissionRequiredException) {
+                                        reportSettingsFailure("settings.update.install", error)
+                                    }
                                     if (error is InstallPermissionRequiredException) {
                                         needsInstallPermission = error.apk
                                     } else if (error != null) {
@@ -507,8 +523,9 @@ fun SettingAboutPage() {
             val readyState = downloadState as? UpdateDownloadState.Ready
             LaunchedEffect(readyState) {
                 val ready = readyState ?: return@LaunchedEffect
-                val result = runCatching { UpdateInstaller.startSystemInstall(context, ready.apk) }
+                val result = runCatchingCancellable { UpdateInstaller.startSystemInstall(context, ready.apk) }
                 val error = result.exceptionOrNull()
+                if (error != null && error !is InstallPermissionRequiredException) reportSettingsFailure("settings.update.install", error)
                 if (error != null) {
                     pendingUpdate = null
                     if (error is InstallPermissionRequiredException) {

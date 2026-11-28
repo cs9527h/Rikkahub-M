@@ -17,6 +17,7 @@ import com.termux.terminal.TerminalSessionClient
 import com.termux.terminal.TerminalTransport
 import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.workspace.WorkspaceTerminalLaunch
 
 internal fun createWorkspaceTerminalSession(
@@ -173,7 +174,7 @@ internal class WorkspaceTerminalViewClient(
             context.startActivity(intent)
             true
         }.getOrElse {
-            Log.w("WorkspaceTerminal", "Failed to open url: $url", it)
+            Log.w("WorkspaceTerminal", formatExceptionForLog("Terminal.openUrl", it))
             false
         }
     }

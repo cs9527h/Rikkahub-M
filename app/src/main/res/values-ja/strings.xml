@@ -259,6 +259,7 @@
   <string name="emoji_picker_select_skin_tone">肌の色を選択</string>
   <string name="error_title_compress_conversation">会話の圧縮に失敗しました</string>
   <string name="error_title_generate_title">自動タイトル生成に失敗しました</string>
+  <string name="error_message_image_too_large">画像が大きすぎて送信できません。枚数を減らすか縮小するか、新しい会話で再試行してください。</string>
   <string name="error_title_generation">メッセージ生成に失敗しました</string>
   <string name="error_title_operation">操作に失敗しました</string>
   <string name="error_title_regenerate_message">メッセージの再生成に失敗しました</string>
@@ -1801,4 +1802,7 @@
   <string name="about_page_checking_update">更新を確認中…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">システム設定では有効と表示されているのに、システムがユーザー補助サービスを停止しました（最近使ったアプリからスワイプして消すと、こうなる機種があります）。このスイッチをいったんオフにしてからオンにすると設定画面が開きます。そこで \"RikkaHub Phone Use\" をオフにしてから再度オンにしてください。最近使ったアプリで RikkaHub をロックし、自動起動を許可すると再発を防げます。</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">ユーザー補助設定で \"RikkaHub Phone Use\" をオフにしてから再度オンにしてください</string>
+  <string name="setting_page_preferences_notification_battery_optimization">バッテリー最適化を無視</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">許可済み。バックグラウンドでの生成がシステムによって停止されにくくなります</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">許可されていません。バッテリーを節約するため、バックグラウンドでの生成が停止される場合があります</string>
 </resources>

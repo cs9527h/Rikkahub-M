@@ -259,6 +259,7 @@
   <string name="emoji_picker_select_skin_tone">Выберите тон кожи</string>
   <string name="error_title_compress_conversation">Сжатие переписки не удалось</string>
   <string name="error_title_generate_title">Не удалось автоматически сгенерировать заголовок</string>
+  <string name="error_message_image_too_large">Изображение слишком большое. Уменьшите количество или размер изображений либо начните новый диалог.</string>
   <string name="error_title_generation">Ошибка генерации сообщения</string>
   <string name="error_title_operation">Операция не выполнена</string>
   <string name="error_title_regenerate_message">Не удалось повторно сгенерировать сообщение</string>
@@ -1801,4 +1802,7 @@
   <string name="about_page_checking_update">Проверка обновлений…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">Система остановила службу доступности, хотя в настройках она по-прежнему отображается как включённая (на некоторых телефонах это происходит после смахивания приложения из недавних). Выключите и снова включите этот переключатель, чтобы открыть настройки, затем выключите и включите \"RikkaHub Phone Use\" там. Закрепление RikkaHub в недавних приложениях и разрешение автозапуска предотвратят повторение.</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">Выключите и снова включите \"RikkaHub Phone Use\" в настройках доступности</string>
+  <string name="setting_page_preferences_notification_battery_optimization">Игнорировать оптимизацию батареи</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">Разрешено. Система реже останавливает фоновую генерацию</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">Не разрешено. Система может останавливать генерацию в фоне для экономии заряда батареи</string>
 </resources>

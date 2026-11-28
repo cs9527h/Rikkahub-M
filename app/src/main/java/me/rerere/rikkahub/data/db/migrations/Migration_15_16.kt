@@ -19,35 +19,29 @@ val Migration_15_16 = object : Migration(15, 16) {
             data class NodeRow(val id: String, val messages: List<UIMessage>, val selectIndex: Int)
 
             // Get all distinct conversation IDs
-            val convCursor = db.query("SELECT DISTINCT conversation_id FROM message_node")
-            val conversationIds = mutableListOf<String>()
-            while (convCursor.moveToNext()) {
-                conversationIds.add(convCursor.getString(0))
+            val conversationIds = db.query("SELECT DISTINCT conversation_id FROM message_node").use { cursor ->
+                buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
             }
-            convCursor.close()
 
             var updatedConversations = 0
 
             for (conversationId in conversationIds) {
                 // Load all nodes for this conversation ordered by node_index
-                val nodeCursor = db.query(
+                val rows = mutableListOf<NodeRow>()
+                db.query(
                     "SELECT id, messages, node_index, select_index FROM message_node WHERE conversation_id = ? ORDER BY node_index ASC",
                     arrayOf(conversationId)
-                )
-
-                val rows = mutableListOf<NodeRow>()
-                while (nodeCursor.moveToNext()) {
-                    val id = nodeCursor.getString(0)
-                    val messagesJson = nodeCursor.getString(1)
-                    val selectIndex = nodeCursor.getInt(3)
-                    runCatching {
-                        val messages = JsonInstant.decodeFromString<List<UIMessage>>(messagesJson)
+                ).use { nodeCursor ->
+                    while (nodeCursor.moveToNext()) {
+                        val id = nodeCursor.getString(0)
+                        val messagesJson = nodeCursor.getString(1)
+                        val selectIndex = nodeCursor.getInt(3)
+                        // Do not skip an undecodable row: a later DELETE would erase it when
+                        // another row in the same conversation needs tool migration.
+                        val messages = messagesForMigration(messagesJson)
                         rows.add(NodeRow(id, messages, selectIndex))
-                    }.onFailure {
-                        Log.w(TAG, "migrate: failed to parse messages for node $id", it)
                     }
                 }
-                nodeCursor.close()
 
                 if (rows.isEmpty()) continue
 

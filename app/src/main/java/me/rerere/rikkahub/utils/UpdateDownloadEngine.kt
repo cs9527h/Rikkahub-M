@@ -1,6 +1,9 @@
 package me.rerere.rikkahub.utils
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import me.rerere.common.util.runCatchingCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -203,7 +206,8 @@ object UpdateDownloadEngine {
         var lastError: Throwable? = null
         repeat(MAX_TRIES_PER_SOURCE) { attempt ->
             if (isCancelled()) return Result.failure(UpdateCancelledException())
-            val result = runCatching {
+            currentCoroutineContext().ensureActive()
+            val result = runCatchingCancellable {
                 transfer(
                     client = client,
                     target = target,
@@ -221,6 +225,7 @@ object UpdateDownloadEngine {
                 verifyFile(target, expectedSha256, expectedSize)
                 target
             }
+            currentCoroutineContext().ensureActive()
             result.fold(
                 onSuccess = { return Result.success(it) },
                 onFailure = { error ->
@@ -247,7 +252,7 @@ object UpdateDownloadEngine {
         return Result.failure(lastError ?: UpdateCheckException("下载失败"))
     }
 
-    private fun transfer(
+    private suspend fun transfer(
         client: OkHttpClient,
         target: File,
         metaFile: File,
@@ -279,12 +284,13 @@ object UpdateDownloadEngine {
             .build()
 
         onStage(UpdateStage.CONNECT)
-        client.newCall(request).execute().use { response ->
+        withCancellableHttpCall(client.newCall(request)) { call ->
+        call.execute().use { response ->
             if (isCancelled()) throw UpdateCancelledException()
             if (response.code == 416 && resumeFrom > 0) {
                 // 416 通常意味着本地已经是完整文件：先按发布信息校验，通过就不再重下。
-                val complete = runCatching { verifyFile(target, expectedSha256, expectedSize) }.isSuccess
-                if (complete) return
+                val complete = runCatchingCancellable { verifyFile(target, expectedSha256, expectedSize) }.isSuccess
+                if (complete) return@withCancellableHttpCall
                 deleteQuietly(target, metaFile)
                 throw UpdateRestartException("服务端拒绝续传，已重置下载")
             }
@@ -324,6 +330,7 @@ object UpdateDownloadEngine {
                     var read = resumeFrom
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
+                        currentCoroutineContext().ensureActive()
                         if (isCancelled()) throw UpdateCancelledException()
                         val count = input.read(buffer)
                         if (count <= 0) break
@@ -342,6 +349,7 @@ object UpdateDownloadEngine {
                 throw UpdateCheckException("下载不完整（$written/$total 字节），已保留可续传的部分")
             }
         }
+        }
     }
 
     internal data class DownloadMeta(
@@ -352,7 +360,7 @@ object UpdateDownloadEngine {
         val version: String? = null,
     )
 
-    internal fun readMeta(file: File): DownloadMeta? = runCatching {
+    internal fun readMeta(file: File): DownloadMeta? = runCatchingCancellable {
         if (!file.isFile) return null
         val lines = file.readLines()
         if (lines.firstOrNull().isNullOrBlank()) return null
@@ -365,7 +373,7 @@ object UpdateDownloadEngine {
     }.getOrNull()
 
     private fun writeMeta(file: File, meta: DownloadMeta) {
-        runCatching {
+        runCatchingCancellable {
             file.writeText(
                 listOf(meta.url, meta.etag.orEmpty(), meta.lastModified.orEmpty(), meta.version.orEmpty())
                     .joinToString("\n"),
@@ -399,7 +407,7 @@ object UpdateDownloadEngine {
     }.digest().joinToString("") { "%02x".format(it) }
 
     private fun deleteQuietly(vararg files: File) {
-        files.forEach { runCatching { if (it.exists()) it.delete() } }
+        files.forEach { runCatchingCancellable { if (it.exists()) it.delete() } }
     }
 
     /** 下载中断后用于界面恢复：返回已下载字节数、来源与版本。 */

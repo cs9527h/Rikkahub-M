@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting.components
 
+import me.rerere.common.util.runCatchingCancellable
+
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowDown01
@@ -219,7 +221,7 @@ private fun ProviderSetting.ApiKey.defaultQuotaQuery(): QuotaQuery = when (this)
 }
 
 // 用示例值代入变量后能解析成 http(s) 地址
-private fun isQuotaUrlValid(url: String): Boolean = runCatching {
+private fun isQuotaUrlValid(url: String): Boolean = runCatchingCancellable {
     renderQuotaTemplate(url.trim()) { name ->
         when (name) {
             QuotaQuery.VARIABLE_BASE_URL -> "https://example.com/v1"

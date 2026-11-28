@@ -112,19 +112,58 @@ class ManagedFileCatalog(
         liveReferences: Flow<List<LiveConversationFileReferences>>,
     ): Flow<List<CatalogFile>> = flow {
         val revision = AtomicLong()
-        emitAll(combine(dao.listByFolder(folder), dao.observeCatalogReferences(), liveReferences) { files, _, live ->
-            Triple(files, live, revision.incrementAndGet())
-        }.conflate().map { (files, live, startedAtRevision) ->
-            val result = read(files, live)
-            // Keep delivering during streaming writes, but never classify a non-snapshot scan
-            // as definitely unassigned when an invalidation arrived while it was running.
-            if (startedAtRevision == revision.get()) {
-                result
-            } else {
-                result.map { it.copy(ownershipComplete = false) }
+        // EXISTS is only an inexpensive Room invalidation token, not a content version. Moving
+        // assistants or editing an existing node often emits the exact same SQL value.
+        val referenceRevision = AtomicLong()
+        val referenceChanges = dao.observeCatalogReferences().map { referenceRevision.incrementAndGet() }
+        // Deleting a file only shrinks this list; conversations did not change, so the previous
+        // ownership scan is still valid for every remaining file and can be reused as-is.
+        val cache = CatalogOwnershipCache()
+        emitAll(
+            combine(dao.listByFolder(folder), referenceChanges, liveReferences) { files, token, live ->
+                CatalogSource(files, token, live, revision.incrementAndGet())
+            }.conflate().map { source ->
+                val result = readCached(source.files, source.referenceToken, source.live, cache)
+                // Keep delivering during streaming writes, but never classify a non-snapshot scan
+                // as definitely unassigned when an invalidation arrived while it was running.
+                if (source.revision == revision.get()) {
+                    result
+                } else {
+                    // A scan overtaken by an invalidation is not a reusable ownership snapshot.
+                    cache.invalidate()
+                    result.map { it.copy(ownershipComplete = false) }
+                }
             }
-        })
+        )
     }.flowOn(ioDispatcher)
+
+    internal suspend fun readCached(
+        files: List<ManagedFileEntity>,
+        referenceToken: Long,
+        liveReferences: List<LiveConversationFileReferences>,
+        cache: CatalogOwnershipCache,
+    ): List<CatalogFile> {
+        val paths = files.mapTo(linkedSetOf()) { it.relativePath }
+        val sameLive = cache.live === liveReferences || cache.live == liveReferences
+        // Reuse only when every remaining file was part of the previous scan. A file that appeared
+        // without a conversation change (disk repair, new upload row) still forces a full scan.
+        if (sameLive && cache.token == referenceToken && paths.all { it in cache.coveredPaths }) {
+            return files.map { entity ->
+                CatalogFile(
+                    entity = entity,
+                    assistantIds = cache.owners[entity.relativePath].orEmpty(),
+                    ownershipComplete = entity.relativePath !in cache.incomplete,
+                )
+            }
+        }
+        val result = read(files, liveReferences)
+        cache.token = referenceToken
+        cache.live = liveReferences
+        cache.coveredPaths = paths
+        cache.owners = result.associate { it.entity.relativePath to it.assistantIds }
+        cache.incomplete = result.filterNot { it.ownershipComplete }.mapTo(linkedSetOf()) { it.entity.relativePath }
+        return result
+    }
 
     suspend fun read(files: List<ManagedFileEntity>): List<CatalogFile> = read(files, emptyList())
 
@@ -187,6 +226,31 @@ class ManagedFileCatalog(
     companion object {
         internal const val REFERENCE_PAGE_SIZE = 16
         internal const val REFERENCE_CHUNK_CHARS = 32_768
+    }
+}
+
+/** One emission of the catalog sources; [referenceToken] identifies the conversation-side state. */
+private data class CatalogSource(
+    val files: List<ManagedFileEntity>,
+    val referenceToken: Long,
+    val live: List<LiveConversationFileReferences>,
+    val revision: Long,
+)
+
+/** Per-collector memory of the last full ownership scan, so a deletion need not rescan history. */
+internal class CatalogOwnershipCache {
+    var token: Long? = null
+    var live: List<LiveConversationFileReferences>? = null
+    var coveredPaths: Set<String> = emptySet()
+    var owners: Map<String, Set<String>> = emptyMap()
+    var incomplete: Set<String> = emptySet()
+
+    fun invalidate() {
+        token = null
+        live = null
+        coveredPaths = emptySet()
+        owners = emptyMap()
+        incomplete = emptySet()
     }
 }
 

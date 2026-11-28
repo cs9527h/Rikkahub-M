@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.exifinterface.media.ExifInterface
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -68,7 +69,8 @@ internal suspend fun loadSketchBackground(context: Context, uri: Uri): ImageBitm
                 ?: error("Failed to decode $uri")
         decoded.upright(context, uri).asImageBitmap()
     }.onFailure {
-        Log.e(TAG, "Failed to load $uri", it)
+        if (it !is Exception || it is CancellationException) throw it
+        Log.e(TAG, "ui.sketch.load failed (${it.javaClass.name})")
     }.getOrNull()
 }
 

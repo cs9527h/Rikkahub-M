@@ -5,11 +5,13 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.oauth.OAuthAuthorizationLauncher
 import me.rerere.oauth.OAuthHttpClient
 import me.rerere.oauth.OAuthLoopbackCallbackServer
@@ -25,6 +27,7 @@ internal const val MCP_OAUTH_CALLBACK_PORT = 52_134
 internal const val MCP_OAUTH_CALLBACK_PATH = "/oauth/callback"
 internal const val MCP_OAUTH_REDIRECT_URI =
     "http://localhost:$MCP_OAUTH_CALLBACK_PORT$MCP_OAUTH_CALLBACK_PATH"
+
 // 托管在 GitHub Pages 上的 Client ID Metadata Document，其 redirect_uris 必须与 MCP_OAUTH_REDIRECT_URI 一致
 internal const val MCP_OAUTH_CLIENT_METADATA_URL = "https://rikkahub.github.io/oauth/client.json"
 private val OAUTH_CALLBACK_TIMEOUT = 5.minutes
@@ -55,7 +58,7 @@ internal class McpOAuthCoordinator(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "OAuth authorization failed for ${config.commonOptions.name}", e)
+                Log.e(TAG, formatExceptionForLog("mcp.oauth.authorize", e))
                 updateStatus(config.id, McpStatus.Error.from(e, fallbackMessage = "OAuth authorization failed"))
             }
         }
@@ -96,7 +99,7 @@ internal class McpOAuthCoordinator(
 
             val tokenEndpoint = oauth.tokenEndpoint ?: return@withLock config
             val clientId = oauth.clientId ?: return@withLock config
-            runCatching {
+            runCatchingCancellable {
                 val token = oauthClient.refreshToken(
                     OAuthHttpClient.RefreshTokenRequest(
                         tokenEndpoint = tokenEndpoint,
@@ -116,7 +119,7 @@ internal class McpOAuthCoordinator(
                 persistOAuthState(config.id, updated)
                 config.clone(commonOptions = config.commonOptions.copy(oauth = updated))
             }.getOrElse {
-                Log.w(TAG, "Token refresh failed for ${config.commonOptions.name}: ${it.message}")
+                Log.w(TAG, formatExceptionForLog("mcp.oauth.refresh", it))
                 config
             }
         }
@@ -127,9 +130,9 @@ internal class McpOAuthCoordinator(
             return false
         }
         if (looksUnauthorized(error)) return true
-        return runCatching { discoveryClient.discoverProtectedResource(config.serverUrl) }
+        return runCatchingCancellable { discoveryClient.discoverProtectedResource(config.serverUrl) }
             .onFailure {
-                Log.i(TAG, "OAuth probe failed for ${config.commonOptions.name}: ${it.message}")
+                Log.i(TAG, formatExceptionForLog("mcp.oauth.probe", it))
             }
             .isSuccess
     }
@@ -139,8 +142,8 @@ internal class McpOAuthCoordinator(
         require(serverUrl.isNotBlank()) { "Server URL 为空，无法授权" }
 
         // 部分服务器（如 Zomato）不提供 RFC 9728 元数据，按旧版规范退回到服务器 origin 作为授权服务器
-        val protectedResource = runCatching { discoveryClient.discoverProtectedResource(serverUrl) }
-            .onFailure { Log.i(TAG, "Protected resource discovery failed, fallback to server origin: ${it.message}") }
+        val protectedResource = runCatchingCancellable { discoveryClient.discoverProtectedResource(serverUrl) }
+            .onFailure { Log.i(TAG, formatExceptionForLog("mcp.oauth.origin-fallback", it)) }
             .getOrNull()
         val issuer = protectedResource?.authorizationServers?.firstOrNull()
             ?: McpOAuthDiscoveryClient.serverOrigin(serverUrl)
@@ -264,8 +267,11 @@ internal class McpOAuthCoordinator(
         settingsStore.update { old ->
             old.copy(
                 mcpServers = old.mcpServers.map { server ->
-                    if (server.id != configId) server
-                    else server.clone(commonOptions = server.commonOptions.copy(oauth = oauth))
+                    if (server.id != configId) {
+                        server
+                    } else {
+                        server.clone(commonOptions = server.commonOptions.copy(oauth = oauth))
+                    }
                 }
             )
         }

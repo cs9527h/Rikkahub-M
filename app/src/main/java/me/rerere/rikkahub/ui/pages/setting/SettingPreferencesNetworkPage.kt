@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import me.rerere.common.util.runCatchingCancellable
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -125,8 +127,9 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
         if (proxyTesting) return
         proxyTesting = true
         scope.launch {
+            try {
             val result = withContext(Dispatchers.IO) {
-                runCatching {
+                runCatchingCancellable {
                     val testClient = httpClient.newBuilder()
                         .proxy(proxy)
                         .connectTimeout(10, TimeUnit.SECONDS)
@@ -151,6 +154,7 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                     type = ToastType.Success,
                 )
             }.onFailure { error ->
+                reportSettingsFailure("settings.proxy.test", error)
                 toaster.show(
                     resources.getString(
                         R.string.backup_page_connection_failed,
@@ -159,7 +163,7 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                     type = ToastType.Error,
                 )
             }
-            proxyTesting = false
+            } finally { proxyTesting = false }
         }
     }
 

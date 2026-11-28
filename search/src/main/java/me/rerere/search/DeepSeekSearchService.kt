@@ -1,5 +1,6 @@
 package me.rerere.search
 
+import me.rerere.common.util.runCatchingCancellable
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,7 +73,7 @@ object DeepSeekSearchService : SearchService<SearchServiceOptions.DeepSeekOption
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.DeepSeekOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -113,7 +114,7 @@ object DeepSeekSearchService : SearchService<SearchServiceOptions.DeepSeekOption
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.DeepSeekOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val url = params["url"]?.jsonPrimitive?.content ?: error("url is required")
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 

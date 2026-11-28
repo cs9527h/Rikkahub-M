@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.mediagen.model.MediaGenerationError
 import me.rerere.mediagen.model.MediaGenerationInput
@@ -34,7 +35,7 @@ class MiniMaxMediaGenerationProvider(
         setting: MediaGenerationProviderSetting.MiniMax,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
-    ): Result<MediaGenerationTask> = runCatching {
+    ): Result<MediaGenerationTask> = runCatchingCancellable {
         require(!request.prompt.isNullOrBlank()) { "MiniMax H3 requires a non-empty prompt" }
         val httpRequest = authorizedRequest(
             setting,
@@ -54,7 +55,7 @@ class MiniMaxMediaGenerationProvider(
         setting: MediaGenerationProviderSetting.MiniMax,
         model: MediaGenerationModel,
         taskId: String,
-    ): Result<MediaGenerationTask> = runCatching {
+    ): Result<MediaGenerationTask> = runCatchingCancellable {
         val httpRequest = authorizedRequest(
             setting,
             "${setting.baseUrl.trimEnd('/')}/query/video_generation/$taskId",
@@ -83,7 +84,8 @@ class MiniMaxMediaGenerationProvider(
                             put("type", "image_url")
                             put("image_url", buildJsonObject { put("url", input.url) })
                             put(
-                                "role", when (input.role) {
+                                "role",
+                                when (input.role) {
                                     ImageRole.FIRST_FRAME -> "first_frame"
                                     ImageRole.LAST_FRAME -> "last_frame"
                                     ImageRole.REFERENCE -> "reference_image"

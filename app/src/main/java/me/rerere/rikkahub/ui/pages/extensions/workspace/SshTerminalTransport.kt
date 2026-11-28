@@ -1,6 +1,9 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
+import android.util.Log
 import com.termux.terminal.TerminalTransport
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.workspace.ssh.SshShell
 import java.io.IOException
 import java.io.InputStream
@@ -85,7 +88,11 @@ internal class SshTerminalTransport(
 
     private fun runControl(block: () -> Unit) {
         try {
-            control.execute { runCatching(block) }
+            control.execute {
+                runCatchingCancellable(block).onFailure {
+                    Log.w("SshTerminalTransport", formatExceptionForLog("Terminal.control", it))
+                }
+            }
         } catch (_: RejectedExecutionException) {
             // 已经 close, shell 也已关闭
         }

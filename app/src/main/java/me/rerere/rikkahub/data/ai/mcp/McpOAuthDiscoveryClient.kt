@@ -2,27 +2,25 @@ package me.rerere.rikkahub.data.ai.mcp
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.Call
-import okhttp3.Callback
+import me.rerere.common.http.await
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 private const val TAG = "McpOAuthDiscovery"
 
 /** MCP 授权规范特有的资源服务器与授权服务器元数据发现。 */
 internal class McpOAuthDiscoveryClient(
-    private val httpClient: OkHttpClient,
+    httpClient: OkHttpClient,
+    private val executeRequest: suspend (Request) -> Response = { httpClient.newCall(it).await() },
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -58,9 +56,9 @@ internal class McpOAuthDiscoveryClient(
                 addAll(wellKnownProtectedResourceUrls(serverUrl))
             }.distinct()
             for (url in candidates) {
-                val metadata = runCatching { getJson<ProtectedResourceMetadata>(url) }.getOrNull()
+                val metadata = runCatchingCancellable { getJson<ProtectedResourceMetadata>(url) }.getOrNull()
                 if (metadata != null && metadata.authorizationServers.isNotEmpty()) {
-                    Log.i(TAG, "Protected resource metadata: $url -> ${metadata.authorizationServers}")
+                    Log.i(TAG, "Protected resource metadata discovered")
                     return@withContext metadata
                 }
             }
@@ -71,9 +69,9 @@ internal class McpOAuthDiscoveryClient(
     suspend fun discoverAuthorizationServer(issuer: String): AuthorizationServerMetadata =
         withContext(Dispatchers.IO) {
             for (url in wellKnownAuthorizationServerUrls(issuer)) {
-                val metadata = runCatching { getJson<AuthorizationServerMetadata>(url) }.getOrNull()
+                val metadata = runCatchingCancellable { getJson<AuthorizationServerMetadata>(url) }.getOrNull()
                 if (metadata?.authorizationEndpoint != null && metadata.tokenEndpoint != null) {
-                    Log.i(TAG, "Authorization server metadata: $url")
+                    Log.i(TAG, "Authorization server metadata discovered")
                     return@withContext metadata
                 }
             }
@@ -86,7 +84,7 @@ internal class McpOAuthDiscoveryClient(
             .header("Accept", "application/json, text/event-stream")
             .get()
             .build()
-        return runCatching {
+        return runCatchingCancellable {
             executeRaw(request).use { response ->
                 if (response.code != 401) return null
                 val header = response.header("WWW-Authenticate") ?: return null
@@ -141,26 +139,13 @@ internal class McpOAuthDiscoveryClient(
         executeRaw(request).use { response ->
             val body = response.body.string()
             if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} for ${request.url}: ${body.take(300)}")
+                throw IOException("MCP metadata request failed (HTTP ${response.code})")
             }
             return body
         }
     }
 
-    private suspend fun executeRaw(request: Request): Response =
-        suspendCancellableCoroutine { continuation ->
-            val call = httpClient.newCall(request)
-            continuation.invokeOnCancellation { call.cancel() }
-            call.enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    if (continuation.isActive) continuation.resumeWithException(e)
-                }
-
-                override fun onResponse(call: Call, response: Response) {
-                    if (continuation.isActive) continuation.resume(response) else response.close()
-                }
-            })
-        }
+    private suspend fun executeRaw(request: Request): Response = executeRequest(request)
 
     companion object {
         private val RESOURCE_METADATA_REGEX = Regex("resource_metadata=\"([^\"]+)\"")

@@ -53,6 +53,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -60,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +84,6 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.Cancel01
@@ -135,26 +136,35 @@ fun SettingFilesPage(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val gridState = rememberLazyStaggeredGridState()
     val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
     var refresh by remember { mutableStateOf(0) }
-    var storageArea by rememberSaveable { mutableStateOf(STORAGE_AREA_CHAT) }
-    val avatarArea = storageArea == STORAGE_AREA_AVATARS
+    val manager = rememberSaveable(saver = FileManagerState.Saver) { FileManagerState() }
     val avatarOwners = remember(settings) { AvatarReferences.localAvatarOwners(settings, context.filesDir) }
     val liveReferences = remember(chatService) { chatService.observeManagedFileReferences().map { it.catalogReferences() } }
     val catalogResult by produceState<Result<List<CatalogFile>>?>(null, repository, filesManager, avatarStorage, liveReferences, lifecycle, refresh) {
         value = null
         try {
-            try {
-                avatarStorage.synchronize()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // A failed migration must not hide the original files; settings still classify them.
+            // Repair work can take seconds on a large upload folder. It only inserts/removes index
+            // rows, so run it beside the live query instead of delaying the first paint.
+            launch {
+                try {
+                    avatarStorage.synchronize()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    reportSettingsFailure("files.avatar.synchronize", error)
+                    // A failed migration must not hide the original files; settings still classify them.
+                }
+                try {
+                    filesManager.syncFolder(FileFolders.UPLOAD)
+                    filesManager.syncFolder(FileFolders.AVATARS)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    reportSettingsFailure("files.index.repair", error)
+                    // Index repair is best effort; the catalog still shows what is already known.
+                }
             }
-            filesManager.syncFolder(FileFolders.UPLOAD)
-            filesManager.syncFolder(FileFolders.AVATARS)
             combine(
                 repository.observeCatalog(FileFolders.UPLOAD, context.filesDir, liveReferences),
                 repository.listByFolder(FileFolders.AVATARS),
@@ -164,46 +174,15 @@ fun SettingFilesPage(
         } catch (e: CancellationException) {
             throw e
         } catch (error: Exception) {
+            reportSettingsFailure("files.catalog.observe", error)
             value = Result.failure(error)
         }
-    }
-    val catalogFiles = remember(catalogResult, storageArea, avatarOwners) {
-        storageAreaFiles(catalogResult?.getOrNull().orEmpty(), storageArea, avatarOwners.keys)
-    }
-    val catalogLoading = catalogResult == null
-    val catalogFailed = catalogResult?.isFailure == true
-    var query by rememberSaveable { mutableStateOf("") }
-    var selectedTypeName by rememberSaveable { mutableStateOf<String?>(null) }
-    val selectedType = selectedTypeName?.let { name -> ManagedFileType.entries.find { it.name == name } }
-    var ownerKey by rememberSaveable(storageArea) { mutableStateOf("all") }
-    val ownerFilter = when {
-        ownerKey == "unassigned" -> CatalogAssistantFilter.Unassigned
-        ownerKey == "shared" -> CatalogAssistantFilter.Shared
-        ownerKey == "unknown" -> CatalogAssistantFilter.Unknown
-        ownerKey.startsWith("assistant:") -> CatalogAssistantFilter.Assistant(ownerKey.removePrefix("assistant:"))
-        else -> CatalogAssistantFilter.All
-    }
-    var sort by rememberSaveable { mutableStateOf(FileManagerSort.NEWEST) }
-    val visible = remember(catalogFiles, avatarArea, avatarOwners, selectedType, ownerKey, query, sort) {
-        if (avatarArea) filterAvatarFiles(catalogFiles, avatarOwners, selectedType, ownerKey, query, sort)
-        else filterManagedFiles(catalogFiles, selectedType, ownerFilter, query, sort)
     }
     val defaultAssistantName = stringResource(R.string.assistant_page_default_assistant)
     val assistantNames = remember(settings.assistants, defaultAssistantName) {
         settings.assistants.associate { it.id.toString() to it.name.ifBlank { defaultAssistantName } }
     }
-    val ownerIds = remember(catalogFiles, assistantNames) {
-        (assistantNames.keys + catalogFiles.flatMap { it.assistantIds }).sortedWith(
-            compareBy<String> { assistantNames[it].orEmpty() }.thenBy { it }
-        )
-    }
     var preview by remember { mutableStateOf<ManagedFileEntity?>(null) }
-    var pendingDelete by remember(storageArea) { mutableStateOf<CatalogFile?>(null) }
-    var cleanupSnapshot by remember(storageArea) { mutableStateOf<List<CatalogFile>?>(null) }
-    var confirmedCleanup by remember(storageArea) { mutableStateOf<List<CatalogFile>?>(null) }
-    var busyDeleting by remember { mutableStateOf(false) }
-    var exporting by remember { mutableStateOf(false) }
-    var pendingExportId by rememberSaveable { mutableStateOf<Long?>(null) }
     val exportedMessage = stringResource(R.string.file_manager_exported)
     val exportFailedMessage = stringResource(R.string.file_manager_export_failed)
     val deletedMessage = stringResource(R.string.setting_files_page_deleted_toast)
@@ -221,32 +200,34 @@ fun SettingFilesPage(
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(ManagedFileExportContract()) { uri ->
-        val id = pendingExportId
-        pendingExportId = null
+        val id = manager.pendingExportId
+        manager.pendingExportId = null
         if (uri != null && id != null) {
             scope.launch {
-                exporting = true
+                manager.exporting = true
                 try {
                     val entity = checkNotNull(filesManager.get(id))
                     exportManagedFile(context, filesManager.getFile(entity), uri)
                     toaster.show(exportedMessage)
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    reportSettingsFailure("files.export.write", error)
                     toaster.show(exportFailedMessage)
                 } finally {
-                    exporting = false
+                    manager.exporting = false
                 }
             }
         }
     }
     val exportFile: (ManagedFileEntity) -> Unit = { file ->
-        if (!exporting && pendingExportId == null) {
-            pendingExportId = file.id
+        if (!manager.exporting && manager.pendingExportId == null) {
+            manager.pendingExportId = file.id
             try {
                 exportLauncher.launch(ManagedFileExportRequest(managedExportName(file.displayName, file.id), file.mimeType))
-            } catch (_: Exception) {
-                pendingExportId = null
+            } catch (error: Exception) {
+                reportSettingsFailure("files.export.launch", error)
+                manager.pendingExportId = null
                 toaster.show(exportFailedMessage)
             }
         }
@@ -259,180 +240,29 @@ fun SettingFilesPage(
             onExport = { preview = null; exportFile(file) },
         )
     }
-    pendingDelete?.let { target ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.setting_files_page_delete_file_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(target.entity.displayName)
-                    Text(stringResource(if (target.isShared) R.string.file_manager_shared_warning else R.string.file_manager_delete_warning))
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingDelete = null
-                    scope.launch {
-                        busyDeleting = true
-                        try {
-                            val ok = deleteFile(target)
-                            toaster.show(if (ok) deletedMessage else if (avatarArea) avatarRetainedMessage else deleteFailedMessage)
-                        } catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { toaster.show(deleteFailedMessage) }
-                        finally { busyDeleting = false }
-                    }
-                }) { Text(stringResource(R.string.setting_files_page_delete_action)) }
-            },
-            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.setting_files_page_cancel_action)) } },
-        )
-    }
-    cleanupSnapshot?.let { snapshot ->
-        val sheetState = rememberBottomSheetState(
-            initialValue = SheetValue.Hidden,
-            enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
-        )
-        ModalBottomSheet(onDismissRequest = { cleanupSnapshot = null }, sheetState = sheetState) {
-            CleanFilesSheet(snapshot) { targets -> cleanupSnapshot = null; confirmedCleanup = targets }
-        }
-    }
-    confirmedCleanup?.let { targets ->
-        AlertDialog(
-            onDismissRequest = { confirmedCleanup = null },
-            title = { Text(stringResource(R.string.file_manager_clean_confirm, targets.size)) },
-            text = { Text(stringResource(R.string.file_manager_clean_warning)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmedCleanup = null
-                    scope.launch {
-                        busyDeleting = true
-                        var allDeleted = true
-                        try {
-                            targets.forEach { file ->
-                                try { if (!deleteFile(file)) allDeleted = false }
-                                catch (e: CancellationException) { throw e }
-                                catch (_: Exception) { allDeleted = false }
-                            }
-                            toaster.show(if (allDeleted) cleanedMessage else cleanFailedMessage)
-                        } finally { busyDeleting = false }
-                    }
-                }) { Text(stringResource(R.string.setting_files_page_clean_action)) }
-            },
-            dismissButton = { TextButton(onClick = { confirmedCleanup = null }) { Text(stringResource(R.string.setting_files_page_cancel_action)) } },
-        )
-    }
-    Scaffold(
-        topBar = {
-            LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.setting_files_page_title)) },
-                navigationIcon = { BackButton() },
-                actions = {
-                    IconButton(onClick = { refresh++ }, enabled = !catalogLoading && !busyDeleting) {
-                        Icon(HugeIcons.Refresh01, stringResource(R.string.file_manager_refresh))
-                    }
-                    if (!avatarArea) {
-                        IconButton(onClick = { cleanupSnapshot = visible.toList() }, enabled = visible.isNotEmpty() && !busyDeleting && !catalogLoading) {
-                            Icon(HugeIcons.Clean, stringResource(R.string.setting_files_page_clean_content_description))
-                        }
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
-            )
+    SettingFilesContent(
+        state = manager,
+        catalogResult = catalogResult,
+        avatarOwners = avatarOwners,
+        assistantNames = assistantNames,
+        fileOnDisk = filesManager::getFile,
+        deleteFile = ::deleteFile,
+        exportFile = exportFile,
+        onPreview = { preview = it },
+        onRefresh = { refresh++ },
+        onDeletionResult = { result, batch, avatar ->
+            toaster.show(when {
+                batch -> if (result.allDeleted) cleanedMessage else cleanFailedMessage
+                result.allDeleted -> deletedMessage
+                avatar -> avatarRetainedMessage
+                else -> deleteFailedMessage
+            })
         },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = CustomColors.topBarColors.containerColor,
-    ) { innerPadding ->
-        val direction = LocalLayoutDirection.current
-        // Filters scroll with the grid, so landscape and large-font screens retain usable space.
-        LazyVerticalStaggeredGrid(
-            modifier = Modifier.fillMaxSize().padding(
-                top = innerPadding.calculateTopPadding(),
-                start = innerPadding.calculateStartPadding(direction),
-                end = innerPadding.calculateEndPadding(direction),
-            ),
-            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = innerPadding.calculateBottomPadding() + 16.dp),
-            verticalItemSpacing = 10.dp,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            state = gridState,
-            columns = StaggeredGridCells.Adaptive(160.dp),
-        ) {
-            item(key = "filters", span = StaggeredGridItemSpan.FullLine, contentType = "filters") {
-                Column {
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(STORAGE_AREA_CHAT, STORAGE_AREA_AVATARS).forEach { area ->
-                            FilterChip(
-                                selected = storageArea == area,
-                                onClick = { storageArea = area; ownerKey = "all"; selectedTypeName = null; query = "" },
-                                label = { Text(stringResource(if (area == STORAGE_AREA_AVATARS) R.string.file_manager_area_avatars else R.string.file_manager_area_chat)) },
-                            )
-                        }
-                    }
-                    if (avatarArea) {
-                        Text(stringResource(R.string.file_manager_avatars_hint), Modifier.padding(vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    FileManagerFilters(
-                        query = query, onQuery = { query = it },
-                        selectedType = selectedType, onType = { selectedTypeName = it?.name },
-                        ownerKey = ownerKey, onOwner = { ownerKey = it },
-                        assistantNames = assistantNames, ownerIds = ownerIds,
-                        sort = sort, onSort = { sort = it }, avatarArea = avatarArea,
-                    )
-                    Text(stringResource(R.string.file_manager_summary, visible.size, managedFilesSize(visible).fileSizeToString()), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (visible.size != catalogFiles.size) {
-                        Text(stringResource(R.string.file_manager_scope_summary, visible.size, catalogFiles.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    if (exporting || busyDeleting) {
-                        LinearProgressIndicator(Modifier.fillMaxWidth())
-                        Text(stringResource(if (exporting) R.string.file_manager_exporting else R.string.file_manager_deleting), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.labelMedium)
-                    }
-                    if (catalogFiles.any { !it.ownershipComplete }) {
-                        Text(stringResource(R.string.file_manager_owner_incomplete), Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-            when {
-                catalogLoading -> item(key = "loading", span = StaggeredGridItemSpan.FullLine) {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            CircularProgressIndicator()
-                            Text(stringResource(R.string.file_manager_loading), style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-                catalogFailed -> item(key = "error", span = StaggeredGridItemSpan.FullLine) {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 200.dp), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(stringResource(R.string.file_manager_load_error))
-                            Button(onClick = { refresh++ }) { Text(stringResource(R.string.file_manager_retry)) }
-                        }
-                    }
-                }
-                visible.isEmpty() -> item(key = "empty", span = StaggeredGridItemSpan.FullLine) {
-                    ExtensionEmptyState(
-                        message = stringResource(if (catalogFiles.isNotEmpty()) R.string.file_manager_no_matches else if (avatarArea) R.string.file_manager_avatar_empty else R.string.setting_files_page_no_files),
-                        icon = HugeIcons.FolderOpen,
-                        buttonText = if (catalogFiles.isNotEmpty()) stringResource(R.string.file_manager_reset) else null,
-                        onAction = { query = ""; selectedTypeName = null; ownerKey = "all" },
-                    )
-                }
-                else -> items(visible, key = { it.entity.id }, contentType = { it.type }) { file ->
-                    FileItem(
-                        file = file, fileOnDisk = filesManager.getFile(file.entity),
-                        owner = if (avatarArea) avatarOwnerLabel(avatarOwners[file.entity.relativePath].orEmpty(), assistantNames) else catalogOwnerLabel(file, assistantNames),
-                        onPreview = { preview = file.entity },
-                        onExport = { exportFile(file.entity) },
-                        onDelete = { pendingDelete = file },
-                        actionsEnabled = !busyDeleting && !exporting && pendingExportId == null,
-                        deleteEnabled = !busyDeleting && !exporting && pendingExportId == null && (!avatarArea || avatarOwners[file.entity.relativePath].isNullOrEmpty()),
-                    )
-                }
-            }
-        }
-    }
+    )
 }
 
 @Composable
-private fun FileManagerFilters(
+internal fun FileManagerFilters(
     query: String, onQuery: (String) -> Unit,
     selectedType: ManagedFileType?, onType: (ManagedFileType?) -> Unit,
     ownerKey: String, onOwner: (String) -> Unit,
@@ -486,7 +316,7 @@ private fun FileManagerFilters(
 }
 
 @Composable
-private fun ownerFilterLabel(key: String, names: Map<String, String>, avatarArea: Boolean = false): String = when {
+internal fun ownerFilterLabel(key: String, names: Map<String, String>, avatarArea: Boolean = false): String = when {
     avatarArea && key == "all" -> stringResource(R.string.file_manager_avatars_all)
     avatarArea && key == "user" -> stringResource(R.string.file_manager_avatar_user)
     avatarArea && key == "shared" -> stringResource(R.string.file_manager_avatars_shared)
@@ -501,7 +331,7 @@ private fun ownerFilterLabel(key: String, names: Map<String, String>, avatarArea
 }
 
 @Composable
-private fun avatarOwnerLabel(owners: Set<String>, names: Map<String, String>): String {
+internal fun avatarOwnerLabel(owners: Set<String>, names: Map<String, String>): String {
     if (owners.isEmpty()) return stringResource(R.string.file_manager_avatar_historical)
     val user = stringResource(R.string.file_manager_avatar_user)
     val removed = stringResource(R.string.file_manager_unknown_assistant, "…")
@@ -510,7 +340,7 @@ private fun avatarOwnerLabel(owners: Set<String>, names: Map<String, String>): S
 }
 
 @Composable
-private fun catalogOwnerLabel(file: CatalogFile, names: Map<String, String>): String {
+internal fun catalogOwnerLabel(file: CatalogFile, names: Map<String, String>): String {
     val unknown = stringResource(R.string.file_manager_owner_unknown)
     if (file.assistantIds.isEmpty()) return if (file.isUnassigned) stringResource(R.string.file_manager_unassigned) else unknown
     val removed = stringResource(R.string.file_manager_unknown_assistant, "…")
@@ -520,7 +350,7 @@ private fun catalogOwnerLabel(file: CatalogFile, names: Map<String, String>): St
 }
 
 @Composable
-private fun fileTypeLabel(type: ManagedFileType?): String = stringResource(when (type) {
+internal fun fileTypeLabel(type: ManagedFileType?): String = stringResource(when (type) {
     null -> R.string.file_manager_all_types
     ManagedFileType.IMAGE -> R.string.file_manager_images
     ManagedFileType.DOCUMENT -> R.string.file_manager_documents
@@ -530,7 +360,7 @@ private fun fileTypeLabel(type: ManagedFileType?): String = stringResource(when 
 })
 
 @Composable
-private fun sortLabel(sort: FileManagerSort): String = stringResource(when (sort) {
+internal fun sortLabel(sort: FileManagerSort): String = stringResource(when (sort) {
     FileManagerSort.NEWEST -> R.string.file_manager_sort_newest
     FileManagerSort.OLDEST -> R.string.file_manager_sort_oldest
     FileManagerSort.LARGEST -> R.string.file_manager_sort_largest
@@ -538,7 +368,7 @@ private fun sortLabel(sort: FileManagerSort): String = stringResource(when (sort
 })
 
 @Composable
-private fun FileItem(
+internal fun FileItem(
     file: CatalogFile,
     fileOnDisk: File,
     owner: String,
@@ -600,7 +430,7 @@ private enum class CleanRange {
 }
 
 @Composable
-private fun CleanFilesSheet(snapshot: List<CatalogFile>, onClean: (List<CatalogFile>) -> Unit) {
+internal fun CleanFilesSheet(snapshot: List<CatalogFile>, onClean: (List<CatalogFile>) -> Unit) {
     var range by remember { mutableStateOf(CleanRange.DAYS_7) }
     var onlyUnassigned by remember { mutableStateOf(true) }
     val now = remember { System.currentTimeMillis() }

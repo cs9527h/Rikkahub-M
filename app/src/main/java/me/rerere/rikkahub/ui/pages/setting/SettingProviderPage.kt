@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import me.rerere.common.util.runCatchingCancellable
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -401,7 +403,7 @@ private fun handleScannedQRCode(
     toaster: me.rerere.ui.toast.ToasterState,
     context: android.content.Context
 ) {
-    runCatching {
+    runCatchingCancellable {
         val setting = decodeProviderSetting(content)
         onAdd(setting)
         toaster.show(
@@ -409,6 +411,7 @@ private fun handleScannedQRCode(
             type = ToastType.Success
         )
     }.onFailure { error ->
+        reportSettingsFailure("provider.qr.import", error)
         toaster.show(
             context.getString(R.string.setting_provider_page_qr_decode_failed, error.message ?: ""),
             type = ToastType.Error
@@ -422,7 +425,7 @@ private fun handleImageQRCode(
     toaster: me.rerere.ui.toast.ToasterState,
     context: android.content.Context
 ) {
-    runCatching {
+    runCatchingCancellable {
         // 使用ImageUtils解析二维码
         val qrContent = ImageUtils.decodeQRCodeFromUri(context, uri)
 
@@ -441,6 +444,7 @@ private fun handleImageQRCode(
             type = ToastType.Success
         )
     }.onFailure { error ->
+        reportSettingsFailure("provider.qr.import", error)
         toaster.show(
             context.getString(R.string.setting_provider_page_image_qr_decode_failed, error.message ?: ""),
             type = ToastType.Error

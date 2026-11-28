@@ -31,6 +31,8 @@ import me.rerere.asr.ASRState
 import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -129,7 +131,7 @@ class StepASRController(
                 flushSegment()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e(TAG, "Final flush failed", e)
+                Log.e(TAG, formatExceptionForLog("speech.StepASRController.Final.flush.failed", e))
                 setError(e.message ?: "Step ASR final flush failed")
             } finally {
                 _state.update { it.copy(status = ASRStatus.Idle) }
@@ -198,7 +200,8 @@ class StepASRController(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Audio recording failed", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("speech.StepASRController.Audio.recording.failed", e))
                 setError(e.message ?: "Audio recording failed")
             } finally {
                 releaseRecorder()
@@ -210,8 +213,8 @@ class StepASRController(
         // 同一时刻只跑一个 flush, 避免后发先至导致结果乱序
         if (flushJob?.isActive == true) return
         flushJob = scope.launch(Dispatchers.IO) {
-            runCatching { flushSegment() }
-                .onFailure { Log.e(TAG, "Segment flush failed", it) }
+            runCatchingCancellable { flushSegment() }
+                .onFailure { Log.e(TAG, formatExceptionForLog("speech.StepASRController.Segment.flush.failed", it)) }
         }
     }
 
@@ -302,7 +305,7 @@ class StepASRController(
                 lastError = e
                 // 4xx 是鉴权/参数问题，重试没有意义，直接上抛。
                 if (e is StepAsrHttpException && e.code in 400..499) throw e
-                Log.w(TAG, "flushSegment attempt $attempt/$MAX_RETRY failed: ${e.message}")
+                Log.w(TAG, "attempt $attempt/$MAX_RETRY: " + formatExceptionForLog("speech.step.flush.retry", e))
                 if (attempt < MAX_RETRY) {
                     kotlinx.coroutines.delay(300L * attempt) // 指数退避: 300ms, 600ms
                 }

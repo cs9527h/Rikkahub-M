@@ -16,6 +16,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -58,7 +60,7 @@ object BochaSearchService : SearchService<SearchServiceOptions.BochaOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.BochaOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
 
             val body = buildJsonObject {
@@ -80,8 +82,7 @@ object BochaSearchService : SearchService<SearchServiceOptions.BochaOptions> {
                     val bochaResponse = runCatching {
                         json.decodeFromString<BochaResponse>(bodyRaw)
                     }.onFailure {
-                        Log.w(TAG, "decode response failed", it)
-                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                        Log.w(TAG, formatExceptionForLog("search.decode", it))
                     }.getOrThrow()
 
                     if (bochaResponse.code != 200) {

@@ -3,8 +3,12 @@ package me.rerere.rikkahub.web
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
 import java.net.InetAddress
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
@@ -48,6 +52,7 @@ class NsdServiceRegistrar(
             val address = getLocalIpAddress()
             if (address == null) {
                 Log.e(TAG, "Failed to get local IP address")
+                cleanup()
                 return@withContext
             }
 
@@ -66,6 +71,7 @@ class NsdServiceRegistrar(
                 "RikkaHub Web Server"
             )
             mdns.registerService(serviceInfo)
+            currentCoroutineContext().ensureActive()
 
             Log.i(
                 TAG,
@@ -80,8 +86,11 @@ class NsdServiceRegistrar(
                     address = address
                 )
             )
+        } catch (e: CancellationException) {
+            cleanup()
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to register service", e)
+            Log.e(TAG, formatExceptionForLog("Nsd.register", e))
             cleanup()
         }
     }
@@ -91,22 +100,27 @@ class NsdServiceRegistrar(
     }
 
     private fun cleanup() {
-        runCatching {
-            jmdns?.unregisterAllServices()
-            jmdns?.close()
-        }.onFailure {
-            Log.w(TAG, "Failed to close JmDNS", it)
-        }
-        jmdns = null
-
-        runCatching {
-            if (multicastLock?.isHeld == true) {
-                multicastLock?.release()
+        val mdns = jmdns.also { jmdns = null }
+        val lock = multicastLock.also { multicastLock = null }
+        try {
+            try {
+                mdns?.unregisterAllServices()
+            } finally {
+                mdns?.close()
             }
-        }.onFailure {
-            Log.w(TAG, "Failed to release multicast lock", it)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, formatExceptionForLog("Nsd.close", e))
+        } finally {
+            try {
+                if (lock?.isHeld == true) lock.release()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, formatExceptionForLog("Nsd.releaseMulticastLock", e))
+            }
         }
-        multicastLock = null
 
         Log.i(TAG, "Service unregistered")
     }
@@ -128,7 +142,7 @@ class NsdServiceRegistrar(
             )
             InetAddress.getByAddress(ipBytes)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get local IP address", e)
+            Log.e(TAG, formatExceptionForLog("Nsd.resolveLocalAddress", e))
             null
         }
     }

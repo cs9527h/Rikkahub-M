@@ -9,6 +9,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.sync.s3.S3Client
 import me.rerere.rikkahub.data.sync.s3.S3Config
@@ -86,7 +88,12 @@ class RemoteFileStore internal constructor(
         }
         if (sweepDue) {
             scope.launch {
-                runCatching { sweep() }.onFailure { Log.w(TAG, "sweep failed", it) }
+                runCatchingCancellable { sweep() }.onFailure {
+                    Log.w(
+                        TAG,
+                        formatExceptionForLog("remote-upload.sweep", it)
+                    )
+                }
             }
         }
 

@@ -50,6 +50,7 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
+import me.rerere.ai.util.HttpException
 import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
@@ -58,14 +59,15 @@ import me.rerere.ai.util.json
 import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
-import me.rerere.ai.util.HttpException
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.ai.util.rateLimitEntitlementMessage
+import me.rerere.ai.util.streamFailure
 import me.rerere.ai.util.stringSafe
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.sse.newEventSource
+import me.rerere.common.util.formatExceptionForLog
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -187,7 +189,6 @@ class ResponseAPI(
                 type: String?,
                 data: String
             ) {
-                if (!params.privateRequest) Log.d(TAG, "onEvent: $id/$type $data")
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
@@ -198,26 +199,12 @@ class ResponseAPI(
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                var exception = t
-
-                t?.printStackTrace()
-                if (!params.privateRequest) println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
-
-                val bodyRaw = response?.body?.stringSafe()
-                try {
-                    rateLimitEntitlementMessage(response?.code ?: 0, bodyRaw)?.let { throw HttpException(it) }
-                    if (!bodyRaw.isNullOrBlank()) {
-                        val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        if (!params.privateRequest) println(bodyElement)
-                        exception = bodyElement.parseErrorDetail()
-                        if (!params.privateRequest) Log.i(TAG, "onFailure: $exception")
-                    }
-                } catch (e: Throwable) {
-                    if (!params.privateRequest) Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
-                    e.printStackTrace()
-                } finally {
-                    close(exception)
+                val failure = streamFailure("ResponseAPI.stream", t, response) { body ->
+                    rateLimitEntitlementMessage(response?.code ?: 0, body)?.let { HttpException(it) }
+                        ?: json.parseToJsonElement(body).parseErrorDetail()
                 }
+                Log.w(TAG, formatExceptionForLog("ResponseAPI.stream", failure))
+                close(failure)
             }
 
             override fun onClosed(eventSource: EventSource) {

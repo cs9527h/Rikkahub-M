@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,7 +78,8 @@ internal fun BoxScope.MessageJumper(
     show: Boolean,
     onLeft: Boolean,
     scope: CoroutineScope,
-    state: LazyListState
+    state: LazyListState,
+    onBeforeScroll: (toBottom: Boolean) -> Unit = {},
 ) {
     AnimatedVisibility(
         visible = show,
@@ -95,6 +97,7 @@ internal fun BoxScope.MessageJumper(
         ) {
             Surface(
                 onClick = {
+                    onBeforeScroll(false)
                     scope.launch {
                         state.scrollToItem(0)
                     }
@@ -114,6 +117,7 @@ internal fun BoxScope.MessageJumper(
             }
             Surface(
                 onClick = {
+                    onBeforeScroll(false)
                     scope.launch {
                         state.animateScrollToItem(
                             (state.firstVisibleItemIndex - 1).fastCoerceAtLeast(
@@ -137,8 +141,10 @@ internal fun BoxScope.MessageJumper(
             }
             Surface(
                 onClick = {
+                    onBeforeScroll(false)
                     scope.launch {
-                        state.animateScrollToItem(state.firstVisibleItemIndex + 1)
+                        val last = (state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                        state.animateScrollToItem((state.firstVisibleItemIndex + 1).coerceAtMost(last))
                     }
                 },
                 shape = CircleShape,
@@ -155,8 +161,12 @@ internal fun BoxScope.MessageJumper(
             }
             Surface(
                 onClick = {
+                    onBeforeScroll(true)
                     scope.launch {
-                        state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
+                        // Let the anchor's measured padding disappear before locating the actual end.
+                        withFrameNanos {}
+                        withFrameNanos {}
+                        state.scrollToItem((state.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
                     }
                 },
                 shape = CircleShape,

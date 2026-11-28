@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.ui.components.ui
 
+import android.util.Log
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -75,15 +78,12 @@ fun ImagePreviewDialog(
                         lifecycleOwner.lifecycleScope.launch {
                             // 保存完成前一直显示，结束后收起，避免和结果提示叠在一起
                             val saving = toaster.showProgress(resources.getString(R.string.image_preview_saving))
-                            runCatching {
+                            runUiOperation("Image.saveGallery", { Log.e("ImagePreview", it) }, { saving.dismiss() }) {
                                 val imgUrl = images[state.currentPage]
                                 filesManager.saveMessageImage(context, imgUrl)
                             }.onSuccess {
-                                saving.dismiss()
                                 toaster.show(message = resources.getString(R.string.image_preview_saved), type = ToastType.Success)
                             }.onFailure {
-                                saving.dismiss()
-                                it.printStackTrace()
                                 toaster.show(
                                     message = it.toString(),
                                     type = ToastType.Error

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabase
@@ -47,7 +48,9 @@ class AvatarStorageTest {
     private lateinit var store: SettingsStore
     private lateinit var preferences: GatedPreferences
     private lateinit var storage: AvatarStorage
-    private var runtime = emptySet<String>()
+    private lateinit var filesManager: FilesManager
+
+    @Volatile private var runtime = emptySet<String>()
 
     @Before fun setUp() = runBlocking {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
@@ -66,10 +69,11 @@ class AvatarStorageTest {
         ))
         store = SettingsStore(preferences, scope)
         withTimeout(10_000) { store.awaitLoaded() }
+        filesManager = FilesManager(context, FilesRepository(database.managedFileDao()), scope)
         storage = AvatarStorage(
             context,
             store,
-            FilesManager(context, FilesRepository(database.managedFileDao()), scope),
+            filesManager,
             database,
             JsonInstant,
             runtimeReferences = { runtime }
@@ -295,6 +299,242 @@ class AvatarStorageTest {
         assertFalse(File(java.net.URI(abandoned.url)).exists())
         assertTrue(legacy.isFile)
     }
+
+    @Test fun settingsReferenceAddedBeforeFinalFenceRetainsFileAndIndex() = runBlocking {
+        val original = file("avatars/late-settings.png")
+        filesManager.syncFolder(FileFolders.AVATARS)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gated = storageBeforeFinalCheck {
+            entered.complete(Unit)
+            release.await()
+        }
+        var deleted = true
+        val cleanup = launch { deleted = gated.deleteIfUnused("avatars/late-settings.png") }
+        withTimeout(10_000) { entered.await() }
+        store.update {
+            it.copy(assistants = listOf(Assistant(background = original.toUri().toString())))
+        }
+        release.complete(Unit)
+        withTimeout(10_000) { cleanup.join() }
+        assertFalse(deleted)
+        assertTrue(original.isFile)
+        assertTrue(filesManager.getByRelativePath("avatars/late-settings.png") != null)
+        assertTrue(quarantineFiles().isEmpty())
+    }
+
+    @Test fun runtimeReferenceAddedBeforeFinalFenceRetainsFileAndIndex() = runBlocking {
+        val original = file("avatars/late-runtime.png")
+        filesManager.syncFolder(FileFolders.AVATARS)
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gated = storageBeforeFinalCheck {
+            entered.complete(Unit)
+            release.await()
+        }
+        var deleted = true
+        val cleanup = launch { deleted = gated.deleteIfUnused("avatars/late-runtime.png") }
+        withTimeout(10_000) { entered.await() }
+        runtime = setOf(original.toURI().toASCIIString())
+        release.complete(Unit)
+        withTimeout(10_000) { cleanup.join() }
+        assertFalse(deleted)
+        assertTrue(original.isFile)
+        assertTrue(filesManager.getByRelativePath("avatars/late-runtime.png") != null)
+        assertTrue(quarantineFiles().isEmpty())
+    }
+
+    @Test fun finalFenceRetainsFileWhenNewReferencePersistenceIsStillSuspended() = runBlocking {
+        val original = file("avatars/late-durable.png")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val gated = storageBeforeFinalCheck {
+            entered.complete(Unit)
+            release.await()
+        }
+        var deleted = true
+        val cleanup = launch { deleted = gated.deleteIfUnused("avatars/late-durable.png") }
+        withTimeout(10_000) { entered.await() }
+        val persistGate = preferences.blockNextWrite()
+        val update = launch {
+            store.update { it.copy(assistants = listOf(Assistant(background = original.toUri().toString()))) }
+        }
+        withTimeout(10_000) { preferences.entered.await() }
+        release.complete(Unit)
+        kotlinx.coroutines.yield()
+        assertTrue(original.isFile)
+        assertTrue(quarantineFiles().isEmpty())
+        persistGate.complete(Unit)
+        withTimeout(10_000) {
+            update.join()
+            cleanup.join()
+        }
+        assertFalse(deleted)
+        assertTrue(original.isFile)
+        assertTrue(preferences.data.first().asMap().values.any { it.toString().contains("late-durable.png") })
+    }
+
+    @Test fun realRenameFailureRetainsOriginalAndItsIndex() = runBlocking {
+        val original = file("avatars/rename-failure.png")
+        filesManager.syncFolder(FileFolders.AVATARS)
+        val gated = storageBeforeFinalCheck {
+            // Preparation has already validated an empty directory. Replace it with a regular file
+            // to make the actual rename syscall fail, rather than substituting a fake delete callback.
+            val quarantine = File(context.noBackupFilesDir, AvatarFileQuarantine.DIRECTORY)
+            assertTrue(quarantine.delete())
+            quarantine.writeText("block target directory")
+        }
+        assertFalse(gated.deleteIfUnused("avatars/rename-failure.png"))
+        assertEquals("fixture image", original.readText())
+        assertTrue(filesManager.getByRelativePath("avatars/rename-failure.png") != null)
+    }
+
+    @Test fun successfulRetirementReleasesQuarantineAndOnlyItsOwnIndexWithoutFolderRescan() = runBlocking {
+        val original = file("avatars/retired.png")
+        val stale = file("avatars/stale-index.png")
+        filesManager.syncFolder(FileFolders.AVATARS)
+        assertTrue(stale.delete())
+        val legacy = file("upload/unrelated-legacy.png")
+        val guarded = file("avatars/not-indexed.png")
+        store.update { it.copy(assistants = listOf(Assistant(background = guarded.toUri().toString()))) }
+        storage.synchronize()
+        assertFalse(original.exists())
+        assertTrue(quarantineFiles().isEmpty())
+        assertEquals(null, filesManager.getByRelativePath("avatars/retired.png"))
+        // A folder rescan would remove the stale row and/or register the protected unindexed file.
+        assertTrue(filesManager.getByRelativePath("avatars/stale-index.png") != null)
+        assertEquals(null, filesManager.getByRelativePath("avatars/not-indexed.png"))
+        assertEquals(null, filesManager.getByRelativePath("upload/unrelated-legacy.png"))
+        assertTrue(legacy.isFile)
+        assertTrue(guarded.isFile)
+    }
+
+    @Test fun backgroundAndPresetRemovalRetryRetainedCandidateWithoutAvatarSignatureChange() = runBlocking {
+        val original = file("upload/background-owner.png")
+        store.update {
+            it.copy(assistants = listOf(Assistant(
+                avatar = Avatar.Image(original.toUri().toString()),
+                background = original.toUri().toString(),
+                presetMessages = listOf(UIMessage.user(original.toUri().toString())),
+            )))
+        }
+        storage.synchronize()
+        assertTrue(original.isFile)
+        var old = store.settingsFlow.value
+        store.update { it.copy(assistants = it.assistants.map { assistant -> assistant.copy(background = null) }) }
+        storage.onSettingsSaved(old, store.settingsFlow.value)
+        assertTrue(original.isFile)
+        old = store.settingsFlow.value
+        store.update {
+            it.copy(assistants = it.assistants.map { assistant -> assistant.copy(presetMessages = emptyList()) })
+        }
+        storage.onSettingsSaved(old, store.settingsFlow.value)
+        assertFalse(original.exists())
+    }
+
+    @Test fun unrelatedSettingsSaveWithoutCandidateOrPendingDoesNotSweep() = runBlocking {
+        // synchronize() would discover and retire this file; onSettingsSaved should do no work here.
+        val abandoned = file("avatars/not-a-settings-change.png")
+        val old = store.settingsFlow.value
+        store.update { it.copy(displaySetting = it.displaySetting.copy(userAvatar = Avatar.Emoji("🙂"))) }
+        storage.onSettingsSaved(old, store.settingsFlow.value)
+        assertTrue(abandoned.isFile)
+    }
+
+    @Test fun processRestartSweepsOnlyPrivateQuarantineArtifacts() = runBlocking {
+        val original = file("avatars/crash-orphan.png")
+        val quarantine = AvatarFileQuarantine(context.filesDir, context.noBackupFilesDir)
+        val move = checkNotNull(quarantine.prepare("avatars/crash-orphan.png"))
+        assertTrue(move.retire())
+        assertFalse(original.exists())
+        assertEquals(1, quarantineFiles().size)
+        val legacy = file("upload/never-owned.png")
+        storage.synchronize()
+        assertTrue(quarantineFiles().isEmpty())
+        assertTrue(legacy.isFile)
+    }
+
+    @Test fun newAndImportedAssistantsPersistCroppedAvatarAfterDelayedCopy() = runBlocking {
+        val imported = Assistant(
+            name = "Imported role card fixture",
+            systemPrompt = "Preserve imported personality",
+            avatar = Avatar.Image(file("upload/role-card.png").toUri().toString()),
+        )
+        val created = Assistant(name = "New assistant fixture", systemPrompt = "Preserve new personality")
+        store.update { it.copy(assistants = listOf(imported, created)) }
+        storage.synchronize()
+        val png = android.util.Base64.decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXXsAAAAASUVORK5CYII=",
+            android.util.Base64.DEFAULT,
+        )
+        for (target in listOf(imported, created)) {
+            val cropped = File(directory, "crop-${target.id}.png")
+            val entered = CompletableDeferred<Unit>()
+            val allowCopy = CompletableDeferred<Unit>()
+            val before = store.settingsFlow.value
+            val rendered = before.assistants.single { it.id == target.id }
+            var saved: Avatar.Image? = null
+            val delivery = launch {
+                me.rerere.rikkahub.ui.components.ai.deliverCroppedImage(
+                    file = cropped,
+                    write = { it.writeBytes(png) },
+                    consume = { source ->
+                        entered.complete(Unit)
+                        allowCopy.await()
+                        val image = storage.save(source.toUri())
+                        store.update { latest ->
+                            val current = latest.assistants.single { it.id == target.id }
+                            val merged = checkNotNull(
+                                me.rerere.rikkahub.ui.pages.assistant.detail.mergeAssistantDetailUpdate(
+                                    target.id,
+                                    rendered,
+                                    rendered.copy(avatar = image),
+                                    current,
+                                )
+                            )
+                            latest.copy(assistants = latest.assistants.map {
+                                if (it.id == target.id) merged else it
+                            })
+                        }
+                        storage.onSettingsSaved(before, store.settingsFlow.value)
+                        saved = image
+                    },
+                )
+            }
+            withTimeout(10_000) { entered.await() }
+            assertTrue("Crop must survive delayed IO", cropped.isFile)
+            allowCopy.complete(Unit)
+            withTimeout(10_000) { delivery.join() }
+            val current = store.settingsFlow.value.assistants.single { it.id == target.id }
+            val image = checkNotNull(saved)
+            assertEquals(image, current.avatar)
+            assertEquals(target.name, current.name)
+            assertEquals(target.systemPrompt, current.systemPrompt)
+            assertEquals(
+                before.assistants.single { it.id != target.id },
+                store.settingsFlow.value.assistants.single { it.id != target.id },
+            )
+            assertFalse(cropped.exists())
+            val owned = File(java.net.URI(image.url))
+            org.junit.Assert.assertArrayEquals(png, owned.readBytes())
+            storage.synchronize()
+            assertTrue(owned.isFile)
+            assertTrue(preferences.data.first().asMap().values.any { it.toString().contains(owned.name) })
+        }
+    }
+
+    private fun storageBeforeFinalCheck(block: suspend () -> Unit) = AvatarStorage(
+        context,
+        store,
+        filesManager,
+        database,
+        JsonInstant,
+        runtimeReferences = { runtime },
+        beforeFinalReferenceCheck = block,
+    )
+
+    private fun quarantineFiles(): List<File> =
+        File(context.noBackupFilesDir, AvatarFileQuarantine.DIRECTORY).listFiles().orEmpty().toList()
 
     private fun file(relative: String): File = File(context.filesDir, relative).apply {
         parentFile!!.mkdirs()

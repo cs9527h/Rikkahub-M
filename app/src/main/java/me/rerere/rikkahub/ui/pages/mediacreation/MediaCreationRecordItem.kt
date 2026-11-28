@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.mediacreation
 
+import me.rerere.common.util.runCatchingCancellable
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -520,7 +522,7 @@ private fun OutputMenu(
             }
             MenuItem(stringResource(R.string.media_creation_page_save_to_gallery), HugeIcons.Download01) {
                 scope.launch {
-                    runCatching { saveMediaToGallery(context, file, output.mimeType) }
+                    runCatchingCancellable { saveMediaToGallery(context, file, output.mimeType) }
                         .onSuccess {
                             toaster.show(
                                 resources.getString(R.string.media_creation_page_saved_to_gallery),
@@ -528,6 +530,7 @@ private fun OutputMenu(
                             )
                         }
                         .onFailure {
+                            reportMediaFailure("media.gallery.save", it)
                             toaster.show(
                                 it.message ?: resources.getString(R.string.media_creation_page_save_failed),
                                 type = ToastType.Error,
@@ -536,8 +539,9 @@ private fun OutputMenu(
                 }
             }
             MenuItem(stringResource(R.string.share), HugeIcons.Share01) {
-                runCatching { shareMedia(context, file, output.mimeType) }
+                runCatchingCancellable { shareMedia(context, file, output.mimeType) }
                     .onFailure {
+                        reportMediaFailure("media.share", it)
                         toaster.show(
                             it.message ?: resources.getString(R.string.media_creation_page_share_failed),
                             type = ToastType.Error,

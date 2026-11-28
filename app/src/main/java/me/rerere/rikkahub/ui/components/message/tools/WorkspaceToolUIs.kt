@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
@@ -290,8 +292,12 @@ private fun FileContentPreview(path: String?, code: String) {
     }
 }
 
+internal fun shellToolDescription(arguments: JsonElement): String? =
+    ((arguments as? JsonObject)?.get("description") as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+        ?.takeIf { it.isNotEmpty() }?.take(120)
+
 /**
- * 工作空间执行 Shell: 摘要显示退出状态与输出首部, 详情为命令 + stdout/stderr
+ * Optional description titles the step, but the actual command stays visible in its summary/approval.
  */
 object ShellToolUI : ToolUIRenderer {
     private const val TITLE_MAX_CHARS = 40
@@ -303,25 +309,40 @@ object ShellToolUI : ToolUIRenderer {
 
     @Composable
     override fun title(context: ToolUIContext): String {
+        shellToolDescription(context.arguments)?.let { return it }
         val command = context.arguments.getStringContent("command") ?: return stringResource(R.string.tool_ui_shell_default)
         val preview = command.replace("\n", " ").trim()
         val truncated = if (preview.length > TITLE_MAX_CHARS) preview.take(TITLE_MAX_CHARS) + "…" else preview
         return stringResource(R.string.tool_ui_shell, truncated)
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content != null || shellToolDescription(context.arguments) != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        val content = context.content ?: return
+        val content = context.content
+        val command = context.arguments.getStringContent("command")?.trim()
+            .takeIf { shellToolDescription(context.arguments) != null && !it.isNullOrEmpty() }
         val combined = remember(content) {
-            listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
+            listOf(content?.getStringContent("stdout"), content?.getStringContent("stderr"))
                 .filterNot { it.isNullOrBlank() }
                 .joinToString("\n")
                 .trim()
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ShellExitStatus(content, MaterialTheme.typography.labelSmall)
+            if (command != null) {
+                Text(
+                    text = command,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (content != null) ShellExitStatus(content, MaterialTheme.typography.labelSmall)
             if (combined.isNotEmpty()) {
                 Box(
                     modifier = Modifier
@@ -368,7 +389,7 @@ object ShellToolUI : ToolUIRenderer {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.tool_ui_shell_default),
+                    text = shellToolDescription(context.arguments) ?: stringResource(R.string.tool_ui_shell_default),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )

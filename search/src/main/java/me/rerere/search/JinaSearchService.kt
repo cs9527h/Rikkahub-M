@@ -13,6 +13,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -64,7 +65,7 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.JinaOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
 
             val body = buildJsonObject {
@@ -110,7 +111,7 @@ object JinaSearchService : SearchService<SearchServiceOptions.JinaOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.JinaOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val url = params["url"]?.jsonPrimitive?.content ?: error("urls is required")
 
             val body = buildJsonObject {

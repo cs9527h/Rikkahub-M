@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.Model
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
@@ -61,7 +62,7 @@ class QuickStartVM(
                 onSuccess = { UiState.Success(it) },
                 onFailure = {
                     if (it is CancellationException) throw it
-                    Log.e(TAG, "importDeepSeek failed", it)
+                    Log.e(TAG, formatExceptionForLog("QuickStart.importDeepSeek", it))
                     UiState.Error(it)
                 },
             )

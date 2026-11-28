@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+
 import android.content.ClipData
 import android.net.Uri
 import androidx.activity.compose.ManagedActivityResultLauncher
@@ -123,11 +127,13 @@ fun HighlightCodeBlock(
         uri?.let {
             scope.launch(Dispatchers.IO) {
                 try {
-                    context.contentResolver.openOutputStream(it, "wt")?.use { outputStream ->
+                    requireNotNull(context.contentResolver.openOutputStream(it, "wt")) { "Cannot open export document" }.use { outputStream ->
                         outputStream.write(code.toByteArray(Charsets.UTF_8))
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("HighlightCodeBlock", formatExceptionForLog("Code.exportDocument", e))
                 }
             }
         }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.workspace.WorkspaceLayout
@@ -119,7 +120,7 @@ class WorkspaceReminderTransformer(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.d("WorkspaceReminder", "Skipping workspace file: $path", e)
+            Log.d("WorkspaceReminder", formatExceptionForLog("workspace.read-reminder", e))
             null
         }
 

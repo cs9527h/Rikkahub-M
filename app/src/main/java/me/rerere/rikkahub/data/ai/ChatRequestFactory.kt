@@ -4,19 +4,11 @@ import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.json.Json
-import me.rerere.ai.provider.ModelAbility
-import me.rerere.rikkahub.data.ai.memory.MemoryRecallStore
-import me.rerere.rikkahub.data.ai.memory.RecallInjection
-import me.rerere.rikkahub.data.ai.memory.buildRecallInjection
-import me.rerere.rikkahub.data.ai.memory.recalledFiles
-import me.rerere.rikkahub.data.ai.memory.withRecallInjection
-import me.rerere.rikkahub.data.db.AppDatabase
-import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.serialization.json.Json
 import me.rerere.ai.agent.AgentHooks
 import me.rerere.ai.agent.AgentRequest
 import me.rerere.ai.agent.RetryPolicy
@@ -27,13 +19,20 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.limitContext
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.memory.MemoryRecallStore
+import me.rerere.rikkahub.data.ai.memory.RecallInjection
+import me.rerere.rikkahub.data.ai.memory.buildRecallInjection
+import me.rerere.rikkahub.data.ai.memory.recalledFiles
+import me.rerere.rikkahub.data.ai.memory.withRecallInjection
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
@@ -53,6 +52,8 @@ import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.db.entity.MemoryRecallRecord
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.getAssistantOf
@@ -326,8 +327,8 @@ class ChatRequestFactory(
                 }
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                Log.w(TAG, "Unable to save local memory recall diagnostics")
+            } catch (error: Exception) {
+                Log.w(TAG, formatExceptionForLog("memory.save-recall-diagnostics", error))
             }
         }
         val requestMessages = baseMessages.withRecallInjection(injection)

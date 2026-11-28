@@ -13,6 +13,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -50,7 +52,7 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.SearXNGOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             require(serviceOptions.url.isNotBlank()) {
                 "SearXNG URL cannot be empty"
             }
@@ -93,8 +95,7 @@ object SearXNGService : SearchService<SearchServiceOptions.SearXNGOptions> {
                     val searchResponse = runCatching {
                         json.decodeFromString<SearXNGResponse>(bodyRaw)
                     }.onFailure {
-                        Log.w(TAG, "decode SearXNG response failed", it)
-                        error("Failed to decode SearXNG response: ${it.message}")
+                        Log.w(TAG, formatExceptionForLog("search.decode", it))
                     }.getOrThrow()
 
                     // 转换为标准格式，取前 N 个结果

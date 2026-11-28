@@ -20,6 +20,8 @@ import me.rerere.ai.provider.AccountCredentialProvider
 import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.common.http.await
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
 import me.rerere.oauth.OAuthHttpClient
 import me.rerere.oauth.OAuthLoopbackCallbackServer
@@ -85,7 +87,7 @@ class ProviderAccountManager(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Login failed for ${provider.name}", e)
+                Log.e(TAG, formatExceptionForLog("provider-account.login", e))
                 setStatus(
                     providerId,
                     AccountLoginStatus.Failed(e.message ?: e.javaClass.simpleName)
@@ -224,7 +226,7 @@ class ProviderAccountManager(
         }
 
     // token 里没有邮箱时查 userinfo，只用于界面展示，查不到不影响登录
-    private suspend fun fetchGrokEmail(credential: OAuthCredential): String? = runCatching {
+    private suspend fun fetchGrokEmail(credential: OAuthCredential): String? = runCatchingCancellable {
         val request = Request.Builder()
             .url(GrokAuth.USERINFO_ENDPOINT)
             .header("Authorization", "Bearer ${credential.accessToken}")
@@ -234,7 +236,7 @@ class ProviderAccountManager(
             if (!response.isSuccessful) return@use null
             JsonInstant.parseToJsonElement(response.body.string()).jsonObject.claimString("email")
         }
-    }.onFailure { Log.w(TAG, "Failed to fetch Grok userinfo", it) }.getOrNull()
+    }.onFailure { Log.w(TAG, formatExceptionForLog("provider-account.userinfo", it)) }.getOrNull()
 
     private suspend fun persistCredential(providerId: Uuid, credential: OAuthCredential?) {
         settingsStore.update { old ->

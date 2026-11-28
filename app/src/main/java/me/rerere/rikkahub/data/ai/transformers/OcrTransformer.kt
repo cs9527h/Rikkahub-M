@@ -15,6 +15,8 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.cache.LruCache
 import me.rerere.common.cache.SingleFileCacheStore
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.ai.UsageRecorder
 import me.rerere.rikkahub.data.ai.UsageSource
 import me.rerere.rikkahub.data.ai.UsageTag
@@ -82,10 +84,10 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         }
     }
 
-    suspend fun performOcr(part: UIMessagePart.Image): String = runCatching {
+    suspend fun performOcr(part: UIMessagePart.Image): String = runCatchingCancellable {
         // Check cache first
         cache.get(part.url)?.let { cachedResult ->
-            Log.i(TAG, "performOcr: Using cached result for ${part.url}")
+            Log.i(TAG, "performOcr: using cached result")
             return cachedResult
         }
 
@@ -112,7 +114,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
             ),
         )
         val content = result.message.toText().ifBlank { "[ERROR, OCR failed]" }
-        Log.i(TAG, "performOcr: $content")
+        Log.i(TAG, "performOcr: completed")
         val ocrResult = """
             <image_file_ocr>
                $content
@@ -124,6 +126,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         cache.put(part.url, ocrResult)
         return ocrResult
     }.getOrElse {
-        "[ERROR, OCR failed: $it]"
+        Log.w(TAG, formatExceptionForLog("ocr.generate", it))
+        "[ERROR, OCR failed]"
     }
 }

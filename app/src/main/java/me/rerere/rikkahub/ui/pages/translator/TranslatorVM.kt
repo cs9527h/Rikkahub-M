@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.pages.translator
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -132,7 +134,7 @@ class TranslatorVM(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("TranslatorVM", formatExceptionForLog("Translation.translate", e))
                 errorFlow.emit(e)
             } finally {
                 // 被新任务替换掉时不能把新任务的状态改掉

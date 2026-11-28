@@ -6,6 +6,7 @@ import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.util.mergeCustomHeaders
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.Authenticator
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -52,7 +53,7 @@ private class AccountTokenAuthenticator(
         if (response.priorResponse != null) return null
         val rejected = response.request.header("Authorization")?.removePrefix("Bearer ")
         // OkHttp 在自己的线程上同步调用 Authenticator
-        val credential = runCatching {
+        val credential = runCatchingCancellable {
             runBlocking { credentials.getCredential(tag.setting, rejectedAccessToken = rejected) }
         }.getOrNull() ?: return null
         if (credential.accessToken == rejected) return null

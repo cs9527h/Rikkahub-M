@@ -531,6 +531,7 @@ private fun ImportThemeDialog(
                         val theme = themeJson.decodeFromString<CustomTheme>(jsonText)
                         onImport(theme)
                     } catch (e: Exception) {
+                        reportSettingsFailure("settings.theme.import", e)
                         errorMessage = e.message
                     }
                 },

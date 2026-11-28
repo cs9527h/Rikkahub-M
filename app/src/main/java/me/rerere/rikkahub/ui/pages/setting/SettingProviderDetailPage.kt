@@ -490,7 +490,7 @@ private fun ModelList(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            e.printStackTrace()
+            reportSettingsFailure("provider.models.list", e)
             // 失败时保留上次拿到的列表
             value.copy(loading = false, error = e)
         }

@@ -21,6 +21,9 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -44,11 +47,11 @@ fun Context.readClipboardText(): String {
 fun Context.writeClipboardText(text: String) {
     val clipboardManager =
         getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-    runCatching {
+    runCatchingCancellable {
         clipboardManager.setPrimaryClip(android.content.ClipData.newPlainText("text", text))
-        Log.i(TAG, "writeClipboardText: $text")
+        Log.i(TAG, "clipboard.write succeeded")
     }.onFailure {
-        Log.e(TAG, "writeClipboardText: $text", it)
+        Log.e(TAG, formatExceptionForLog("clipboard.write", it))
         Toast.makeText(this, "Failed to write text into clipboard", Toast.LENGTH_SHORT).show()
     }
 }
@@ -81,20 +84,20 @@ fun Context.hasUsageStatsPermission(): Boolean {
  * PACKAGE_USAGE_STATS permission manually.
  */
 fun Context.openUsageAccessSettings() {
-    runCatching {
+    runCatchingCancellable {
         startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         })
     }.onFailure {
-        Log.e(TAG, "openUsageAccessSettings failed", it)
+        Log.e(TAG, formatExceptionForLog("settings.usage-access", it))
     }
 }
 
 fun Context.openAccessibilitySettings() {
-    runCatching {
+    runCatchingCancellable {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }.onFailure {
-        Log.e(TAG, "openAccessibilitySettings failed", it)
+        Log.e(TAG, formatExceptionForLog("settings.accessibility", it))
     }
 }
 
@@ -102,14 +105,14 @@ fun Context.openAccessibilitySettings() {
  * Open a url
  */
 fun Context.openUrl(url: String) {
-    Log.i(TAG, "openUrl: $url")
-    runCatching {
+    Log.i(TAG, "browser.open")
+    runCatchingCancellable {
         val intent = CustomTabsIntent.Builder()
             .setShowTitle(true)
             .build()
         intent.launchUrl(this, url.toUri())
     }.onFailure {
-        it.printStackTrace()
+        Log.e(TAG, formatExceptionForLog("browser.open", it))
         Toast.makeText(this, "Failed to open URL: $url", Toast.LENGTH_SHORT).show()
     }
 }
@@ -149,7 +152,12 @@ fun Context.exportImage(
 }
 
 /** Result is Saved only after encoding AND closing the output stream succeed. */
-fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportResult {
+fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportResult =
+    writeToGallery(fileName) { output ->
+        writeImageExport(output) { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+private fun Context.writeToGallery(fileName: String, write: (OutputStream?) -> Unit): ImageExportResult {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
         ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
         PackageManager.PERMISSION_GRANTED
@@ -159,6 +167,10 @@ fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportRe
     var pendingUri: Uri? = null
     var pendingFile: File? = null
     return try {
+        withImageExportRollback(rollback = {
+            pendingUri?.let { contentResolver.delete(it, null, null) }
+            pendingFile?.let { check(!it.exists() || it.delete()) { "Image rollback failed" } }
+        }) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val contentValues = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
@@ -168,9 +180,7 @@ fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportRe
             }
             val uri = checkNotNull(contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues))
             pendingUri = uri
-            writeImageExport(contentResolver.openOutputStream(uri)) {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-            }
+            write(contentResolver.openOutputStream(uri))
             check(contentResolver.update(uri, ContentValues().apply {
                 put(MediaStore.MediaColumns.IS_PENDING, 0)
             }, null, null) > 0)
@@ -180,17 +190,15 @@ fun Context.writeImageToGallery(bitmap: Bitmap, fileName: String): ImageExportRe
             check(imagesDir.isDirectory || imagesDir.mkdirs())
             val image = File(imagesDir, fileName)
             pendingFile = image
-            writeImageExport(FileOutputStream(image)) {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-            }
+            write(FileOutputStream(image))
             sendBroadcast(Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(image)))
             pendingFile = null
         }
         ImageExportResult.Saved
+        }
     } catch (e: Exception) {
-        pendingUri?.let { runCatching { contentResolver.delete(it, null, null) } }
-        pendingFile?.delete()
-        Log.e(TAG, "Failed to save image", e)
+        if (e is CancellationException) throw e
+        Log.e(TAG, formatExceptionForLog("image.export", e))
         ImageExportResult.Failed
     }
 }
@@ -220,36 +228,5 @@ fun Context.exportImageFile(
         }
     }
 
-    // 保存到相册
-    var outputStream: OutputStream? = null
-    try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10及以上使用MediaStore API
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
-            }
-            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            uri?.let {
-                outputStream = contentResolver.openOutputStream(it)
-                file.inputStream().copyTo(outputStream!!)
-            }
-        } else {
-            // Android 9及以下直接写入文件
-            val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-            val image = File(imagesDir, fileName)
-            file.copyTo(image, overwrite = true)
-
-            // 通知图库更新
-            val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
-            mediaScanIntent.data = Uri.fromFile(image)
-            sendBroadcast(mediaScanIntent)
-        }
-        Log.i(TAG, "Image file saved successfully: $fileName")
-    } catch (e: Exception) {
-        Log.e(TAG, "Failed to save image file", e)
-    } finally {
-        outputStream?.close()
-    }
+    writeToGallery(fileName) { output -> copyImageExport(output) { file.inputStream() } }
 }

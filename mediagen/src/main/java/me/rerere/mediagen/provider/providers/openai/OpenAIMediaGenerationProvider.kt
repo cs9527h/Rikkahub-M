@@ -7,6 +7,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.MediaGenerationInput
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaGenerationOutput
@@ -44,7 +45,7 @@ class OpenAIMediaGenerationProvider(
         setting: MediaGenerationProviderSetting.OpenAI,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
-    ): Result<MediaGenerationTask> = runCatching {
+    ): Result<MediaGenerationTask> = runCatchingCancellable {
         val baseUrl = setting.baseUrl.trimEnd('/')
         val builder = Request.Builder().addHeader("Authorization", "Bearer ${setting.apiKey}")
         val httpRequest = if (request.inputs.isEmpty()) {

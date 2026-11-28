@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import me.rerere.common.util.runCatchingCancellable
+
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
@@ -87,7 +89,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            runCatching {
+            runCatchingCancellable {
                 withContext(Dispatchers.IO) {
                     importCustomChatFontInternal(context, uri)
                 }
@@ -101,6 +103,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 )
                 toaster.show(importSuccessMsg, type = ToastType.Success)
             }.onFailure { error ->
+                reportSettingsFailure("settings.font.import", error)
                 toaster.show(importFailedMsg.format(error.message.orEmpty()), type = ToastType.Error)
             }
         }
@@ -423,7 +426,7 @@ private fun importCustomChatFontInternal(context: Context, uri: Uri): ImportedCh
             }
         } ?: error("Unable to open selected font")
 
-        runCatching {
+        runCatchingCancellable {
             Typeface.createFromFile(tempFile)
         }.onFailure { error ->
             throw IllegalArgumentException(error.message ?: "Invalid font file", error)
@@ -466,8 +469,8 @@ private fun replaceCustomChatFontInternal(fontDir: File, tempFile: File, targetF
 }
 
 private fun deleteCustomChatFontInternal(context: Context, relativePath: String) {
-    val filesDir = runCatching { context.filesDir.canonicalFile }.getOrNull() ?: return
-    val fontFile = runCatching { File(filesDir, relativePath).canonicalFile }.getOrNull() ?: return
+    val filesDir = runCatchingCancellable { context.filesDir.canonicalFile }.getOrNull() ?: return
+    val fontFile = runCatchingCancellable { File(filesDir, relativePath).canonicalFile }.getOrNull() ?: return
     if (fontFile.path.startsWith("${filesDir.path}${File.separator}")) {
         fontFile.delete()
     }

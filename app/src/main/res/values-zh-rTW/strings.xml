@@ -259,6 +259,7 @@
   <string name="emoji_picker_select_skin_tone">選擇膚色</string>
   <string name="error_title_compress_conversation">對話壓縮失敗</string>
   <string name="error_title_generate_title">自動產生標題失敗</string>
+  <string name="error_message_image_too_large">圖片太大，記憶體不足。請減少圖片數量或縮小尺寸，或新建一個會話再試。</string>
   <string name="error_title_generation">訊息產生失敗</string>
   <string name="error_title_operation">操作失敗</string>
   <string name="error_title_regenerate_message">訊息重新產生失敗</string>
@@ -1787,4 +1788,7 @@
   <string name="about_page_checking_update">正在檢查更新…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">無障礙服務已被系統停止，但系統設定仍顯示為開啟（部分手機在最近任務中滑掉應用後會如此）。請將此開關關閉再開啟以進入設定，然後把 \"RikkaHub Phone Use\" 關閉再重新開啟。在最近任務中鎖定 Rikkahub 並允許自動啟動，可避免再次發生。</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">請在無障礙設定中將 \"RikkaHub Phone Use\" 關閉再重新開啟</string>
+  <string name="setting_page_preferences_notification_battery_optimization">忽略電池最佳化</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">已允許。背景生成較不容易被系統停止</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">未允許。系統可能會為了節省電量而停止背景生成</string>
 </resources>

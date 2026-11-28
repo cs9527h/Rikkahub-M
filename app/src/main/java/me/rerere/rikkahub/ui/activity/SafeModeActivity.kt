@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.activity
 
+import me.rerere.common.util.formatExceptionForLog
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -138,8 +140,8 @@ class SafeModeActivity : ComponentActivity() {
                             Toast.makeText(context, getString(R.string.backup_page_backup_success), Toast.LENGTH_SHORT).show()
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (e: Throwable) {
-                            Log.e(TAG, "安全模式导出失败", e)
+                        } catch (e: Exception) {
+                            Log.e(TAG, formatExceptionForLog("SafeMode.export", e))
                             Toast.makeText(context, "导出失败：" + (e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
                         } finally {
                             exporting = false
@@ -184,8 +186,8 @@ class SafeModeActivity : ComponentActivity() {
                             restoreStaged = true
                         } catch (e: CancellationException) {
                             throw e
-                        } catch (e: Throwable) {
-                            Log.e(TAG, "安全模式导入失败", e)
+                        } catch (e: Exception) {
+                            Log.e(TAG, formatExceptionForLog("SafeMode.import", e))
                             val message = e.message ?: "未知错误"
                             Toast.makeText(
                                 context,

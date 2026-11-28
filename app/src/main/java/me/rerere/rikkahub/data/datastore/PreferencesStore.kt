@@ -10,7 +10,6 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -33,6 +32,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.rerere.ai.core.ReasoningLevel
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
@@ -65,13 +65,14 @@ private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
     return PreferenceDataStoreFactory.create(
         corruptionHandler = ReplaceFileCorruptionHandler { exception ->
             // 文件已损坏无法解析, 先留一份原文件用于排查/抢救, 再重建为空
-            Log.e(TAG, "Settings datastore corrupted, resetting", exception)
-            runCatching {
-                file.copyTo(File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
-            }.onFailure {
-                Log.e(TAG, "Failed to backup corrupted settings file", it)
+            Log.e(TAG, formatExceptionForLog("settings.corruption", exception))
+            try {
+                recoverCorruptedSettings(file, File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
+            } catch (error: Exception) {
+                Log.e(TAG, formatExceptionForLog("settings.preserve-corrupted-original", error))
+                // Throwing prevents DataStore from replacing the last salvageable original with defaults.
+                throw error
             }
-            emptyPreferences()
         },
         migrations = listOf(
             PreferenceStoreV1Migration(),
@@ -234,7 +235,7 @@ class SettingsStore internal constructor(
                 throw e
             } catch (e: Throwable) {
                 // 读不出设置就不能带着占位值继续运行：界面上是一份默认设置，而任何修改都落不了盘
-                Log.e(TAG, "Failed to load settings", e)
+                Log.e(TAG, formatExceptionForLog("settings.load", e))
                 Runtime.getRuntime().halt(1)
                 throw e
             }

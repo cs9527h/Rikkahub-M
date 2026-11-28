@@ -1,6 +1,7 @@
 package me.rerere.ai.util
 
 import android.util.Log
+import me.rerere.common.util.formatExceptionForLog
 import java.io.File
 import java.security.MessageDigest
 
@@ -50,7 +51,7 @@ object ImageEncodeCache {
             }
             trim(parent)
         }.onFailure {
-            Log.w(TAG, "Failed to write encoded image cache", it)
+            Log.w(TAG, formatExceptionForLog("image.cache.write", it))
         }
     }
 

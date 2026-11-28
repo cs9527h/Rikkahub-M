@@ -258,6 +258,10 @@ private fun createShellTool(
                     put("type", "string")
                     put("description", "Shell command to run")
                 })
+                put("description", buildJsonObject {
+                    put("type", "string")
+                    put("description", "Concise description of the command in the user's language, usually 5-10 words. Shown as the step title; the actual command remains visible for approval.")
+                })
                 put("cwd", buildJsonObject {
                     put("type", "string")
                     put(

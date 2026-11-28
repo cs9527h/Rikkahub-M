@@ -32,6 +32,7 @@ import me.rerere.ai.util.fetchBody
 import me.rerere.ai.util.json
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.stringOrNull
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlin.time.Clock
@@ -96,9 +97,9 @@ class GrokProvider(
     override suspend fun listModels(providerSetting: ProviderSetting.Grok): List<Model> = coroutineScope {
         // 两个目录拿到一个就够用
         val cliRequest = async {
-            runCatching { getJson(providerSetting, "$GROK_CLI_BASE_URL/models-v2", grokCli = true) }
+            runCatchingCancellable { getJson(providerSetting, "$GROK_CLI_BASE_URL/models-v2", grokCli = true) }
         }
-        val apiRequest = async { runCatching { getJson(providerSetting, "$XAI_BASE_URL/models") } }
+        val apiRequest = async { runCatchingCancellable { getJson(providerSetting, "$XAI_BASE_URL/models") } }
         val cli = cliRequest.await()
         val api = apiRequest.await()
         if (cli.isFailure && api.isFailure) throw cli.exceptionOrNull()!!

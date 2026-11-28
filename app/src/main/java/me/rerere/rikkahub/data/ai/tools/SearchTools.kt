@@ -51,18 +51,20 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     Example:
                     The capital of France is Paris. [citation,example.com](abc123)
                     The population is about 2.1 million. [citation,example.com](abc123) [citation,example2.com](def456)
-                    """.trimIndent(),
+                """.trimIndent(),
                 parameters = {
                     val options = settings.searchServices.getOrElse(
                         index = settings.searchServiceSelected,
-                        defaultValue = { SearchServiceOptions.DEFAULT })
+                        defaultValue = { SearchServiceOptions.DEFAULT }
+                    )
                     val service = SearchService.getService(options)
                     service.parameters(options)
                 },
                 execute = {
                     val options = settings.searchServices.getOrElse(
                         index = settings.searchServiceSelected,
-                        defaultValue = { SearchServiceOptions.DEFAULT })
+                        defaultValue = { SearchServiceOptions.DEFAULT }
+                    )
                     val service = SearchService.getService(options)
                     val result = service.search(
                         params = it.jsonObject,
@@ -72,13 +74,14 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     val results =
                         JsonInstantPretty.encodeToJsonElement(result).jsonObject.let { json ->
                             val map = json.toMutableMap()
-                            map["items"] =
-                                JsonArray(map["items"]!!.jsonArray.mapIndexed { index, item ->
-                                    JsonObject(item.jsonObject.toMutableMap().apply {
-                                        put("id", JsonPrimitive(Uuid.random().toString().take(6)))
-                                        put("index", JsonPrimitive(index + 1))
-                                    })
+                            // This is our typed SearchResult serializer, not a raw provider response.
+                            // Keep schema/programming errors visible instead of reporting empty success.
+                            map["items"] = JsonArray(json.getValue("items").jsonArray.mapIndexed { index, item ->
+                                JsonObject(item.jsonObject.toMutableMap().apply {
+                                    put("id", JsonPrimitive(Uuid.random().toString().take(6)))
+                                    put("index", JsonPrimitive(index + 1))
                                 })
+                            })
                             JsonObject(map)
                         }
                     listOf(UIMessagePart.Text(results.toString()))
@@ -88,39 +91,41 @@ fun createSearchTools(settings: Settings): Set<Tool> {
 
         val options = settings.searchServices.getOrElse(
             index = settings.searchServiceSelected,
-            defaultValue = { SearchServiceOptions.DEFAULT })
+            defaultValue = { SearchServiceOptions.DEFAULT }
+        )
         val service = SearchService.getService(options)
         if (service.scrapingParameters(options) != null) {
-            add(
-                Tool(
-                    name = "scrape_web",
-                    description = """
+            add(Tool(
+                name = "scrape_web",
+                description = """
                         Scrape a URL for detailed page content.
                         Use this when the user requests content from a specific page, when search snippets are insufficient,
                         or when a current claim needs verification against a specific source.
                         Avoid using it for common questions unless the user asks.
-                        """.trimIndent(),
-                    parameters = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
-                        val service = SearchService.getService(options)
-                        service.scrapingParameters(options)
-                    },
-                    execute = {
-                        val options = settings.searchServices.getOrElse(
-                            index = settings.searchServiceSelected,
-                            defaultValue = { SearchServiceOptions.DEFAULT })
-                        val service = SearchService.getService(options)
-                        val result = service.scrape(
-                            params = it.jsonObject,
-                            commonOptions = settings.searchCommonOptions,
-                            serviceOptions = options,
-                        ).getOrThrow().copy(retrievedAt = Clock.System.now().toString())
-                        val payload = JsonInstantPretty.encodeToJsonElement(result).jsonObject
-                        listOf(UIMessagePart.Text(payload.toString()))
-                    }
-                ))
+                """.trimIndent(),
+                parameters = {
+                    val options = settings.searchServices.getOrElse(
+                        index = settings.searchServiceSelected,
+                        defaultValue = { SearchServiceOptions.DEFAULT }
+                    )
+                    val service = SearchService.getService(options)
+                    service.scrapingParameters(options)
+                },
+                execute = {
+                    val options = settings.searchServices.getOrElse(
+                        index = settings.searchServiceSelected,
+                        defaultValue = { SearchServiceOptions.DEFAULT }
+                    )
+                    val service = SearchService.getService(options)
+                    val result = service.scrape(
+                        params = it.jsonObject,
+                        commonOptions = settings.searchCommonOptions,
+                        serviceOptions = options,
+                    ).getOrThrow().copy(retrievedAt = Clock.System.now().toString())
+                    val payload = JsonInstantPretty.encodeToJsonElement(result).jsonObject
+                    listOf(UIMessagePart.Text(payload.toString()))
+                }
+            ))
         }
     }
 }

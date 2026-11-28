@@ -259,6 +259,7 @@
   <string name="emoji_picker_select_skin_tone">스킨 톤 선택</string>
   <string name="error_title_compress_conversation">대화 압축 실패</string>
   <string name="error_title_generate_title">자동 제목 생성 실패</string>
+  <string name="error_message_image_too_large">이미지가 너무 커서 보낼 수 없습니다. 이미지 수를 줄이거나 크기를 줄이거나 새 대화에서 다시 시도하세요.</string>
   <string name="error_title_generation">메시지 생성 실패</string>
   <string name="error_title_operation">작업 실패</string>
   <string name="error_title_regenerate_message">메시지 재생성 실패</string>
@@ -1801,4 +1802,7 @@
   <string name="about_page_checking_update">업데이트 확인 중…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">시스템 설정에는 켜짐으로 표시되지만 시스템이 접근성 서비스를 중지했습니다(최근 앱에서 앱을 밀어서 종료하면 이렇게 되는 기기가 있습니다). 이 스위치를 껐다가 다시 켜서 설정으로 이동한 뒤, \"RikkaHub Phone Use\"를 껐다가 다시 켜세요. 최근 앱에서 RikkaHub를 고정하고 자동 실행을 허용하면 다시 발생하지 않습니다.</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">접근성 설정에서 \"RikkaHub Phone Use\"를 껐다가 다시 켜세요</string>
+  <string name="setting_page_preferences_notification_battery_optimization">배터리 최적화 무시</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">허용됨. 백그라운드 생성이 시스템에 의해 중단될 가능성이 낮습니다</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">허용되지 않음. 배터리를 절약하기 위해 시스템이 백그라운드 생성을 중지할 수 있습니다.</string>
 </resources>

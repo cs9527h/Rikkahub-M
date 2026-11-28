@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.FilesManager
@@ -83,7 +86,7 @@ class WebServerManager(
                 _state.value = baseState.copy(isRunning = true)
                 // 仅局域网模式注册 mDNS
                 if (!localhostOnly) {
-                    runCatching {
+                    runCatchingCancellable {
                         nsdRegistrar.register(
                             port = port,
                             serviceName = serviceName,
@@ -96,12 +99,15 @@ class WebServerManager(
                             }
                         )
                     }.onFailure {
-                        Log.w(TAG, "NSD register failed", it)
+                        Log.w(TAG, formatExceptionForLog("WebServer.registerNsd", it))
                     }
                 }
                 Log.i(TAG, "Web server started successfully on $host:$port")
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isLoading = false)
+                throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start web server", e)
+                Log.e(TAG, formatExceptionForLog("WebServer.start", e))
                 _state.value = baseState.copy(error = e.message)
             }
         }
@@ -119,15 +125,18 @@ class WebServerManager(
                 Log.i(TAG, "Stopping web server")
                 server?.stop(1000, 2000)
                 server = null
-                runCatching {
+                runCatchingCancellable {
                     nsdRegistrar.unregister()
                 }.onFailure {
-                    Log.w(TAG, "NSD unregister failed", it)
+                    Log.w(TAG, formatExceptionForLog("WebServer.unregisterNsd", it))
                 }
                 _state.value = _state.value.copy(isLoading = false)
                 Log.i(TAG, "Web server stopped")
+            } catch (e: CancellationException) {
+                _state.value = _state.value.copy(isLoading = false)
+                throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to stop web server", e)
+                Log.e(TAG, formatExceptionForLog("WebServer.stop", e))
                 _state.value = _state.value.copy(isLoading = false, error = e.message)
             }
         }

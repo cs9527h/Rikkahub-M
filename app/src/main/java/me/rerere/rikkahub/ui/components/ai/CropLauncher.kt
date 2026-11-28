@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.common.android.Logging
 import me.rerere.common.android.appTempFolder
+import me.rerere.rikkahub.ui.components.runUiOperation
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.ui.crop.ImageCropDialog
 import me.rerere.ui.toast.ToastType
@@ -28,7 +29,7 @@ import java.io.File
  */
 @Composable
 internal fun useCropLauncher(
-    onCroppedImageReady: (Uri) -> Unit,
+    onCroppedImageReady: suspend (Uri) -> Unit,
     onCleanup: (() -> Unit)? = null,
     aspectRatio: Float? = null,
 ): (Uri) -> Unit {
@@ -53,22 +54,31 @@ internal fun useCropLauncher(
                 if (saving) return@ImageCropDialog
                 saving = true
                 scope.launch {
-                    val outputFile = File(context.appTempFolder, "crop_output_${System.currentTimeMillis()}.jpg")
-                    runCatching {
-                        withContext(Dispatchers.IO) {
-                            outputFile.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-                        }
-                        onCroppedImageReady(outputFile.toUri())
-                    }.onFailure { error ->
-                        Logging.log("CropLauncher", "crop failed: ${error.message} | ${error.stackTraceToString()}")
-                        toaster.show(
-                            "Failed to crop image: ${error.message ?: "unknown error"}",
-                            type = ToastType.Error
+                    val outputFile = File(context.appTempFolder, "crop_output_${java.util.UUID.randomUUID()}.jpg")
+                    runUiOperation(
+                        operation = "Image.crop",
+                        logFailure = { Logging.log("CropLauncher", it) },
+                        onFinally = {
+                            saving = false
+                            finish()
+                        },
+                    ) {
+                        deliverCroppedImage(
+                            file = outputFile,
+                            write = { file ->
+                                withContext(Dispatchers.IO) {
+                                    file.outputStream().use {
+                                        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it)) {
+                                            "Image compression failed"
+                                        }
+                                    }
+                                }
+                            },
+                            consume = { file -> onCroppedImageReady(file.toUri()) },
                         )
+                    }.onFailure {
+                        toaster.show("Failed to crop image", type = ToastType.Error)
                     }
-                    outputFile.delete()
-                    saving = false
-                    finish()
                 }
             },
         )

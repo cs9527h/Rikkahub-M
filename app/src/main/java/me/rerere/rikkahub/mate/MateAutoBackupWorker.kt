@@ -11,6 +11,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.sync.AutoBackupPolicy
 import me.rerere.rikkahub.data.sync.BackupKind
@@ -109,7 +111,7 @@ class MateAutoBackupWorker(
                                 val keep = settings.backupReminderConfig.autoRetainVersions
                                 if (keep > 0) {
                                     // Retention failures must not turn a successful backup into a retry.
-                                    runCatching {
+                                    runCatchingCancellable {
                                         if (transport == "webdav") {
                                             webDavSync.trimAutomaticBackups(dav, kind, keep)
                                         } else {
@@ -118,7 +120,7 @@ class MateAutoBackupWorker(
                                     }.onFailure {
                                         if (it is CancellationException) throw it
                                         // Transport exceptions may contain signed URLs or credentials.
-                                        Log.w("MateAutoBackup", "旧版本清理失败")
+                                        Log.w("MateAutoBackup", formatExceptionForLog("AutoBackup.trimHistory", it))
                                     }
                                 }
                             }
@@ -129,7 +131,7 @@ class MateAutoBackupWorker(
                             hadFailure = true
                             // 失败也要推进「检查时间」：isDue 只看 lastCheckedAt，不写就等于永远到期，
                             // 每次切前后台都会重新打包整份备份并上传（网络不通时就是持续的 IO 风暴）。
-                            runCatching {
+                            runCatchingCancellable {
                                 settingsStore.update { current ->
                                     val config = current.backupReminderConfig
                                     current.copy(
@@ -143,7 +145,12 @@ class MateAutoBackupWorker(
                                         )
                                     )
                                 }
-                            }.onFailure { Log.w("MateAutoBackup", "记录备份检查时间失败", it) }
+                            }.onFailure {
+                                Log.w(
+                                    "MateAutoBackup",
+                                    formatExceptionForLog("AutoBackup.recordCheckFailure", it)
+                                )
+                            }
                         }
                     }
                 }

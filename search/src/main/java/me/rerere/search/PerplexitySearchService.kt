@@ -16,6 +16,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -58,7 +59,7 @@ object PerplexitySearchService : SearchService<SearchServiceOptions.PerplexityOp
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.PerplexityOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             if (serviceOptions.apiKey.isBlank()) {
                 error("Perplexity API key is required")
             }

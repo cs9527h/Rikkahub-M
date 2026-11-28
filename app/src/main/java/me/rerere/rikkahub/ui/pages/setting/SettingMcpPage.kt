@@ -460,6 +460,7 @@ private fun McpImportModal(
                                 onImport(configs)
                             }
                         } catch (e: Exception) {
+                            reportSettingsFailure("settings.mcp.import", e)
                             errorMessage = parseErrorMsg.format(e.message ?: "")
                         }
                     }

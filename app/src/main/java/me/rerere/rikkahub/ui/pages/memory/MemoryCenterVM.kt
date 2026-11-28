@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.pages.memory
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.MemoryConsolidationStatus
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
@@ -159,7 +162,8 @@ internal class MemoryCenterVM(
                     }
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    Log.e("MemoryCenterVM", formatExceptionForLog("Memory.autoSave", error))
                     _error.value = "整理完成，但自动保存没有成功；候选都还在，可以点“确认记忆”。"
                 } finally {
                     _busy.value = false
@@ -260,7 +264,9 @@ internal class MemoryCenterVM(
 
     /** 检索预览：让用户看到“问这句话时到底会带哪几条记忆”，不真的发请求。 */
     suspend fun previewRecall(query: String): List<MemoryFile> =
-        runCatching { memoryRepository.searchForRecall(scope.value, query) }.getOrDefault(emptyList())
+        runCatchingCancellable { memoryRepository.searchForRecall(scope.value, query) }
+            .onFailure { Log.w("MemoryCenterVM", formatExceptionForLog("Memory.previewRecall", it)) }
+            .getOrDefault(emptyList())
 
     fun resolveCandidate(candidate: HistoryMemoryCandidate, corrected: String?, mergeInto: MemoryFile?) = launchAction {
         history.resolve(scope.value, candidate.jobId, candidate.key, corrected, mergeInto)
@@ -300,6 +306,7 @@ internal class MemoryCenterVM(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                Log.e("MemoryCenterVM", formatExceptionForLog("Memory.performAction", e))
                 _error.value = e.message?.takeIf { e is IllegalStateException || e is IllegalArgumentException }
                     ?: "操作失败，请重试"
             } finally {

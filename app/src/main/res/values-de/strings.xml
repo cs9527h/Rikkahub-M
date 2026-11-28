@@ -295,6 +295,7 @@
   <string name="emoji_picker_select_skin_tone">Hautfarbe auswählen</string>
   <string name="error_title_compress_conversation">Komprimierung der Unterhaltung fehlgeschlagen</string>
   <string name="error_title_generate_title">Automatische Titelerstellung fehlgeschlagen</string>
+  <string name="error_message_image_too_large">Das Bild ist zu groß zum Senden. Weniger oder kleinere Bilder verwenden oder eine neue Unterhaltung starten.</string>
   <string name="error_title_generation">Nachrichtengenerierung fehlgeschlagen</string>
   <string name="error_title_operation">Vorgang fehlgeschlagen</string>
   <string name="error_title_regenerate_message">Erneutes Generieren der Nachricht fehlgeschlagen</string>
@@ -1801,4 +1802,7 @@
   <string name="about_page_checking_update">Suche nach Updates…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">Das System hat den Bedienungshilfen-Dienst beendet, obwohl er in den Einstellungen weiterhin als aktiv angezeigt wird (manche Geräte tun das, nachdem die App aus den letzten Apps gewischt wurde). Schalte diesen Schalter aus und wieder ein, um die Einstellungen zu öffnen, und schalte dort \"RikkaHub Phone Use\" aus und wieder ein. RikkaHub in den letzten Apps zu sperren und Autostart zu erlauben, verhindert ein erneutes Auftreten.</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">Schalte \"RikkaHub Phone Use\" in den Bedienungshilfen-Einstellungen aus und wieder ein</string>
+  <string name="setting_page_preferences_notification_battery_optimization">Akkuoptimierung ignorieren</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">Zugelassen. Die Hintergrundgenerierung wird vom System seltener beendet</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">Nicht erlaubt. Das System kann die Generierung im Hintergrund stoppen, um Akku zu sparen</string>
 </resources>

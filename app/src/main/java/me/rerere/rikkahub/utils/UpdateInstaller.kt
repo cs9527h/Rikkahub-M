@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.OkHttpClient
 import java.io.File
 import java.security.MessageDigest
@@ -51,7 +52,7 @@ object UpdateInstaller {
         onStage: (UpdateStage) -> Unit = {},
         isCancelled: () -> Boolean = { false },
     ): Result<File> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val dir = File(context.cacheDir, UPDATE_DIR).apply { mkdirs() }
             val apk = UpdateDownloadEngine.download(
                 client = client,
@@ -84,6 +85,7 @@ object UpdateInstaller {
     private fun verifyArchive(context: Context, apk: File) {
         val pm = context.packageManager
         val flags = PackageManager.GET_SIGNING_CERTIFICATES
+
         @Suppress("DEPRECATION")
         val archive = pm.getPackageArchiveInfo(apk.absolutePath, flags)
             ?: throw UpdateCheckException("不是有效的 APK")
@@ -110,10 +112,13 @@ object UpdateInstaller {
 
     /** 带包名的授权页；个别 ROM 不认包名参数时退回应用列表页。 */
     fun openInstallPermissionSettings(context: Context) {
-        val withPackage = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+        val withPackage = Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:${context.packageName}")
+        )
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(withPackage) }.onFailure {
-            runCatching {
+        runCatchingCancellable { context.startActivity(withPackage) }.onFailure {
+            runCatchingCancellable {
                 context.startActivity(
                     Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -138,13 +143,20 @@ object UpdateInstaller {
     }
 
     private fun android.content.pm.PackageInfo.longVersionCodeCompat(): Long =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) longVersionCode else @Suppress("DEPRECATION") versionCode.toLong()
+        if (Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.P) {
+            longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            versionCode.toLong()
+        }
 
     private fun android.content.pm.PackageInfo.certSha256(): String? {
         val signers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             signingInfo?.apkContentsSigners
         } else {
-            @Suppress("DEPRECATION") signatures
+            @Suppress("DEPRECATION")
+            signatures
         } ?: return null
         val first = signers.firstOrNull() ?: return null
         return MessageDigest.getInstance("SHA-256").digest(first.toByteArray()).joinToString("") { "%02x".format(it) }

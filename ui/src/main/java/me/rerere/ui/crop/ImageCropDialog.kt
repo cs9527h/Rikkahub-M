@@ -1,5 +1,6 @@
 package me.rerere.ui.crop
 
+import me.rerere.ui.util.performUiOperation
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
@@ -98,12 +99,18 @@ fun ImageCropDialog(
         if (cropping) return
         cropping = true
         scope.launch {
-            runCatching {
-                withContext(Dispatchers.Default) { state.crop(maxResultSize) }
-            }.onSuccess(onConfirm).onFailure {
-                Toast.makeText(context, cropFailed, Toast.LENGTH_SHORT).show()
+            try {
+                performUiOperation(
+                    operation = { withContext(Dispatchers.Default) { state.crop(maxResultSize) } },
+                    onFailure = { error ->
+                        android.util.Log.w("ImageCropDialog", "ui.crop.confirm failed (${error.javaClass.name})")
+                        Toast.makeText(context, cropFailed, Toast.LENGTH_SHORT).show()
+                    },
+                    onSuccess = onConfirm,
+                )
+            } finally {
+                cropping = false
             }
-            cropping = false
         }
     }
 

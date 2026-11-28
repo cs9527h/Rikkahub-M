@@ -3,14 +3,17 @@ package me.rerere.tts.provider.providers
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.useCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,7 +50,7 @@ class QwenTTSProvider : TTSProvider<TTSProviderSetting.Qwen> {
             })
         }
 
-        Log.i(TAG, "generateSpeech: $requestBody")
+        Log.i(TAG, "speech.qwen.generate requested")
 
         val httpRequest = Request.Builder()
             .url("${providerSetting.baseUrl.trimEnd('/')}/services/audio/tts/SpeechSynthesizer")
@@ -57,14 +60,12 @@ class QwenTTSProvider : TTSProvider<TTSProviderSetting.Qwen> {
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
-        httpClient.newCall(httpRequest).execute().use { response ->
+        httpClient.newCall(httpRequest).useCancellable { response ->
             if (!response.isSuccessful) {
                 // 错误体可能回显被合成的原文：只把截断后的摘要进异常消息（给界面看），不写 logcat。
-                val errorBody = runCatching { response.body.string() }.getOrDefault("")
-                Log.e(TAG, "Qwen TTS request failed: ${response.code} ${response.message}")
+                Log.e(TAG, "speech.qwen.request failed: HTTP ${response.code}")
                 throw TTSProviderException(
-                    message = "Qwen TTS request failed: ${response.code} ${response.message}" +
-                        errorBody.take(200).let { if (it.isBlank()) "" else ", body: $it" },
+                    message = "Qwen TTS request failed: HTTP ${response.code}",
                     statusCode = response.code
                 )
             }
@@ -129,7 +130,8 @@ class QwenTTSProvider : TTSProvider<TTSProviderSetting.Qwen> {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse SSE data: $data", e)
+            if (e is CancellationException) throw e
+            Log.e(TAG, formatExceptionForLog("speech.QwenTTSProvider.Failed.to.parse.SSE.data", e))
             null
         }
     }

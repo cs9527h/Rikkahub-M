@@ -1,6 +1,10 @@
 package me.rerere.rikkahub.ui.components.message
 
 import android.content.Intent
+import android.util.Log
+import me.rerere.rikkahub.ui.components.runUiOperation
+import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.ui.toast.ToastType
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +74,7 @@ internal fun EditedFilesList(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
     val workspaceRepository: WorkspaceRepository = koinInject()
 
     var selectedPath by remember { mutableStateOf<String?>(null) }
@@ -83,13 +88,13 @@ internal fun EditedFilesList(
         val path = selectedPath.also { selectedPath = null } ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            runCatching {
+            runUiOperation("Workspace.exportEditedFile", { Log.e("EditedFiles", it) }) {
                 val outputStream = withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri) }
-                    ?: return@runCatching
+                    ?: error("Cannot open export document")
                 outputStream.use { output ->
                     workspaceRepository.exportAbsoluteFile(workspaceId, path, output)
                 }
-            }
+            }.onFailure { toaster.show("导出失败，请重试", type = ToastType.Error) }
         }
     }
 
@@ -172,7 +177,7 @@ internal fun EditedFilesList(
                         val p = selectedPath ?: return@Card
                         selectedPath = null
                         scope.launch {
-                            runCatching {
+                            runUiOperation("Workspace.shareEditedFile", { Log.e("EditedFiles", it) }) {
                                 val dir = File(context.cacheDir, "workspace_share").apply { mkdirs() }
                                 val file = File(dir, p.substringAfterLast('/'))
                                 file.outputStream().use { output ->
@@ -189,7 +194,7 @@ internal fun EditedFilesList(
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 context.startActivity(Intent.createChooser(intent, null))
-                            }
+                            }.onFailure { toaster.show("分享失败，请重试", type = ToastType.Error) }
                         }
                     },
                     shape = MaterialTheme.shapes.medium,

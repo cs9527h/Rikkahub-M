@@ -14,6 +14,8 @@ import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.common.android.Logging
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.db.entity.ManagedFileEntity
 import me.rerere.rikkahub.data.repository.FilesRepository
@@ -110,7 +112,7 @@ class FilesManager(
             dir.mkdirs()
         }
         uris.forEach { uri ->
-            runCatching {
+            runCatchingCancellable {
                 val sourceName = getFileNameFromUri(uri) ?: uri.lastPathSegment ?: "file"
                 val sourceMime = getFileMimeType(uri)
                 val fileName = buildUuidFileName(displayName = sourceName, mimeType = sourceMime)
@@ -134,12 +136,9 @@ class FilesManager(
                 )
                 newUris.add(file.toUri())
             }.onFailure {
-                it.printStackTrace()
-                Log.e(TAG, "createChatFilesByContents: Failed to save file from $uri", it)
-                Logging.log(
-                    TAG,
-                    "createChatFilesByContents: Failed to save file from $uri ${it.message} | ${it.stackTraceToString()}"
-                )
+                val diagnostic = formatExceptionForLog("files.createChatFilesByContents", it)
+                Log.e(TAG, diagnostic)
+                Logging.log(TAG, diagnostic)
             }
         }
         return newUris
@@ -188,12 +187,7 @@ class FilesManager(
                                 val bitmap = BitmapFactory.decodeByteArray(sourceByteArray, 0, sourceByteArray.size)
                                 val byteArray = FileUtils.compressBitmapToPng(bitmap)
                                 val urls = createChatFilesByByteArrays(listOf(byteArray))
-                                Log.i(
-                                    TAG,
-                                    "convertBase64ImagePartToLocalFile: convert base64 img to ${urls.joinToString(
-                                        ", "
-                                    )}"
-                                )
+                                Log.i(TAG, "convertBase64ImagePartToLocalFile: saved image")
                                 part.copy(
                                     url = urls.first().toString(),
                                 )
@@ -301,20 +295,14 @@ class FilesManager(
             }
 
             image.startsWith("http") -> {
-                runCatching {
-                    val url = URL(image)
-                    val connection = url.openConnection() as HttpURLConnection
-                    connection.connect()
-
-                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                        val bitmap = BitmapFactory.decodeStream(connection.inputStream)
+                runCatchingCancellable {
+                    val connection = URL(image).openConnection() as HttpURLConnection
+                    withHttpImageStream(connection) { input ->
+                        val bitmap = BitmapFactory.decodeStream(input)
                         activityContext.exportImage(activity, bitmap)
-                    } else {
-                        Log.e(
-                            TAG,
-                            "saveMessageImage: Failed to download image from $image, response code: ${connection.responseCode}"
-                        )
                     }
+                }.onFailure {
+                    Log.e(TAG, formatExceptionForLog("files.saveMessageImage", it))
                 }.getOrNull()
             }
 
@@ -369,10 +357,18 @@ class FilesManager(
         SyncResult(inserted = inserted, removed = removed)
     }
 
+    /**
+     * Drops a single index row after the caller removed the file under its own safety checks.
+     * Cheaper than [syncFolder], which re-queries every file in the folder.
+     */
+    suspend fun deleteIndexEntry(relativePath: String): Int = withContext(Dispatchers.IO) {
+        repository.deleteByPath(relativePath)
+    }
+
     suspend fun delete(id: Long, deleteFromDisk: Boolean = true): Boolean = withContext(Dispatchers.IO) {
         val entity = repository.getById(id) ?: return@withContext false
         if (deleteFromDisk) {
-            val deleted = runCatching {
+            val deleted = runCatchingCancellable {
                 val file = getFile(entity)
                 !file.exists() || file.delete()
             }.getOrDefault(false)
@@ -390,7 +386,7 @@ class FilesManager(
 
         var allDeletedFromDisk = true
         entries.orEmpty().forEach { entry ->
-            if (!runCatching { deleteTreeNoFollow(entry) }.getOrDefault(false)) {
+            if (!runCatchingCancellable { deleteTreeNoFollow(entry) }.getOrDefault(false)) {
                 allDeletedFromDisk = false
             }
         }
@@ -417,7 +413,7 @@ class FilesManager(
             .filter { it.createdAt < cutoffMillis }
             .forEach { entity ->
                 val file = getFile(entity)
-                val deletedFromDisk = !file.exists() || runCatching {
+                val deletedFromDisk = !file.exists() || runCatchingCancellable {
                     deleteTreeNoFollow(file)
                 }.getOrDefault(false)
 
@@ -473,10 +469,10 @@ class FilesManager(
     private fun trackManagedFile(folder: String, file: File, displayName: String, mimeType: String) {
         val relativePath = buildRelativePath(folder, file)
         appScope.launch(Dispatchers.IO) {
-            runCatching {
+            runCatchingCancellable {
                 val existing = repository.getByPath(relativePath)
                 if (existing != null) {
-                    return@runCatching
+                    return@runCatchingCancellable
                 }
                 val now = System.currentTimeMillis()
                 repository.insert(
@@ -491,11 +487,9 @@ class FilesManager(
                     )
                 )
             }.onFailure {
-                Log.e(TAG, "trackManagedFile: Failed to track file ${file.absolutePath}", it)
-                Logging.log(
-                    TAG,
-                    "trackManagedFile: Failed to track file ${file.absolutePath} ${it.message} | ${it.stackTraceToString()}"
-                )
+                val diagnostic = formatExceptionForLog("files.trackManagedFile", it)
+                Log.e(TAG, diagnostic)
+                Logging.log(TAG, diagnostic)
             }
         }
     }

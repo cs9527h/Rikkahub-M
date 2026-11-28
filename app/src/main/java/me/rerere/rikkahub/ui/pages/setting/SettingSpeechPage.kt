@@ -35,7 +35,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -548,8 +547,8 @@ private fun SpeechProviderItem(
 @Composable
 private fun TTSTestButton() {
     val tts = LocalTTSState.current
-    val isSpeaking by tts.isSpeaking.collectAsState()
-    val isAvailable by tts.isAvailable.collectAsState()
+    val isSpeaking by tts.isSpeaking.collectAsStateWithLifecycle()
+    val isAvailable by tts.isAvailable.collectAsStateWithLifecycle()
     if (!isAvailable) return
 
     val testText = stringResource(R.string.setting_tts_page_test_text)

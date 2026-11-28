@@ -10,6 +10,7 @@ import android.media.MediaRecorder
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,7 @@ import me.rerere.asr.ASRState
 import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
+import me.rerere.common.util.formatExceptionForLog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -105,9 +107,8 @@ class DashScopeASRController(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                val handshakeResult = response?.let { " (HTTP ${it.code} ${it.message})" }.orEmpty()
-                Log.e(TAG, "DashScope ASR websocket failed$handshakeResult", t)
                 if (this@DashScopeASRController.webSocket !== webSocket) return
+                Log.e(TAG, formatExceptionForLog("speech.dashscope.websocket", t))
 
                 finishTimeoutJob?.cancel()
                 finishTimeoutJob = null
@@ -247,8 +248,9 @@ class DashScopeASRController(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 if (isActive) {
-                    Log.e(TAG, "Audio recording failed", e)
+                    Log.e(TAG, formatExceptionForLog("speech.DashScopeASRController.Audio.recording.failed", e))
                     setError(e.message ?: "Audio recording failed")
                 }
             } finally {
@@ -259,7 +261,7 @@ class DashScopeASRController(
 
     private fun handleServerEvent(socket: WebSocket, text: String) {
         val event = runCatching { JSONObject(text) }.getOrElse {
-            Log.w(TAG, "Invalid realtime event: $text", it)
+            Log.w(TAG, formatExceptionForLog("speech.DashScopeASRController.Invalid.realtime.event", it))
             return
         }
 
@@ -307,7 +309,7 @@ class DashScopeASRController(
                 val itemId = event.optString("item_id", "default")
                 val error = event.optJSONObject("error")
                 val message = error?.optString("message") ?: "ASR transcription failed"
-                Log.e(TAG, "DashScope ASR transcription failed: $message")
+                Log.e(TAG, "speech.dashscope.transcription failed")
                 partialTranscripts.remove(itemId)
                 publishTranscript()
                 _state.update { it.copy(errorMessage = message) }
@@ -316,7 +318,7 @@ class DashScopeASRController(
             "error" -> {
                 val error = event.optJSONObject("error")
                 val message = error?.optString("message") ?: "ASR realtime error"
-                Log.e(TAG, "DashScope ASR server error: $message")
+                Log.e(TAG, "speech.dashscope.server failed")
                 setError(message)
             }
 
@@ -371,8 +373,11 @@ private fun ASRProviderSetting.DashScope.websocketEndpoint(): String {
         .trimEnd('/')
         .replace("/api-ws/v1/inference", "/api-ws/v1/realtime")
     val separator = if (endpoint.contains("?")) "&" else "?"
-    return if (endpoint.contains("model=")) endpoint
-    else "${endpoint}${separator}model=${model}"
+    return if (endpoint.contains("model=")) {
+        endpoint
+    } else {
+        "${endpoint}${separator}model=$model"
+    }
 }
 
 private fun ASRProviderSetting.DashScope.sessionUpdateEvent(): JSONObject {

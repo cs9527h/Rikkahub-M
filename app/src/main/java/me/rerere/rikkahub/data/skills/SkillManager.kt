@@ -2,8 +2,10 @@ package me.rerere.rikkahub.data.skills
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.FileFolders
 import java.io.File
@@ -16,10 +18,9 @@ class SkillManager(
         private const val TAG = "SkillManager"
     }
 
-    private val builtinLock = Any()
-
-    @Volatile
-    private var builtinExtracted = false
+    private val builtinExtraction = BuiltinSkillExtraction {
+        BuiltinSkills.extractIfNeeded(context, getBuiltinSkillsDir())
+    }
 
     fun getSkillsDir(): File {
         val dir = context.filesDir.resolve(FileFolders.SKILLS)
@@ -37,15 +38,13 @@ class SkillManager(
      * 确保内置技能已从 assets 解压到 [getBuiltinSkillsDir]，每个进程只检查一次。
      */
     fun ensureBuiltinSkillsExtracted() {
-        if (builtinExtracted) return
-        synchronized(builtinLock) {
-            if (builtinExtracted) return
-            runCatching {
-                BuiltinSkills.extractIfNeeded(context, getBuiltinSkillsDir())
-            }.onFailure {
-                Log.w(TAG, "ensureBuiltinSkillsExtracted: Failed to extract builtin skills", it)
-            }
-            builtinExtracted = true
+        try {
+            builtinExtraction.ensureExtracted()
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            Log.w(TAG, formatExceptionForLog("skills.extract-builtin", error))
+            // Do not let prune interpret a failed extraction as a successfully empty skill catalog.
+            throw error
         }
     }
 
@@ -167,7 +166,7 @@ class SkillManager(
             tempFile.writeText(content)
             tempFile.renameTo(target)
         } catch (e: Exception) {
-            Log.w(TAG, "saveSkillFile: Failed to save $skillName/$relativePath", e)
+            Log.w(TAG, formatExceptionForLog("skills.save-file", e))
             false
         } finally {
             if (tempFile.exists()) tempFile.delete()
@@ -210,7 +209,7 @@ class SkillManager(
             backupDir?.deleteRecursively()
             return true
         } catch (e: Exception) {
-            Log.w(TAG, "saveSkillFilesAtomically: Failed to save $skillName", e)
+            Log.w(TAG, formatExceptionForLog("skills.save-directory", e))
             if (backupDir != null && !targetDir.exists()) {
                 backupDir.renameTo(targetDir)
             }

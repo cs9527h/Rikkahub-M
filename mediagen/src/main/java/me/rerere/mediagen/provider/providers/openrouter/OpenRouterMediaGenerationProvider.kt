@@ -4,6 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaGenerationRequest
 import me.rerere.mediagen.model.MediaGenerationTask
@@ -29,7 +30,7 @@ class OpenRouterMediaGenerationProvider(
         setting: MediaGenerationProviderSetting.OpenRouter,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
-    ): Result<MediaGenerationTask> = runCatching {
+    ): Result<MediaGenerationTask> = runCatchingCancellable {
         when (model.kind) {
             MediaKind.IMAGE -> image.create(setting, model, request)
             MediaKind.VIDEO -> video.create(setting, model, request)
@@ -42,7 +43,7 @@ class OpenRouterMediaGenerationProvider(
         taskId: String,
     ): Result<MediaGenerationTask> = when (model.kind) {
         MediaKind.IMAGE -> super.query(setting, model, taskId)
-        MediaKind.VIDEO -> runCatching { video.query(setting, model, taskId) }
+        MediaKind.VIDEO -> runCatchingCancellable { video.query(setting, model, taskId) }
     }
 
     internal companion object {

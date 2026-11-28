@@ -64,7 +64,6 @@ import me.rerere.rikkahub.data.model.withConversation
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.message.ChatMessage
 import me.rerere.rikkahub.ui.components.ui.ErrorCardsDisplay
-import me.rerere.rikkahub.ui.hooks.ImeLazyListAutoScroller
 import me.rerere.rikkahub.ui.pages.quickstart.QuickStartCard
 import me.rerere.rikkahub.ui.theme.ChatFontProvider
 import me.rerere.rikkahub.utils.plus
@@ -83,6 +82,7 @@ fun ChatList(
     state: LazyListState,
     previewListState: LazyListState,
     selectionState: ChatSelectionState,
+    scrollAnchor: ChatScrollAnchorState,
     loading: Boolean,
     compressing: Boolean = false,
     processingStatus: String? = null,
@@ -145,6 +145,7 @@ fun ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 state = state,
+                scrollAnchor = scrollAnchor,
                 loading = loading,
                 compressing = compressing,
                 processingStatus = processingStatus,
@@ -217,6 +218,7 @@ private fun ChatListNormal(
     innerPadding: PaddingValues,
     conversation: Conversation,
     state: LazyListState,
+    scrollAnchor: ChatScrollAnchorState,
     loading: Boolean,
     compressing: Boolean,
     processingStatus: String? = null,
@@ -283,8 +285,13 @@ private fun ChatListNormal(
     val selectedItems = selectionState.selectedItems
     var showExportSheet by remember { mutableStateOf(false) }
 
-    // 自动跟随键盘滚动
-    ImeLazyListAutoScroller(lazyListState = state)
+    // 普通阅读保留键盘 delta 补偿；用户回合置顶时按窗口高度补白，不把锚点滚到标题栏下。
+    scrollAnchor.ImeAutoScroller(listState = state)
+    val lastNodeMinHeight = scrollAnchor.rememberLastNodeMinHeight(
+        listState = state,
+        nodes = conversation.messageNodes,
+        bottomKey = SCROLL_BOTTOM_KEY,
+    )
 
     val assistant = remember(
         settings.assistants,
@@ -324,7 +331,7 @@ private fun ChatListNormal(
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
                     // println("is bottom = ${visibleItemsInfo.isAtBottom()}, scroll = ${state.isScrollInProgress}, can_scroll = ${state.canScrollForward}, loading = $loading")
-                    if (!state.isScrollInProgress && loadingState) {
+                    if (!state.isScrollInProgress && loadingState && scrollAnchor.autoFollow) {
                         if (visibleItemsInfo.isAtBottom()) {
                             state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
                             // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
@@ -368,7 +375,10 @@ private fun ChatListNormal(
                         items = conversation.messageNodes,
                         key = { index, item -> item.id },
                     ) { index, node ->
-                        Column {
+                        Column(
+                            modifier = if (index == lastMessageIndex) Modifier.chatAnchorMinHeight(lastNodeMinHeight) else Modifier,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
                             ListSelectableItem(
                                 key = node.id,
                                 onSelectChange = {
@@ -419,6 +429,13 @@ private fun ChatListNormal(
                                     lastMessage = index == lastMessageIndex,
                                 )
                             }
+                            // 加载行必须在补白上方，同步测量避免回复变短时列表上下抖动。
+                            if (loading && index == lastMessageIndex) {
+                                ChatLoadingIndicator(
+                                    processingStatus = processingStatus,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                                )
+                            }
                         }
                     }
 
@@ -432,27 +449,10 @@ private fun ChatListNormal(
                         }
                     }
 
-                    // 压缩时也用这一行，processingStatus 显示的是压缩中
-                    if (loading) {
+                    // 空会话没有最后一条消息承载加载行。
+                    if (loading && conversation.messageNodes.isEmpty()) {
                         item(LOADING_INDICATOR_KEY) {
-                            Row(
-                                modifier = Modifier.padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                ContainedLoadingIndicator(
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                AnimatedVisibility(
-                                    visible = processingStatus != null,
-                                ) {
-                                    Text(
-                                        text = processingStatus ?: "",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
+                            ChatLoadingIndicator(processingStatus = processingStatus)
                         }
                     }
 
@@ -530,7 +530,10 @@ private fun ChatListNormal(
                     !captureProgress,
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
-                state = state
+                state = state,
+                onBeforeScroll = { toBottom ->
+                    if (toBottom) scrollAnchor.release() else scrollAnchor.onUserScroll()
+                },
             )
 
             // Suggestion
@@ -541,6 +544,25 @@ private fun ChatListNormal(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+        }
+    }
+}
+
+// 生成与后台压缩共用的进度行。
+@Composable
+private fun ChatLoadingIndicator(processingStatus: String?, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ContainedLoadingIndicator(modifier = Modifier.size(28.dp))
+        AnimatedVisibility(visible = processingStatus != null) {
+            Text(
+                text = processingStatus ?: "",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.components.ui
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.formatExceptionForLog
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,8 +103,10 @@ fun TextArea(
                     }
                     state.setTextAndPlaceCursorAtEnd(content)
                     toaster.show(resources.getString(R.string.text_area_import_success), type = ToastType.Success)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e("TextArea", formatExceptionForLog("Text.importFile", e))
                     val errorMessage = e.message ?: resources.getString(R.string.text_area_import_failed)
                     onImportError?.invoke(errorMessage) ?: toaster.show(
                         message = errorMessage,

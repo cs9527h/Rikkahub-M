@@ -53,6 +53,7 @@ import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.parseErrorDetail
+import me.rerere.ai.util.streamFailure
 import me.rerere.ai.util.stringSafe
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonArrayOrNull
@@ -60,6 +61,7 @@ import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.sse.newEventSource
 import me.rerere.common.http.stringOrNull
+import me.rerere.common.util.formatExceptionForLog
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -141,32 +143,20 @@ internal class InteractionsAPI(
                 type: String?,
                 data: String
             ) {
-                if (!params.privateRequest) Log.d(TAG, "onEvent: $id/$type $data")
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
                     if (result.completed) close()
                 } catch (e: Throwable) {
-                    if (!params.privateRequest) Log.e(TAG, "Failed to parse stream event: $data", e)
+                    if (!params.privateRequest) Log.w(TAG, formatExceptionForLog("InteractionsAPI.stream.decode", e))
                     close(e)
                 }
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                var exception = t
-
-                val bodyRaw = response?.body?.stringSafe()
-                try {
-                    if (!bodyRaw.isNullOrBlank()) {
-                        exception = json.parseToJsonElement(bodyRaw).parseErrorDetail()
-                    } else if (t == null && response != null) {
-                        exception = Exception("Unknown error: ${response.code}")
-                    }
-                } catch (e: Throwable) {
-                    if (!params.privateRequest) Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
-                } finally {
-                    close(exception ?: Exception("Stream failed"))
-                }
+                val failure = streamFailure("InteractionsAPI.stream", t, response)
+                Log.w(TAG, formatExceptionForLog("InteractionsAPI.stream", failure))
+                close(failure)
             }
 
             override fun onClosed(eventSource: EventSource) {

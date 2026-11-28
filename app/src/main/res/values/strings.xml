@@ -262,6 +262,7 @@
   <string name="emoji_picker_select_skin_tone">Select Skin Tone</string>
   <string name="error_title_compress_conversation">Conversation compression failed</string>
   <string name="error_title_generate_title">Auto title generation failed</string>
+  <string name="error_message_image_too_large">The image is too large to send. Use fewer or smaller images, or start a new conversation and retry.</string>
   <string name="error_title_generation">Message generation failed</string>
   <string name="error_title_operation">Operation failed</string>
   <string name="error_title_regenerate_message">Message regeneration failed</string>
@@ -1800,4 +1801,7 @@
   <string name="about_page_check_latest">You are on the latest version</string>
   <string name="about_page_check_failed">Update check failed: %1$s</string>
   <string name="about_page_checking_update">Checking for updates…</string>
+  <string name="setting_page_preferences_notification_battery_optimization">Ignore battery optimization</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">Allowed. Background generation is less likely to be stopped by the system</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">Not allowed. The system may stop background generation to save battery</string>
 </resources>

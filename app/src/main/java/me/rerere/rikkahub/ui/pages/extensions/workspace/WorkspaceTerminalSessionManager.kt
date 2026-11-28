@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
@@ -150,8 +152,8 @@ class WorkspaceTerminalSessionManager internal constructor(
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Throwable) {
-                Log.e(TAG, "Failed to prepare terminal for workspace $root", error)
+            } catch (error: Exception) {
+                Log.e(TAG, formatExceptionForLog("Terminal.prepareWorkspace", error))
                 false
             }
         }
@@ -173,14 +175,14 @@ class WorkspaceTerminalSessionManager internal constructor(
             onTitleUpdated = { title -> updateTitle(root, tabId, title) },
             onFinished = { markFinished(root = root, tabId = tabId) },
         )
-        val result = runCatching {
+        val result = runCatchingCancellable {
             createWorkspaceTerminalSession(
                 transport = terminalTransport(workspace),
                 root = root,
                 client = client,
             )
         }.onFailure { error ->
-            Log.e(TAG, "Failed to create terminal for workspace $root", error)
+            Log.e(TAG, formatExceptionForLog("Terminal.createWorkspaceSession", error))
         }
         val session = result.getOrNull()
 

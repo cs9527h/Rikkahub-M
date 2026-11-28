@@ -1,10 +1,13 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.BackgroundShellManager
@@ -19,13 +22,15 @@ class WorkspaceVM(
 
     fun create(name: String) {
         viewModelScope.launch {
-            runCatching { repository.create(name) }
+            runCatchingCancellable { repository.create(name) }
+                .onFailure { Log.e("WorkspaceVM", formatExceptionForLog("Workspace.create", it)) }
         }
     }
 
     fun rename(workspace: WorkspaceEntity, name: String) {
         viewModelScope.launch {
-            runCatching { repository.rename(workspace.id, name) }
+            runCatchingCancellable { repository.rename(workspace.id, name) }
+                .onFailure { Log.e("WorkspaceVM", formatExceptionForLog("Workspace.rename", it)) }
         }
     }
 

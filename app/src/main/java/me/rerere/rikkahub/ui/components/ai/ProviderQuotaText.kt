@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.ui.components.ai
 
+import android.util.Log
+import me.rerere.common.util.runCatchingCancellable
+import me.rerere.common.util.formatExceptionForLog
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -59,10 +63,11 @@ fun rememberProviderQuota(providerSetting: ProviderSetting): Result<ProviderQuot
             return@produceState
         }
         value = null
-        value = runCatching {
+        value = runCatchingCancellable {
             providerManager.getProviderByType(providerSetting).getQuota(providerSetting)
                 ?: error("Quota is not available")
         }.onSuccess { cache.put(cacheKey, it) }
+            .onFailure { Log.w("ProviderQuota", formatExceptionForLog("Provider.queryQuota", it)) }
     }
     return quota
 }

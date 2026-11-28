@@ -1,5 +1,7 @@
 package me.rerere.ai.provider.providers.google
 
+import me.rerere.ai.util.streamFailure
+import me.rerere.common.util.formatExceptionForLog
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -299,50 +301,21 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 type: String?,
                 data: String
             ) {
-                Log.i(TAG, "onEvent: $data")
 
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
                     if (result.completed) close()
                 } catch (e: Throwable) {
-                    Log.e(TAG, "Failed to parse stream event: $data", e)
+                    Log.w(TAG, formatExceptionForLog("GoogleProvider.stream.decode", e))
                     close(e)
                 }
             }
 
-            override fun onFailure(
-                eventSource: EventSource,
-                t: Throwable?,
-                response: Response?
-            ) {
-                var exception = t
-
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.message}")
-
-                try {
-                    if (t == null && response != null) {
-                        val bodyStr = response.body.stringSafe()
-                        if (!bodyStr.isNullOrEmpty()) {
-                            val bodyElement = json.parseToJsonElement(bodyStr)
-                            println(bodyElement)
-                            if (bodyElement is JsonObject) {
-                                exception = Exception(
-                                    bodyElement["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
-                                        ?: "unknown"
-                                )
-                            }
-                        } else {
-                            exception = Exception("Unknown error: ${response.code}")
-                        }
-                    }
-                } catch (e: Throwable) {
-                    e.printStackTrace()
-                    exception = e
-                } finally {
-                    close(exception ?: Exception("Stream failed"))
-                }
+            override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                val failure = streamFailure("GoogleProvider.stream", t, response)
+                Log.w(TAG, formatExceptionForLog("GoogleProvider.stream", failure))
+                close(failure)
             }
 
             override fun onClosed(eventSource: EventSource) {

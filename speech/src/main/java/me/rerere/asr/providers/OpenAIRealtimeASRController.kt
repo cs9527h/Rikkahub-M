@@ -10,6 +10,7 @@ import android.media.MediaRecorder
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,7 @@ import me.rerere.asr.ASRState
 import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
+import me.rerere.common.util.formatExceptionForLog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -102,7 +104,7 @@ class OpenAIRealtimeASRController(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (this@OpenAIRealtimeASRController.webSocket !== webSocket) return
-                Log.e(TAG, "Realtime ASR websocket failed", t)
+                Log.e(TAG, formatExceptionForLog("speech.openai.websocket", t))
                 releaseRecorder()
                 setError(t.message ?: "ASR websocket failed")
             }
@@ -200,8 +202,9 @@ class OpenAIRealtimeASRController(
                     }
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 if (isActive) {
-                    Log.e(TAG, "Audio recording failed", e)
+                    Log.e(TAG, formatExceptionForLog("speech.OpenAIRealtimeASRController.Audio.recording.failed", e))
                     setError(e.message ?: "Audio recording failed")
                 }
             } finally {
@@ -212,7 +215,7 @@ class OpenAIRealtimeASRController(
 
     private fun handleServerEvent(text: String) {
         val event = runCatching { JSONObject(text) }.getOrElse {
-            Log.w(TAG, "Invalid realtime event: $text", it)
+            Log.w(TAG, formatExceptionForLog("speech.OpenAIRealtimeASRController.Invalid.realtime.event", it))
             return
         }
 

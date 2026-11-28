@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +31,8 @@ import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
 import me.rerere.asr.pcm16ToWav
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -62,6 +65,7 @@ class MiMoASRController(
     private val provider: ASRProviderSetting.MiMo
 ) : ASRController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val requests = StepAsrRequests(httpClient)
 
     private val _state = MutableStateFlow(ASRState(isAvailable = true))
     override val state: StateFlow<ASRState> = _state.asStateFlow()
@@ -119,7 +123,8 @@ class MiMoASRController(
                 flushJob?.join()
                 flushSegment()
             } catch (e: Exception) {
-                Log.e(TAG, "Final flush failed", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("speech.MiMoASRController.Final.flush.failed", e))
                 setError(e.message ?: "MiMo ASR final flush failed")
             } finally {
                 _state.update { it.copy(status = ASRStatus.Idle) }
@@ -128,6 +133,7 @@ class MiMoASRController(
     }
 
     override fun dispose() {
+        requests.dispose()
         recorderJob?.cancel()
         flushJob?.cancel()
         releaseRecorder()
@@ -186,7 +192,8 @@ class MiMoASRController(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Audio recording failed", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("speech.MiMoASRController.Audio.recording.failed", e))
                 setError(e.message ?: "Audio recording failed")
             } finally {
                 releaseRecorder()
@@ -198,8 +205,8 @@ class MiMoASRController(
         // 同一时刻只跑一个 flush, 避免后发先至导致结果乱序
         if (flushJob?.isActive == true) return
         flushJob = scope.launch(Dispatchers.IO) {
-            runCatching { flushSegment() }
-                .onFailure { Log.e(TAG, "Segment flush failed", it) }
+            runCatchingCancellable { flushSegment() }
+                .onFailure { Log.e(TAG, formatExceptionForLog("speech.MiMoASRController.Segment.flush.failed", it)) }
         }
     }
 
@@ -252,22 +259,20 @@ class MiMoASRController(
             .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val text = withContext(Dispatchers.IO) {
-            httpClient.newCall(request).execute().use { resp ->
-                val respBody = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    throw IOException("MiMo ASR HTTP ${resp.code}: $respBody")
-                }
-                val json = runCatching { JSONObject(respBody) }.getOrElse {
-                    throw IOException("MiMo ASR response is not valid JSON: $respBody")
-                }
-                json.optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("message")
-                    ?.optString("content", "")
-                    ?.trim()
-                    ?: ""
+        val text = requests.execute(request) { resp ->
+            val respBody = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                throw IOException("MiMo ASR HTTP ${resp.code}: $respBody")
             }
+            val json = runCatching { JSONObject(respBody) }.getOrElse {
+                throw IOException("MiMo ASR response is not valid JSON: $respBody")
+            }
+            json.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content", "")
+                ?.trim()
+                ?: ""
         }
 
         if (text.isNotEmpty()) {

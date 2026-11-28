@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.ui.pages.debug
 
+import android.util.Log
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -316,7 +319,7 @@ private fun RecoveryPage(vm: DebugVM) {
                 onClick = {
                     recovering = true
                     scope.launch {
-                        runCatching { vm.recoverAssistantsFromConversations() }
+                        runUiOperation("Debug.recoverAssistants", { Log.e("DebugPage", it) }, { recovering = false }) { vm.recoverAssistantsFromConversations() }
                             .onSuccess { count ->
                                 when (count) {
                                     null -> toaster.show("设置尚未加载", type = ToastType.Error)

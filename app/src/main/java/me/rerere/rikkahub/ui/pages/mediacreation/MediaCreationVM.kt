@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaKind
@@ -45,7 +46,6 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.MediaCreationFiles
-import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationAssetType
 import me.rerere.rikkahub.data.model.MediaCreationDraft
@@ -58,6 +58,7 @@ import me.rerere.rikkahub.data.model.MediaCreationStatus
 import me.rerere.rikkahub.data.model.canSubmit
 import me.rerere.rikkahub.data.model.supportedBy
 import me.rerere.rikkahub.data.model.withRequired
+import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.repository.MediaCreationRepository
 import me.rerere.rikkahub.service.MediaCreationService
 import me.rerere.rikkahub.service.MediaCreationSubmission
@@ -111,7 +112,9 @@ class MediaCreationVM(
     val sessionId: Uuid = Uuid.parse(id)
 
     // 输入区的草稿；null 表示还在加载
-    private val draftState = MutableStateFlow<MediaCreationDraft?>(null)
+    private val draftController = MediaDraftController()
+    private val draftState = draftController.draft
+    val submitting: StateFlow<Boolean> = draftController.submitting
 
     // 已经写进数据库的草稿，只在主线程读写
     private var savedDraft: MediaCreationDraft? = null
@@ -210,7 +213,7 @@ class MediaCreationVM(
             }?.id
         val editingNodeId = session.draft.editingNodeId?.takeIf { repository.hasNode(it) }
         savedDraft = session.draft
-        draftState.value = session.draft.copy(modelId = modelId, assets = assets, editingNodeId = editingNodeId)
+        draftController.load(session.draft.copy(modelId = modelId, assets = assets, editingNodeId = editingNodeId))
         promptState.setTextAndPlaceCursorAtEnd(session.draft.prompt)
     }
 
@@ -238,17 +241,12 @@ class MediaCreationVM(
     /**
      * 切换模型。换了厂商或类型时参数的取值不再通用，恢复成默认；素材调整成新模型能接受的形态。
      */
-    fun selectModel(provider: MediaGenerationProviderSetting, model: MediaGenerationModel) = updateDraft { draft ->
-        val capabilities = provider.capabilities(model.kind) ?: return@updateDraft draft
-        val previous = currentSelection(draft)
-        val sameShape = previous != null &&
-            previous.provider::class == provider::class &&
-            previous.model.kind == model.kind
-        draft.copy(
-            modelId = model.id,
-            params = if (sameShape) draft.params else MediaCreationParams(),
-            assets = draft.assets.supportedBy(capabilities),
-        )
+    fun selectModel(provider: MediaGenerationProviderSetting, model: MediaGenerationModel) {
+        val capabilities = provider.capabilities(model.kind) ?: return
+        val previous = currentSelection()
+        val sameShape =
+            previous != null && previous.provider::class == provider::class && previous.model.kind == model.kind
+        draftController.selectModel(model, capabilities, sameShape)
     }
 
     /** 把相册里选的文件导入草稿。 */
@@ -258,13 +256,13 @@ class MediaCreationVM(
             val dir = repository.draftDir(sessionId)
             val files = withContext(Dispatchers.IO) {
                 uris.mapNotNull { uri ->
-                    runCatching {
+                    runCatchingCancellable {
                         when (type) {
                             MediaCreationAssetType.IMAGE -> MediaCreationFiles.importImage(context, uri, dir)
                             MediaCreationAssetType.VIDEO -> MediaCreationFiles.importVideo(context, uri, dir)
                         }
                     }.onFailure {
-                        Log.e(TAG, "Failed to import $uri", it)
+                        reportMediaFailure("media.draft.import", it)
                     }.getOrNull()
                 }
             }
@@ -286,11 +284,11 @@ class MediaCreationVM(
         if (draftState.value == null) return
         viewModelScope.launch {
             val file = withContext(Dispatchers.IO) {
-                runCatching {
+                runCatchingCancellable {
                     val dir = repository.draftDir(sessionId).apply { mkdirs() }
                     File(dir, "${Uuid.random()}.${result.extension}").also { it.writeBytes(result.encode()) }
                 }.onFailure {
-                    Log.e(TAG, "Failed to save sketch", it)
+                    reportMediaFailure("media.draft.sketch", it)
                 }.getOrNull()
             }
             if (file == null) {
@@ -372,11 +370,11 @@ class MediaCreationVM(
         withContext(Dispatchers.IO) {
             val source = repository.resolve(path)
             val target = File(repository.draftDir(sessionId), "${source.parentFile?.name}_${source.name}")
-            runCatching {
+            runCatchingCancellable {
                 if (!target.isFile) source.copyTo(target)
                 repository.relativePath(target)
             }.onFailure {
-                Log.e(TAG, "Failed to copy $path into the draft", it)
+                reportMediaFailure("media.draft.copy", it)
                 target.delete()
             }.getOrNull()
         }
@@ -391,8 +389,7 @@ class MediaCreationVM(
     }
 
     private fun updateDraft(transform: (MediaCreationDraft) -> MediaCreationDraft) {
-        val draft = draftState.value ?: return
-        draftState.value = transform(draft)
+        draftController.update(transform)
     }
 
     private fun currentSelection(draft: MediaCreationDraft? = draftState.value): MediaCreationModelSelection? =
@@ -434,6 +431,7 @@ class MediaCreationVM(
             return
         }
         if (!submitted.canSubmit(selection.capabilities)) return
+        val ticket = draftController.beginSubmission() ?: return
         generateJob = submit(
             MediaCreationSubmission(
                 sessionId = sessionId,
@@ -446,16 +444,14 @@ class MediaCreationVM(
             ),
             selection.capabilities,
         ) {
-            val untouched = promptState.text.toString() == submitted.prompt &&
-                draftState.value?.assets == submitted.assets
-            if (untouched) {
-                clearDraft()
-            } else {
-                // 提交期间又动过输入区：新的内容留着，但不再算作对原来那一项的修改
-                updateDraft {
-                    if (it.editingNodeId == submitted.editingNodeId) it.copy(editingNodeId = null) else it
-                }
-            }
+            syncPrompt()
+            draftController.submitted(ticket)
+            if (draftState.value?.prompt.isNullOrEmpty()) promptState.clearText()
+        }?.also { job ->
+            job.invokeOnCompletion { draftController.finish(ticket) }
+        } ?: run {
+            draftController.finish(ticket)
+            null
         }
     }
 
@@ -505,7 +501,7 @@ class MediaCreationVM(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to submit", e)
+                reportMediaFailure("media.submit", e)
                 _events.send(
                     MediaCreationEvent.Error(e.message ?: context.getString(R.string.media_creation_page_submit_failed))
                 )
@@ -604,7 +600,11 @@ class MediaCreationVM(
         viewModelScope.launch {
             val records = service.deleteNodes(sessionId, nodeIds)
             // 草稿可能正引用着这些记录的文件，也可能正在修改其中某一项
-            val recordDirs = records.map { repository.relativePath(repository.recordDir(sessionId, it)) + File.separator }
+            val recordDirs = records.map {
+                repository.relativePath(
+                    repository.recordDir(sessionId, it)
+                ) + File.separator
+            }
             updateDraft { draft ->
                 draft.copy(
                     assets = draft.assets.filterNot { asset -> recordDirs.any { asset.path.startsWith(it) } },

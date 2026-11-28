@@ -33,6 +33,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import java.util.concurrent.ConcurrentHashMap
@@ -228,7 +229,7 @@ internal class McpSessionRegistry(
             val oldClient = session.client
             session.client = null
             session.connectedConfig = null
-            oldClient?.let { closeClient(it, config.commonOptions.name) }
+            oldClient?.let { closeClient(it) }
 
             val sdkClient = createSdkClient(config)
             val transport = createTransport(config)
@@ -240,7 +241,7 @@ internal class McpSessionRegistry(
                 if (sessions[config.id] !== session ||
                     !hasSameConnectionParameters(config, syncedConfig)
                 ) {
-                    closeClient(sdkClient, config.commonOptions.name)
+                    closeClient(sdkClient)
                     return@withLock ConnectResult.Stale
                 }
 
@@ -252,10 +253,10 @@ internal class McpSessionRegistry(
                 Log.i(TAG, "Connected MCP server ${config.id} (${config.commonOptions.name})")
                 ConnectResult.Success
             } catch (e: CancellationException) {
-                closeClient(sdkClient, config.commonOptions.name)
+                closeClient(sdkClient)
                 throw e
             } catch (e: Exception) {
-                closeClient(sdkClient, config.commonOptions.name)
+                closeClient(sdkClient)
                 Log.e(TAG, "Failed to connect MCP server ${config.id}", e)
                 if (oauthCoordinator.needsAuthorization(config, e)) {
                     statusStore.update(config.id, McpStatus.NeedsAuthorization)
@@ -362,7 +363,7 @@ internal class McpSessionRegistry(
                     val failedClient = session.client
                     session.client = null
                     session.connectedConfig = null
-                    failedClient?.let { closeClient(it, session.config.commonOptions.name) }
+                    failedClient?.let { closeClient(it) }
                     statusStore.update(configId, McpStatus.Error("连接断开，已达最大重连次数"))
                     return@withLock
                 }
@@ -414,13 +415,15 @@ internal class McpSessionRegistry(
             val sdkClient = session.client
             session.client = null
             session.connectedConfig = null
-            sdkClient?.let { closeClient(it, session.config.commonOptions.name) }
+            sdkClient?.let { closeClient(it) }
         }
     }
 
-    private suspend fun closeClient(client: Client, serverName: String) {
-        runCatching { client.close() }
-            .onFailure { Log.w(TAG, "Failed to close MCP client $serverName", it) }
+    private suspend fun closeClient(client: Client) {
+        closeMcpClientSafely(
+            close = { client.close() },
+            onFailure = { Log.w(TAG, formatExceptionForLog("mcp.client.close", it)) },
+        )
     }
 
     private fun createSdkClient(config: McpServerConfig): Client = Client(

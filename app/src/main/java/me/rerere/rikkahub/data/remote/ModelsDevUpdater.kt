@@ -2,10 +2,20 @@ package me.rerere.rikkahub.data.remote
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.registry.ModelsDevCatalog
+import me.rerere.common.http.await
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -15,72 +25,93 @@ private const val TAG = "ModelsDevUpdater"
 private const val API_URL = "https://models.dev/api.json"
 private const val ASSET_NAME = "models_dev.json"
 private val REFRESH_INTERVAL = 4.hours
-
-// 至少要有这么多条才认为下载的数据可用，防止接口异常返回的空数据覆盖本地缓存
 private const val MIN_CATALOG_SIZE = 100
 
-/**
- * 给 [ModelRegistry] 提供 models.dev 数据：先装上本地缓存（没有就用 assets 里的快照），
- * 再按 [REFRESH_INTERVAL] 从 models.dev 拉取新数据，精简后存到 filesDir。
- */
-class ModelsDevUpdater(
-    private val context: Context,
-    private val client: OkHttpClient,
+/** Local cache/assets remain usable if an optional refresh fails; cancellation is not a refresh failure. */
+class ModelsDevUpdater internal constructor(
+    filesDir: File,
+    private val client: Call.Factory,
+    private val loadBundled: () -> ModelsDevCatalog,
+    private val installCatalog: (ModelsDevCatalog) -> Unit = ModelRegistry::installCatalog,
+    private val reportFailure: (String, Throwable) -> Unit = { operation, error ->
+        Log.w(TAG, formatExceptionForLog(operation, error))
+    },
 ) {
-    private val dir = File(context.filesDir, "models_dev")
-    private val dataFile = File(dir, "api.json")
+    constructor(context: Context, client: OkHttpClient) : this(
+        filesDir = context.filesDir,
+        client = client,
+        loadBundled = { context.assets.open(ASSET_NAME).use { ModelsDevCatalog.decode(it) } },
+    )
 
-    // 内容是上次响应的 ETag，修改时间是上次检查更新的时间
+    private val dir = File(filesDir, "models_dev")
+    private val dataFile = File(dir, "api.json")
     private val etagFile = File(dir, "etag")
 
     suspend fun start() = withContext(Dispatchers.IO) {
         val hasCache = loadLocal()
         if (System.currentTimeMillis() - etagFile.lastModified() >= REFRESH_INTERVAL.inWholeMilliseconds) {
-            runCatching { refresh(useEtag = hasCache) }
-                .onFailure { Log.w(TAG, "refresh failed", it) }
+            runCatchingCancellable { refresh(useEtag = hasCache) }.onFailure {
+                currentCoroutineContext().ensureActive()
+                reportFailure("models-dev.refresh", it)
+            }
         }
     }
 
-    /** 返回是否用上了下载的缓存 */
     private fun loadLocal(): Boolean {
         if (dataFile.exists()) {
-            val cached = runCatching { dataFile.inputStream().use { ModelsDevCatalog.decode(it) } }
-                .onFailure { Log.w(TAG, "cached catalog is broken", it) }
-                .getOrNull()
+            val cached = runCatchingCancellable { dataFile.inputStream().use { ModelsDevCatalog.decode(it) } }
+                .onFailure { reportFailure("models-dev.read-cache", it) }.getOrNull()
             if (cached != null) {
-                ModelRegistry.installCatalog(cached)
+                installCatalog(cached)
                 return true
             }
             dataFile.delete()
         }
-        runCatching { context.assets.open(ASSET_NAME).use { ModelsDevCatalog.decode(it) } }
-            .onSuccess { ModelRegistry.installCatalog(it) }
-            .onFailure { Log.e(TAG, "failed to load bundled catalog", it) }
+        runCatchingCancellable { loadBundled() }
+            .onSuccess(installCatalog)
+            .onFailure { reportFailure("models-dev.read-bundled", it) }
         return false
     }
 
-    private fun refresh(useEtag: Boolean) {
+    private suspend fun refresh(useEtag: Boolean) = coroutineScope {
         val etag = if (useEtag && etagFile.exists()) etagFile.readText().ifBlank { null } else null
-        val request = Request.Builder()
-            .url(API_URL)
-            .apply { if (etag != null) header("If-None-Match", etag) }
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (response.code == 304) {
-                markChecked(etag)
-                return
+        val request = Request.Builder().url(API_URL)
+            .apply { if (etag != null) header("If-None-Match", etag) }.build()
+        val call = client.newCall(request)
+        // Call.await handles the response handoff. Keep cancellation linked while synchronous
+        // JSON decoding reads the response body too; cancelling only the initial await is insufficient.
+        val canceller = launch(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                call.cancel()
             }
-            check(response.isSuccessful) { "models.dev responded ${response.code}" }
-            val catalog = response.body.byteStream().use { ModelsDevCatalog.decode(it) }
-            check(catalog.size >= MIN_CATALOG_SIZE) { "catalog too small: ${catalog.size}" }
-
-            dir.mkdirs()
-            val tmp = File(dir, "api.json.tmp")
-            tmp.outputStream().use { catalog.encodeTo(it) }
-            check(tmp.renameTo(dataFile)) { "failed to replace $dataFile" }
-            ModelRegistry.installCatalog(catalog)
-            markChecked(response.header("ETag"))
-            Log.i(TAG, "catalog updated: ${catalog.size} entries")
+        }
+        try {
+            call.await().use { response ->
+                currentCoroutineContext().ensureActive()
+                if (response.code == 304) {
+                    markChecked(etag)
+                    return@coroutineScope
+                }
+                check(response.isSuccessful) { "models.dev responded ${response.code}" }
+                val catalog = response.body.byteStream().use { ModelsDevCatalog.decode(it) }
+                check(catalog.size >= MIN_CATALOG_SIZE) { "catalog too small: ${catalog.size}" }
+                currentCoroutineContext().ensureActive()
+                dir.mkdirs()
+                val tmp = File(dir, "api.json.tmp")
+                try {
+                    tmp.outputStream().use { catalog.encodeTo(it) }
+                    currentCoroutineContext().ensureActive()
+                    check(tmp.renameTo(dataFile)) { "Failed to replace model catalog cache" }
+                } finally {
+                    tmp.delete()
+                }
+                installCatalog(catalog)
+                markChecked(response.header("ETag"))
+            }
+        } finally {
+            canceller.cancel()
         }
     }
 

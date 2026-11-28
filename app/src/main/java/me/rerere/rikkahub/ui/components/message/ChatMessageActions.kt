@@ -21,7 +21,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.datetime.toJavaLocalDateTime
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.Model
@@ -197,8 +197,8 @@ fun ChatMessageActionsSheet(
         val hasTextContent = message.parts.filterIsInstance<UIMessagePart.Text>()
             .any { it.text.isNotBlank() }
         val tts = LocalTTSState.current
-        val isTtsAvailable by tts.isAvailable.collectAsState()
-        val isSpeaking by tts.isSpeaking.collectAsState()
+        val isTtsAvailable by tts.isAvailable.collectAsStateWithLifecycle()
+        val isSpeaking by tts.isSpeaking.collectAsStateWithLifecycle()
         val settings = LocalSettings.current
         val actions = buildList {
             if (message.role == MessageRole.ASSISTANT) {

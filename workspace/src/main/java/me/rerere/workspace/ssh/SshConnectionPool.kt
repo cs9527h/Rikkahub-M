@@ -40,7 +40,12 @@ class SshConnectionPool(
     init {
         sweeper.scheduleWithFixedDelay(
             // 定时任务抛异常后不会再被调度, 这里吞掉异常保证后续还能清理
-            { runCatching { closeIdle() } },
+            {
+                runCatching { closeIdle() }.onFailure {
+                    java.util.logging.Logger.getLogger("SshConnectionPool")
+                        .warning("ssh.pool.sweep failed (${it.javaClass.name})")
+                }
+            },
             sweepIntervalMillis,
             sweepIntervalMillis,
             TimeUnit.MILLISECONDS,

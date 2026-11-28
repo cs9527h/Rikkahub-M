@@ -1,5 +1,6 @@
 package me.rerere.ui.crop
 
+import kotlinx.coroutines.CancellationException
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -32,7 +33,8 @@ internal suspend fun loadCropImage(context: Context, uri: Uri, maxSize: Int): Cr
         runCatching {
             val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 runCatching { decodeWithImageDecoder(context, uri, maxSize) }.getOrElse {
-                    Log.w(TAG, "ImageDecoder failed for $uri, falling back to BitmapFactory", it)
+                    if (it !is Exception || it is CancellationException) throw it
+                    Log.w(TAG, "ui.crop.decode.fallback failed (${it.javaClass.name})")
                     decodeWithBitmapFactory(context, uri, maxSize)
                 }
             } else {
@@ -56,7 +58,8 @@ internal suspend fun loadCropImage(context: Context, uri: Uri, maxSize: Int): Cr
             }
             CropImage(bitmap, preview.asImageBitmap())
         }.onFailure {
-            Log.e(TAG, "Failed to load $uri", it)
+            if (it !is Exception || it is CancellationException) throw it
+            Log.e(TAG, "ui.crop.load failed (${it.javaClass.name})")
         }.getOrNull()
     }
 

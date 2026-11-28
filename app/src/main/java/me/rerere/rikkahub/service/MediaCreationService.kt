@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +22,8 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.common.http.await
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaGenerationOutput
 import me.rerere.mediagen.model.MediaGenerationStatus
@@ -102,37 +105,41 @@ class MediaCreationService(
             ?: error(context.getString(R.string.media_creation_error_kind_unsupported, submission.provider.name))
         val recordId = Uuid.random()
         val assets = submission.assets.supportedBy(capabilities)
-        val record = MediaCreationRecord(
-            id = recordId,
-            sessionId = submission.sessionId,
-            nodeId = submission.nodeId ?: Uuid.random(),
-            providerId = submission.provider.id,
-            providerName = submission.provider.name,
-            modelId = submission.model.modelId,
-            kind = submission.model.kind,
-            prompt = submission.prompt.trim(),
-            params = submission.params.supportedBy(capabilities),
-            inputs = copyInputs(submission.sessionId, recordId, assets),
-        )
-        // 先登记任务再写入记录：恢复逻辑把「进行中但没有任务」的记录当作被中断，不能让它看到这个空档
-        val job = register(record.id, record.sessionId)
-            ?: error(context.getString(R.string.media_creation_error_task_exists))
-        try {
-            repository.insertRecord(record)
-            repository.updateSession(record.sessionId) { session ->
-                session.copy(
-                    title = session.title.ifBlank { deriveMediaCreationTitle(record.prompt) },
-                    updateAt = Instant.now(),
-                )
+        withMediaInputCleanup(
+            directory = repository.recordDir(submission.sessionId, recordId),
+            isPersisted = { repository.getRecord(recordId) != null },
+        ) {
+            val record = MediaCreationRecord(
+                id = recordId,
+                sessionId = submission.sessionId,
+                nodeId = submission.nodeId ?: Uuid.random(),
+                providerId = submission.provider.id,
+                providerName = submission.provider.name,
+                modelId = submission.model.modelId,
+                kind = submission.model.kind,
+                prompt = submission.prompt.trim(),
+                params = submission.params.supportedBy(capabilities),
+                inputs = copyInputs(submission.sessionId, recordId, assets),
+            )
+            // 先登记任务再写入记录，避免恢复逻辑观察到无任务的进行中记录。
+            val job = register(record.id, record.sessionId)
+                ?: error(context.getString(R.string.media_creation_error_task_exists))
+            try {
+                repository.insertRecord(record)
+                repository.updateSession(record.sessionId) { session ->
+                    session.copy(
+                        title = session.title.ifBlank { deriveMediaCreationTitle(record.prompt) },
+                        updateAt = Instant.now(),
+                    )
+                }
+            } catch (e: Throwable) {
+                jobs.remove(record.id, job)
+                job.cancel()
+                throw e
             }
-        } catch (e: Throwable) {
-            jobs.remove(record.id, job)
-            job.cancel()
-            withContext(Dispatchers.IO) { repository.recordDir(record.sessionId, record.id).deleteRecursively() }
-            throw e
+            job.start()
+            record
         }
-        job.start()
-        record
     }
 
     /**
@@ -209,7 +216,7 @@ class MediaCreationService(
      */
     fun resumePending() {
         appScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 repository.getActiveRecords().forEach { record ->
                     if (jobs.containsKey(record.id)) return@forEach
                     if (record.taskId != null) {
@@ -224,7 +231,7 @@ class MediaCreationService(
                     }
                 }
             }.onFailure {
-                Log.e(TAG, "resumePending failed", it)
+                Log.e(TAG, formatExceptionForLog("media.resume-pending", it))
             }
         }
     }
@@ -252,10 +259,12 @@ class MediaCreationService(
     private suspend fun run(recordId: Uuid) {
         try {
             generate(recordId)
-        } catch (e: Throwable) {
-            // 被取消时记录的状态由取消方负责
+        } catch (e: CancellationException) {
+            // 被取消时记录的状态由取消方负责，包括调用方仍active时显式抛出的取消。
+            throw e
+        } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            Log.e(TAG, "Generation $recordId failed", e)
+            Log.e(TAG, formatExceptionForLog("media.generate", e))
             repository.updateRecord(recordId) {
                 it.copy(status = MediaCreationStatus.FAILED, error = e.toDisplayMessage())
             }
@@ -357,8 +366,9 @@ class MediaCreationService(
                 if (task.isTerminal) return task
                 repository.updateRecord(recordId) { it.copy(status = task.status.toCreationStatus(it.status)) }
             }.onFailure { error ->
+                if (error is CancellationException) throw error
                 failures++
-                Log.w(TAG, "Query $taskId failed ($failures)", error)
+                Log.w(TAG, formatExceptionForLog("media.query", error))
                 if (!error.isRetryable() || failures >= MAX_QUERY_FAILURES) throw error
             }
             check(Instant.now() < deadline) { context.getString(R.string.media_creation_error_timeout) }
@@ -373,18 +383,15 @@ class MediaCreationService(
     ): List<MediaCreationAsset> = withContext(Dispatchers.IO) {
         if (assets.isEmpty()) return@withContext emptyList()
         val dir = repository.recordDir(sessionId, recordId)
-        try {
-            dir.mkdirs()
-            assets.mapIndexed { index, asset ->
-                val source = repository.resolve(asset.path)
-                check(source.isFile) { context.getString(R.string.media_creation_error_asset_missing) }
-                val target = File(dir, "in_$index.${source.extension.ifEmpty { "bin" }}")
-                source.copyTo(target, overwrite = true)
-                asset.copy(path = repository.relativePath(target))
-            }
-        } catch (e: Throwable) {
-            dir.deleteRecursively()
-            throw e
+        dir.mkdirs()
+        // submit owns rollback outside this IO block, including cancellation on dispatch back.
+        assets.mapIndexed { index, asset ->
+            currentCoroutineContext().ensureActive()
+            val source = repository.resolve(asset.path)
+            check(source.isFile) { context.getString(R.string.media_creation_error_asset_missing) }
+            val target = File(dir, "in_$index.${source.extension.ifEmpty { "bin" }}")
+            source.copyTo(target, overwrite = true)
+            asset.copy(path = repository.relativePath(target))
         }
     }
 
@@ -405,7 +412,7 @@ class MediaCreationService(
             when {
                 data != null -> file.writeBytes(data)
                 url != null -> {
-                    Log.i(TAG, "Downloading output $index (${output.mimeType}) from $url")
+                    Log.i(TAG, "Downloading output $index (${output.mimeType})")
                     download(setting, url, file)
                     Log.i(TAG, "Downloaded output $index: ${file.length()} bytes -> ${file.name}")
                 }
@@ -418,7 +425,16 @@ class MediaCreationService(
                 // 尾帧只是「续写」时的捷径，下载不到就等用的时候再从视频里抽
                 val lastFrame = output.lastFrameUrl?.let { lastFrameUrl ->
                     File(dir, "$OUTPUT_PREFIX${index}_last.${lastFrameUrl.urlExtension() ?: "jpg"}")
-                        .takeIf { runCatching { download(setting, lastFrameUrl, it, attempts = 1) }.isSuccess }
+                        .takeIf {
+                            runCatchingCancellable {
+                                download(
+                                    setting,
+                                    lastFrameUrl,
+                                    it,
+                                    attempts = 1
+                                )
+                            }.isSuccess
+                        }
                 }
                 val info = MediaCreationFiles.videoInfo(file)
                 MediaCreationOutput(
@@ -457,9 +473,10 @@ class MediaCreationService(
                 downloadOnce(request, target)
                 return
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 currentCoroutineContext().ensureActive()
                 if (attempt >= attempts) throw e
-                Log.w(TAG, "Download failed ($attempt/$attempts)", e)
+                Log.w(TAG, formatExceptionForLog("media.download-retry", e))
                 delay(POLL_INTERVAL)
             }
         }

@@ -238,14 +238,12 @@ fun Route.assetsRoutes(context: Context) {
                 else -> ContentType.Application.OctetStream
             }
 
-            try {
-                val inputStream = context.assets.open(relativePath)
+            me.rerere.rikkahub.web.respondAsset(
+                open = { context.assets.open(relativePath) },
+                onOpenFailure = { throw NotFoundException("Asset not found") },
+            ) { inputStream ->
                 call.response.header("Content-Type", contentType.toString())
-                call.respondOutputStream {
-                    inputStream.use { it.copyTo(this) }
-                }
-            } catch (_: Exception) {
-                throw NotFoundException("Asset not found: $relativePath")
+                call.respondOutputStream { inputStream.copyTo(this) }
             }
         }
     }

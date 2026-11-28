@@ -1,0 +1,10 @@
+{
+  "code": 200,
+  "data": {
+    "id": "task_image_01",
+    "status": "processing",
+    "progress": 35,
+    "created": 1763088289,
+    "result": null
+  }
+}

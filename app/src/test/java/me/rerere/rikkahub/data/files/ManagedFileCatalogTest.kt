@@ -344,6 +344,64 @@ class ManagedFileCatalogTest {
         assertTrue(work.isCancelled)
     }
 
+    @Test
+    fun deletingOneFileReusesThePreviousScanAndNewFilesStillRescan() = runTest {
+        var scans = 0
+        val rows = listOf(
+            ManagedFileCatalogReference(
+                rowId = 1,
+                assistantId = "a",
+                messages = messages(parts(attachment("image", uri(image)))),
+                scanEndRowId = 1,
+                conversationId = "c",
+            )
+        )
+        val catalog = ManagedFileCatalog(root, { _, _ ->
+            scans += 1
+            rows
+        })
+        val cache = CatalogOwnershipCache()
+        val all = listOf(image, document)
+        val first = catalog.readCached(all, referenceToken = 1, liveReferences = emptyList(), cache = cache)
+        assertEquals(1, scans)
+        assertEquals(setOf("a"), first.single { it.entity == image }.assistantIds)
+
+        // The row disappeared from managed_files only; conversations did not change.
+        val shrunk = catalog.readCached(listOf(image), referenceToken = 1, liveReferences = emptyList(), cache = cache)
+        assertEquals("deletion must not rescan history", 1, scans)
+        assertEquals(setOf("a"), shrunk.single().assistantIds)
+        assertFalse(shrunk.single().isUnassigned)
+
+        // A file the scan never covered forces a real rescan.
+        val extra = entity("upload/new.png", "new.png", "image/png")
+        catalog.readCached(listOf(image, extra), referenceToken = 1, liveReferences = emptyList(), cache = cache)
+        assertEquals(2, scans)
+
+        // A conversation-side change forces a real rescan even when the file set is unchanged.
+        catalog.readCached(listOf(image), referenceToken = 2, liveReferences = emptyList(), cache = cache)
+        assertEquals(3, scans)
+    }
+
+    @Test
+    fun reusedOwnershipKeepsIncompleteFilesUnclaimed() = runTest {
+        var scans = 0
+        val catalog = ManagedFileCatalog(root, { _, _ ->
+            scans += 1
+            listOf(ManagedFileCatalogReference(1, "a", null, scanEndRowId = 1))
+        })
+        val cache = CatalogOwnershipCache()
+        val first = catalog.readCached(listOf(image), 1, emptyList(), cache)
+        assertFalse(first.single().isUnassigned)
+        assertFalse(first.single().ownershipComplete)
+        val reused = catalog.readCached(listOf(image), 1, emptyList(), cache)
+        assertEquals(1, scans)
+        assertFalse(reused.single().isUnassigned)
+        assertFalse(reused.single().ownershipComplete)
+        cache.invalidate()
+        catalog.readCached(listOf(image), 1, emptyList(), cache)
+        assertEquals(2, scans)
+    }
+
     private fun entity(path: String, name: String, mime: String) = ManagedFileEntity(
         folder = "upload",
         relativePath = path,

@@ -2,13 +2,16 @@ package me.rerere.rikkahub.ui.pages.extensions.skills
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.files.FileUtils
 import me.rerere.rikkahub.data.skills.InvalidSkillDir
@@ -95,7 +98,10 @@ class SkillsVM(
                 withContext(Dispatchers.Main) {
                     onResult(true, importedNames.joinToString())
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                Log.e("SkillsVM", formatExceptionForLog("Skill.importFile", e))
                 withContext(Dispatchers.Main) {
                     onResult(
                         false,
@@ -173,8 +179,10 @@ class SkillsVM(
 
                 refreshSkills()
                 withContext(Dispatchers.Main) { onResult(true, name) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e("SkillsVM", formatExceptionForLog("Skill.importGitHub", e))
                 withContext(Dispatchers.Main) {
                     onResult(
                         false,

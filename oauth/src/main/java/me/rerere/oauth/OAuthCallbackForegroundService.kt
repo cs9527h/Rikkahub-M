@@ -61,7 +61,7 @@ class OAuthCallbackForegroundService : Service() {
         }
         isForeground = true
     }.onFailure {
-        Log.e(TAG, "Failed to enter foreground", it)
+        Log.e(TAG, "oauth.foreground.enter failed (${it.javaClass.name})")
     }.isSuccess
 
     private fun stopService() {
@@ -139,7 +139,7 @@ class OAuthCallbackForegroundService : Service() {
                     }
                     ContextCompat.startForegroundService(appContext, intent)
                 }.onFailure {
-                    Log.e(TAG, "Unable to start OAuth callback foreground service", it)
+                    Log.e(TAG, "oauth.foreground.start failed (${it.javaClass.name})")
                     synchronized(lifecycleLock) {
                         pendingForegroundStarts.remove(sessionId)?.complete(false)
                     }

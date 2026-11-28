@@ -67,8 +67,10 @@ fun ShareSheet(
                             )
                             try {
                                 context.startActivity(Intent.createChooser(intent, null))
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                android.util.Log.w("ShareSheet", me.rerere.common.util.formatExceptionForLog("provider.share.launch", e))
                             }
                         }
                     ) {

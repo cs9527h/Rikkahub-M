@@ -13,6 +13,9 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,28 +28,59 @@ import me.rerere.rikkahub.data.model.Avatar
 import java.io.File
 import java.net.URI
 import java.util.UUID
+import kotlin.uuid.Uuid
 
 /** Owns only proven avatars. Never infers old upload ownership from filenames or image dimensions. */
-class AvatarStorage(
+class AvatarStorage internal constructor(
     private val context: Context,
     private val settingsStore: SettingsStore,
     private val filesManager: FilesManager,
     private val database: AppDatabase,
     private val json: Json,
-    // null means runtime reference evidence is unavailable: keep files, rather than guess.
-    private val runtimeReferences: () -> Set<String>? = { null },
+    private val runtimeReferences: () -> Set<String>?,
+    // A scheduling seam only: tests can pause before the final fence, never replace file operations.
+    private val beforeFinalReferenceCheck: (suspend () -> Unit)?,
 ) {
+    constructor(
+        context: Context,
+        settingsStore: SettingsStore,
+        filesManager: FilesManager,
+        database: AppDatabase,
+        json: Json,
+        // null means runtime reference evidence is unavailable: keep files, rather than guess.
+        runtimeReferences: () -> Set<String>? = { null },
+    ) : this(context, settingsStore, filesManager, database, json, runtimeReferences, null)
+
+    private val quarantine = AvatarFileQuarantine(context.filesDir, context.noBackupFilesDir)
     private val mutex = Mutex()
     private var watcher: Job? = null
     private var previousPaths = emptySet<String>()
     private val cleanupCandidates = linkedSetOf<String>()
     private val pending = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
+    /**
+     * The only parts of [Settings] this class acts on. Everything else (sliders, toggles, model picks) is
+     * irrelevant to a full avatar sweep and must not schedule one.
+     */
+    private data class AvatarSignature(
+        val userAvatar: Avatar,
+        val assistants: List<Pair<Uuid, Avatar>>,
+    )
+
+    /** Assistants are compared by id plus avatar, so adding, removing and re-avatar-ing are all distinct. */
+    private fun Settings.avatarSignature() = AvatarSignature(
+        userAvatar = displaySetting.userAvatar,
+        assistants = assistants.map { assistant -> assistant.id to assistant.avatar },
+    )
+
     @Synchronized
     fun start(scope: CoroutineScope): Job = watcher?.takeIf { it.isActive } ?: scope.launch(Dispatchers.IO) {
-        settingsStore.settingsFlow.collect { settings ->
-            if (!settings.init) attempt { synchronize() }
-        }
+        settingsStore.settingsFlow
+            // Dummy settings carry init = true; the loaded settings are the first ones worth sweeping.
+            .filter { !it.init }
+            .map { it.avatarSignature() }
+            .distinctUntilChanged()
+            .collect { attempt { synchronize() } }
     }.also { watcher = it }
 
     /** Copies a picker result on IO. It is protected as pending until settings actually persist it. */
@@ -87,18 +121,25 @@ class AvatarStorage(
 
     /** Call only after SettingsStore.update returned successfully (never from a flow collector alone). */
     suspend fun onSettingsSaved(old: Settings, saved: Settings) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            val savedPaths = ownedAvatarPaths(saved)
-            pending.removeAll(savedPaths)
-            cleanupCandidates.addAll(ownedAvatarPaths(old) - savedPaths)
+        val needsSweep = mutex.withLock {
+            val avatarChanged = old.avatarSignature() != saved.avatarSignature()
+            val savedPaths = if (avatarChanged || pending.isNotEmpty()) ownedAvatarPaths(saved) else emptySet()
+            val committedPending = pending.removeAll(savedPaths)
+            val oldPaths = if (avatarChanged) ownedAvatarPaths(old) else savedPaths
+            cleanupCandidates.addAll(oldPaths - savedPaths)
+            // Retained candidates also retry after background/preset references disappear, even though
+            // start() deliberately observes avatar signatures only. A slider with no work is a no-op.
+            oldPaths != savedPaths || committedPending || cleanupCandidates.isNotEmpty()
         }
-        attempt { synchronize() }
+        if (needsSweep) attempt { synchronize() }
     }
 
     suspend fun synchronize(): Unit = withContext(Dispatchers.IO) {
         mutex.withLock {
+            quarantine.sweep()
             val initial = settingsStore.awaitLoaded()
             val initialPaths = ownedAvatarPaths(initial)
+            var copiedAvatar = false
             cleanupCandidates.addAll(previousPaths - initialPaths)
             // Copy first; only CAS the still-current, proven avatar references afterwards.
             for (path in initialPaths.filter { it.startsWith("${FileFolders.UPLOAD}/") }) {
@@ -109,6 +150,7 @@ class AvatarStorage(
                     }
                     val source = sources.firstOrNull { ownedLocalFile(it)?.isFile == true } ?: return@attempt
                     val copied = copyToAvatar(source.toUri())
+                    copiedAvatar = true
                     val replacement = Avatar.Image(copied.toUri().toString())
                     var used = false
                     settingsStore.update { latest ->
@@ -130,10 +172,14 @@ class AvatarStorage(
                     cleanupCandidates.add(if (used) path else "${FileFolders.AVATARS}/${copied.name}")
                 }
             }
-            // A flow emission precedes persistence. An identity update is a real disk barrier, not a delay.
-            var durable: Settings? = null
-            settingsStore.update { it.also { value -> durable = value } }
-            val paths = ownedAvatarPaths(checkNotNull(durable))
+            // Index new copies once, before retiring old files. Deletion itself only removes its own row.
+            if (copiedAvatar) filesManager.syncFolder(FileFolders.AVATARS)
+            // The flow emits before persistence, so this reading can be one write ahead of the disk. Nothing is
+            // deleted on it: every candidate below goes through deleteWithReferenceFence, which takes its own
+            // durable snapshot (captureDurableSettings) before it unlinks anything, so the barrier belongs
+            // there and not here. An identity update at this point only added one Settings.normalized() pass
+            // plus a dispatcher hop per sweep without changing what may be deleted.
+            val paths = ownedAvatarPaths(settingsStore.awaitLoaded())
             pending.removeAll(paths)
             cleanupCandidates.addAll(initialPaths - paths)
             previousPaths = paths
@@ -150,7 +196,6 @@ class AvatarStorage(
                 currentCoroutineContext().ensureActive()
                 if (deleteIfUnusedLocked(path)) cleanupCandidates.remove(path)
             }
-            filesManager.syncFolder(FileFolders.AVATARS)
         }
     }
 
@@ -165,18 +210,44 @@ class AvatarStorage(
         mutex.withLock { deleteIfUnusedLocked(relativePath) }
     }
 
-    private suspend fun deleteIfUnusedLocked(relativePath: String): Boolean = try {
-        database.withTransaction { deleteWithReferenceFence(relativePath) }.also { deleted ->
-            if (deleted) filesManager.syncFolder(relativePath.substringBefore('/'))
+    private suspend fun deleteIfUnusedLocked(relativePath: String): Boolean {
+        var move: AvatarFileQuarantine.Move? = null
+        try {
+            // Canonical checks, stat, mkdir and random target allocation are all outside stateLock.
+            val prepared = quarantine.prepare(relativePath) ?: return false
+            move = prepared
+            return database.withTransaction { deleteWithReferenceFence(relativePath, prepared) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("AvatarStorage", "Retaining file after failed reference check", e)
+            return false
+        } finally {
+            // Once renamed, the original path is gone even if persist/Room/cancellation subsequently fails.
+            // Finish outside both locks; process death leaves only an unreferenceable quarantine orphan.
+            val retired = move?.takeIf { it.moved }
+            if (retired != null) {
+                withContext(NonCancellable) {
+                    attempt { filesManager.deleteIndexEntry(relativePath) }
+                    attempt { retired.unlink() }
+                }
+            }
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Log.w("AvatarStorage", "Retaining file after failed reference check", e)
-        false
     }
 
-    private suspend fun deleteWithReferenceFence(relativePath: String): Boolean {
+    /**
+     * Room serialises persisted message/favorite writers across the reference query and rename. The
+     * durable settings tree is inspected outside stateLock, then identity + pending + latest runtime are
+     * checked again INSIDE the same stateLock callback that renames the file. There is no unlock or
+     * suspension between that final check and rename. update()'s later persist is not a deletion fence.
+     *
+     * The runtime provider supplies a snapshot, not a writer lock: as before, the last runtime observation
+     * is the runtime linearization point; this does not prevent future writers publishing stale paths.
+     */
+    private suspend fun deleteWithReferenceFence(
+        relativePath: String,
+        move: AvatarFileQuarantine.Move,
+    ): Boolean {
         val parts = relativePath.split('/')
         if (parts.size != 2 || parts[0] !in setOf(FileFolders.UPLOAD, FileFolders.AVATARS) ||
             parts[1].isBlank() || parts[1] == "." || parts[1] == ".." ||
@@ -184,13 +255,8 @@ class AvatarStorage(
         ) {
             return false
         }
-        val root = context.filesDir.canonicalFile
-        val file = File(root, relativePath)
-        // Never traverse a symlink, including a symlinked avatars/upload directory.
-        if (file.canonicalFile != file.absoluteFile || !file.path.startsWith(root.path + File.separator)) return false
-        var durable: Settings? = null
-        settingsStore.update { it.also { value -> durable = value } }
-        val snapshot = checkNotNull(durable)
+        // Snapshot first; the full settings walk and Room query remain outside stateLock.
+        val snapshot = captureDurableSettings()
         if (AvatarReferences.settingsContainReference(snapshot, json, relativePath)) return false
         val encodedName = URI(null, null, "/${parts[1]}", null).toASCIIString().removePrefix("/")
         if (database.fileReferenceDao().messageReferencesFile(parts[1], encodedName)) return false
@@ -200,20 +266,29 @@ class AvatarStorage(
                 it.contains(parts[1]) || it.contains(encodedName, ignoreCase = true)
         }
         if (runtimeUsesFile(runtime)) return false
-        val coroutineContext = currentCoroutineContext()
-        coroutineContext.ensureActive()
-        var deleted = false
-        // Atomic with respect to *all* SettingsStore writers. New state after the disk barrier => retain.
+        beforeFinalReferenceCheck?.invoke()
+        currentCoroutineContext().ensureActive()
+        var retired = false
         settingsStore.update { latest ->
-            if (latest === snapshot && relativePath !in pending &&
-                runtimeReferences()?.let { !runtimeUsesFile(it) } == true
-            ) {
-                coroutineContext.ensureActive()
-                deleted = !file.exists() || (file.isFile && file.delete())
+            // Do not move before these checks, and do not move after update returns: persist() suspends
+            // outside stateLock and other threads can publish references even without a suspension here.
+            if (latest === snapshot && relativePath !in pending) {
+                val latestRuntime = runtimeReferences()
+                if (latestRuntime != null && !runtimeUsesFile(latestRuntime)) retired = move.retire()
             }
             latest
         }
-        return deleted
+        return retired
+    }
+
+    /**
+     * Reads the live settings and returns only after they are on disk. Runs no IO and no tree walk inside the
+     * [SettingsStore.update] lambda: [SettingsStore.persist] writes nothing when the value is already persisted.
+     */
+    private suspend fun captureDurableSettings(): Settings {
+        var captured: Settings? = null
+        settingsStore.update { it.also { value -> captured = value } }
+        return checkNotNull(captured)
     }
 
     private fun avatarUrls(settings: Settings): List<String> = buildList {

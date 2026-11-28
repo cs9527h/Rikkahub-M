@@ -1,0 +1,14 @@
+{
+  "code": 200,
+  "data": {
+    "id": "task_video_01",
+    "status": "completed",
+    "progress": 100,
+    "cost": 0.8,
+    "created": 1763088289,
+    "completed": 1763088349,
+    "result": {
+      "videos": [{"url": "https://upload.apimart.ai/f/video/result.mp4", "expires_at": 1763174749}]
+    }
+  }
+}

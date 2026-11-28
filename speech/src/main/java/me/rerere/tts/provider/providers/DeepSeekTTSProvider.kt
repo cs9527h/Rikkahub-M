@@ -14,6 +14,7 @@ import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.useCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -57,11 +58,10 @@ class DeepSeekTTSProvider : TTSProvider<TTSProviderSetting.DeepSeek> {
             .post(requestBody.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val audioBytes = httpClient.newCall(httpRequest).execute().use { response ->
+        val audioBytes = httpClient.newCall(httpRequest).useCancellable { response ->
             if (!response.isSuccessful) {
-                val errorBody = runCatching { response.body.string() }.getOrNull().orEmpty()
                 throw TTSProviderException(
-                    message = "DeepSeek TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody",
+                    message = "DeepSeek TTS request failed: HTTP ${response.code}",
                     statusCode = response.code
                 )
             }

@@ -262,6 +262,7 @@
   <string name="emoji_picker_select_skin_tone">选择肤色</string>
   <string name="error_title_compress_conversation">对话压缩失败</string>
   <string name="error_title_generate_title">自动生成标题失败</string>
+  <string name="error_message_image_too_large">图片太大，内存不足。请减少图片数量或缩小尺寸，或新建一个会话再试。</string>
   <string name="error_title_generation">消息生成失败</string>
   <string name="error_title_operation">操作失败</string>
   <string name="error_title_regenerate_message">消息重新生成失败</string>
@@ -1800,4 +1801,7 @@
   <string name="about_page_check_latest">已是最新版本</string>
   <string name="about_page_check_failed">检查更新失败：%1$s</string>
   <string name="about_page_checking_update">正在检查更新…</string>
+  <string name="setting_page_preferences_notification_battery_optimization">忽略电池优化</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">已允许。后台生成被系统中断的可能性更低</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">未允许。系统可能会为节省电量而停止后台生成</string>
 </resources>

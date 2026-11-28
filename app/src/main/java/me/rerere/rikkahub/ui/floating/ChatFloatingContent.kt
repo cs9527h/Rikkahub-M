@@ -48,8 +48,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.shadow.DropShadowPainter
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -156,7 +158,7 @@ fun ChatFloatingBubble(state: FloatingChatUiState, onClick: () -> Unit) {
             modifier = Modifier
                 .size(52.dp)
                 // 不能用 elevation 阴影：轮廓是凹多边形，每帧都要重新三角剖分，变形时会把 RenderThread 卡住几十秒
-                .dropShadow(logoShape, Shadow(radius = 6.dp, offset = DpOffset(0.dp, 2.dp), alpha = 0.3f))
+                .morphingDropShadow(logoShape, BubbleShadow)
                 .clip(logoShape)
                 .clickable(onClick = onClick)
                 .drawAppLogo(logoLayers)
@@ -168,6 +170,20 @@ fun ChatFloatingBubble(state: FloatingChatUiState, onClick: () -> Unit) {
             state.hasReply -> StatusBadge(HugeIcons.Tick01, colors.primary, colors.onPrimary)
         }
     }
+}
+
+// 悬浮球阴影：半径 6dp、下移 2dp、30% 不透明度（与原 dropShadow 调用的视觉参数完全一致）
+private val BubbleShadow = Shadow(radius = 6.dp, offset = DpOffset(0.dp, 2.dp), alpha = 0.3f)
+
+/**
+ * 给每帧都会换新实例的 [Shape] 画投影。
+ *
+ * 不能用 Modifier.dropShadow：它把渲染器连同模糊好的位图按 Shape 缓存在窗口的 ShadowContext 里，
+ * 而且从不淘汰。悬浮球生成中轮廓每帧都是新 Shape，缓存只增不减，长时间生成十几分钟就把内存吃光。
+ * 这里每次绘制直接构造 [DropShadowPainter]，不经过 Shape 缓存，位图画完即可回收，外观一致。
+ */
+private fun Modifier.morphingDropShadow(shape: Shape, shadow: Shadow): Modifier = drawBehind {
+    with(DropShadowPainter(shape, shadow)) { draw(size) }
 }
 
 @Composable

@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.ui.pages.chat
 
+import android.util.Log
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -163,7 +166,7 @@ fun ChatExportSheet(
         pendingSavePath = null
         if (uri == null) return
         scope.launch {
-            runCatching {
+            runUiOperation("Chat.saveExport", { Log.e("ConversationExport", it) }) {
                 withContext(Dispatchers.IO) {
                     val output = context.contentResolver.openOutputStream(uri)
                         ?: error("Cannot open $uri")
@@ -175,7 +178,6 @@ fun ChatExportSheet(
                     type = ToastType.Success,
                 )
             }.onFailure {
-                it.printStackTrace()
                 toaster.show(resources.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
             }
         }
@@ -197,7 +199,7 @@ fun ChatExportSheet(
         val exportFormat = format
         exporting = action
         scope.launch {
-            runCatching {
+            runUiOperation("Chat.prepareExport", { Log.e("ConversationExport", it) }, { exporting = null }) {
                 when (exportFormat) {
                     ChatExportFormat.Markdown -> writeMarkdownExport(context, conversation, messages, options)
                     ChatExportFormat.Image -> writeImageExport(
@@ -228,7 +230,6 @@ fun ChatExportSheet(
                 }
             }.onFailure {
                 if (it is CancellationException) throw it
-                it.printStackTrace()
                 toaster.show(resources.getString(R.string.chat_page_export_failed, it.message.orEmpty()), type = ToastType.Error)
             }
             exporting = null

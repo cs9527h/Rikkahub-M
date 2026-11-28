@@ -193,6 +193,21 @@ internal fun MediaGenerationProviderSetting.presets(kind: MediaKind): MediaCreat
             durations = listOf(4, 5, 6, 8, 10),
         )
     }
+
+    // 预设对应 GPT-Image 2.6 和 MiniMax H3：图像的 size 是比例，配合 1k / 2k / 4k 档位；H3 时长 4–15 秒
+    is MediaGenerationProviderSetting.ApiMart -> when (kind) {
+        MediaKind.IMAGE -> MediaCreationPresets(
+            resolutions = listOf("1k", "2k", "4k"),
+            aspectRatios = listOf("1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16", "21:9"),
+            counts = IMAGE_COUNTS,
+        )
+
+        MediaKind.VIDEO -> MediaCreationPresets(
+            resolutions = listOf("2K", "768P"),
+            aspectRatios = VIDEO_ASPECT_RATIOS,
+            durations = listOf(5, 10, 15),
+        )
+    }
 }
 
 private val IMAGE_COUNTS = listOf(1, 2, 3, 4)
@@ -275,14 +290,16 @@ internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: 
                 ?: error(context.getString(R.string.media_creation_page_gallery_write_failed))
             output.use { target -> file.inputStream().use { it.copyTo(target) } }
         } catch (e: Exception) {
-            resolver.delete(uri, null, null)
+            try { resolver.delete(uri, null, null) } catch (cleanup: Exception) { e.addSuppressed(cleanup) }
             throw e
         }
     } else {
         // Android 9 及以下直接写公共目录，需要存储权限
         val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
         if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-            context.getActivity()?.let { ActivityCompat.requestPermissions(it, arrayOf(permission), 1) }
+            withContext(Dispatchers.Main.immediate) {
+                context.getActivity()?.let { ActivityCompat.requestPermissions(it, arrayOf(permission), 1) }
+            }
             error(context.getString(R.string.media_creation_page_storage_permission_required))
         }
         // 批量保存时同一毫秒里会有好几个文件，重名的另取一个名字，不能互相覆盖（Android 10 起由 MediaStore 处理）

@@ -13,6 +13,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.WebDavConfig
@@ -108,7 +110,7 @@ class BackupVM(
 
     fun loadBackupFileItems() {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 webDavBackupItems.emit(UiState.Loading)
                 webDavBackupItems.emit(
                     value = UiState.Success(
@@ -118,6 +120,7 @@ class BackupVM(
                     )
                 )
             }.onFailure {
+                Log.e(TAG, formatExceptionForLog("Backup.listWebDav", it))
                 webDavBackupItems.emit(UiState.Error(it))
             }
         }
@@ -186,7 +189,7 @@ class BackupVM(
                 onProgress = onProgress,
             )
         } finally {
-            runCatching { stream.close() }
+            runCatchingCancellable { stream.close() }
         }
     }
 
@@ -273,7 +276,7 @@ class BackupVM(
     // S3 Backup methods
     fun loadS3BackupFileItems() {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 s3BackupItems.emit(UiState.Loading)
                 s3BackupItems.emit(
                     value = UiState.Success(
@@ -283,6 +286,7 @@ class BackupVM(
                     )
                 )
             }.onFailure {
+                Log.e(TAG, formatExceptionForLog("Backup.listS3", it))
                 s3BackupItems.emit(UiState.Error(it))
             }
         }

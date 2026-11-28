@@ -34,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,7 +55,6 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
@@ -108,7 +106,6 @@ fun UIAvatar(
     onClick: (() -> Unit)? = null
 ) {
     val avatarStorage: AvatarStorage = koinInject()
-    val scope = rememberCoroutineScope()
     val latestOnUpdate by rememberUpdatedState(onUpdate)
     var saveGeneration by remember { mutableStateOf(0) }
     var showPickOption by remember { mutableStateOf(false) }
@@ -121,25 +118,23 @@ fun UIAvatar(
         latestOnUpdate?.invoke(avatar)
     }
 
-    fun saveAvatarImage(uri: Uri) {
+    suspend fun saveAvatarImage(uri: Uri) {
         val generation = ++saveGeneration
-        scope.launch {
-            var pendingImage: Avatar.Image? = null
-            try {
-                val image = avatarStorage.save(uri).also { pendingImage = it }
-                val callback = latestOnUpdate
-                if (generation == saveGeneration && callback != null) {
-                    callback(image)
-                    pendingImage = null
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w("UIAvatar", "Failed to save avatar; keeping current avatar", e)
-            } finally {
-                pendingImage?.let { image ->
-                    withContext(NonCancellable) { avatarStorage.discardPending(image) }
-                }
+        var pendingImage: Avatar.Image? = null
+        try {
+            val image = avatarStorage.save(uri).also { pendingImage = it }
+            val callback = latestOnUpdate
+            if (generation == saveGeneration && callback != null) {
+                callback(image)
+                pendingImage = null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("UIAvatar", me.rerere.common.util.formatExceptionForLog("avatar.image.save", e))
+        } finally {
+            pendingImage?.let { image ->
+                withContext(NonCancellable) { avatarStorage.discardPending(image) }
             }
         }
     }

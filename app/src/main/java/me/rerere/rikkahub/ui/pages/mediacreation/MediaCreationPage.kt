@@ -98,7 +98,7 @@ import kotlin.uuid.Uuid
  */
 @Composable
 fun MediaCreationPage(id: String) {
-    val vm: MediaCreationVM = koinViewModel(parameters = { parametersOf(id) })
+    val vm: MediaCreationVM = koinViewModel(key = "media-creation:$id", parameters = { parametersOf(id) })
     val navController = LocalNavController.current
     val toaster = LocalToaster.current
 
@@ -504,6 +504,7 @@ private suspend fun saveSelected(context: Context, toaster: ToasterState, vm: Me
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            reportMediaFailure("media.gallery.batch", e)
             e
         }
     }

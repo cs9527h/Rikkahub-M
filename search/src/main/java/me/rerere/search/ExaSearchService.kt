@@ -21,6 +21,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -120,7 +122,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.ExaOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val body = buildSearchRequestBody(params, commonOptions.resultSize)
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -136,8 +138,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     val response = runCatching {
                         json.decodeFromString<ExaData>(bodyRaw)
                     }.onFailure {
-                        Log.w(TAG, "decode response failed", it)
-                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                        Log.w(TAG, formatExceptionForLog("search.decode", it))
                     }.getOrThrow()
 
                     return@withContext Result.success(mapSearchResult(response))
@@ -154,7 +155,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.ExaOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val body = buildScrapeRequestBody(params)
             val apiKey = keyRoulette.next(serviceOptions.apiKey, serviceOptions.id.toString())
 
@@ -170,8 +171,7 @@ object ExaSearchService : SearchService<SearchServiceOptions.ExaOptions> {
                     val data = runCatching {
                         json.decodeFromString<ExaData>(bodyRaw)
                     }.onFailure {
-                        Log.w(TAG, "decode response failed", it)
-                        error("Failed to decode response: ${bodyRaw.take(500)}")
+                        Log.w(TAG, formatExceptionForLog("search.decode", it))
                     }.getOrThrow()
 
                     return@withContext Result.success(mapScrapedResult(data))

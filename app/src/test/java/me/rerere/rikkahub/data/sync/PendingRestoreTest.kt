@@ -1,5 +1,9 @@
 package me.rerere.rikkahub.data.sync
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerializationException
 import org.junit.Assert.assertEquals
@@ -16,7 +20,9 @@ class PendingRestoreTest {
     @get:Rule val temporary = TemporaryFolder()
 
     private fun restore() = PendingRestore(
-        File(temporary.root, "restore"), database(), File(temporary.root, "files")
+        File(temporary.root, "restore"),
+        database(),
+        File(temporary.root, "files")
     )
 
     private fun database() = File(temporary.root, "databases/rikka_hub")
@@ -78,6 +84,43 @@ class PendingRestoreTest {
         restore().apply { }
         assertEquals("new database", database().readText())
         assertFalse(File(database().path + "-wal").exists())
+    }
+
+    @Test fun cancellationDuringSuspendedSettingsWriteRollsBackAndRethrowsTheSameCancellation() = runBlocking {
+        write(database(), "old database")
+        write(File(database().path + "-wal"), "old wal")
+        write(File(temporary.root, "files/upload/photo"), "old photo")
+        stage(restore())
+        val entered = CompletableDeferred<Unit>()
+        val cancellation = CancellationException("cancel restore")
+        var observed: Throwable? = null
+        val worker = async {
+            try {
+                restore().apply {
+                    assertEquals("new database", database().readText())
+                    entered.complete(Unit)
+                    awaitCancellation()
+                }
+            } catch (error: Throwable) {
+                observed = error
+                throw error
+            }
+        }
+        entered.await()
+        worker.cancel(cancellation)
+        try {
+            worker.await()
+            error("Expected cancellation")
+        } catch (error: CancellationException) {
+            me.rerere.rikkahub.testutil.assertRecoveredFailure(cancellation, error)
+        }
+        me.rerere.rikkahub.testutil.assertRecoveredFailure(cancellation, observed)
+        assertEquals("old database", database().readText())
+        assertEquals("old wal", File(database().path + "-wal").readText())
+        assertEquals("old photo", File(temporary.root, "files/upload/photo").readText())
+        assertTrue(File(temporary.root, "restore/pending/journal.json").isFile)
+        assertTrue(restore().apply { }) // A later startup can retry the intact staged payload.
+        assertEquals("new database", database().readText())
     }
 
     @Test fun failedInitialJournalWriteKeepsOriginalDataAndDoesNotBlockLaterLaunches() = runBlocking {

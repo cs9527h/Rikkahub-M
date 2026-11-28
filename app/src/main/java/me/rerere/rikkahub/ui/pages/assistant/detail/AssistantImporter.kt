@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.runCatchingCancellable
+import me.rerere.common.util.formatExceptionForLog
+
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
@@ -75,7 +80,7 @@ private fun SillyTavernImporter(
             isLoading = true
             scope.launch {
                 try {
-                    runCatching {
+                    runCatchingCancellable {
                         importAssistantFromUri(
                             context = context,
                             uri = uri,
@@ -84,7 +89,7 @@ private fun SillyTavernImporter(
                             filesManager = filesManager,
                         )
                     }.onFailure { exception ->
-                        exception.printStackTrace()
+                        Log.e("AssistantImporter", formatExceptionForLog("Assistant.importCallback", exception))
                         toaster.show(exception.message ?: resources.getString(R.string.assistant_importer_import_failed))
                     }
                 } finally {
@@ -101,7 +106,7 @@ private fun SillyTavernImporter(
             isLoading = true
             scope.launch {
                 try {
-                    runCatching {
+                    runCatchingCancellable {
                         importAssistantFromUri(
                             context = context,
                             uri = uri,
@@ -110,7 +115,7 @@ private fun SillyTavernImporter(
                             filesManager = filesManager,
                         )
                     }.onFailure { exception ->
-                        exception.printStackTrace()
+                        Log.e("AssistantImporter", formatExceptionForLog("Assistant.importCallback", exception))
                         toaster.show(exception.message ?: resources.getString(R.string.assistant_importer_import_failed))
                     }
                 } finally {
@@ -280,8 +285,10 @@ private suspend fun importAssistantFromUri(
         val json = Json.parseToJsonElement(jsonString).jsonObject
         val assistant = parseAssistantFromJson(context = context, json = json, background = backgroundStr)
         onImport(assistant)
+    } catch (exception: CancellationException) {
+        throw exception
     } catch (exception: Exception) {
-        exception.printStackTrace()
+        Log.e("AssistantImporter", formatExceptionForLog("Assistant.import", exception))
         toaster.show(
             message = exception.message ?: context.getString(R.string.assistant_importer_import_failed),
             type = ToastType.Error

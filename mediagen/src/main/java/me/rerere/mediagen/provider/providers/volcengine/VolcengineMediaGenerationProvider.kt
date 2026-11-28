@@ -1,5 +1,6 @@
 package me.rerere.mediagen.provider.providers.volcengine
 
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaGenerationRequest
 import me.rerere.mediagen.model.MediaGenerationTask
@@ -23,7 +24,7 @@ class VolcengineMediaGenerationProvider(
         setting: MediaGenerationProviderSetting.Volcengine,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
-    ): Result<MediaGenerationTask> = runCatching {
+    ): Result<MediaGenerationTask> = runCatchingCancellable {
         when (model.kind) {
             MediaKind.IMAGE -> image.create(setting, model, request)
             MediaKind.VIDEO -> video.create(setting, model, request)
@@ -36,7 +37,7 @@ class VolcengineMediaGenerationProvider(
         taskId: String,
     ): Result<MediaGenerationTask> = when (model.kind) {
         MediaKind.IMAGE -> super.query(setting, model, taskId)
-        MediaKind.VIDEO -> runCatching { video.query(setting, model, taskId) }
+        MediaKind.VIDEO -> runCatchingCancellable { video.query(setting, model, taskId) }
     }
 
     internal companion object {

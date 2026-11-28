@@ -66,7 +66,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -112,7 +111,6 @@ import me.rerere.ui.toast.ToastType
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 @Composable
@@ -219,7 +217,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                 if (index >= 0) {
                     chatListState.scrollToItem(index)
                 }
-            } else {
+            } else if (!vm.scrollAnchor.hasScrollTarget) {
                 chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
             }
             vm.chatListInitialized = true
@@ -442,10 +440,6 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(inputState.getContents())
-                            scope.launch {
-                                delay(100.milliseconds)
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
-                            }
                         }
                         inputState.clearInput()
                     },
@@ -457,9 +451,6 @@ private fun ChatPageContent(
                             )
                         } else {
                             vm.handleMessageSend(content = inputState.getContents(), answer = false)
-                            scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
-                            }
                         }
                         inputState.clearInput()
                     },
@@ -478,6 +469,7 @@ private fun ChatPageContent(
                 state = chatListState,
                 previewListState = previewListState,
                 selectionState = selectionState,
+                scrollAnchor = vm.scrollAnchor,
                 loading = loadingJob != null,
                 compressing = sessionActivity == SessionActivity.Compressing,
                 processingStatus = processingStatus,
@@ -522,6 +514,7 @@ private fun ChatPageContent(
                     vm.clearTranslationField(message.id)
                 },
                 onJumpToMessage = { index ->
+                    vm.scrollAnchor.release()
                     previewMode = false
                     scope.launch {
                         chatListState.requestScrollToItem(index)

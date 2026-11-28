@@ -1,7 +1,8 @@
 {
-  "version": "1.1.6",
+  "version": "1.1.7",
   "measured": false,
-  "source": "未采集真机帧时（本版按回归测试修复；不宣称帧率或耗电改善幅度）",
+  "physicalDeviceStatus": "skipped_by_user",
+  "source": "用户在Android Shell连接步骤明确选择跳过本次真机性能/长稳/删除耗时验收；未采集，不宣称帧率或耗电改善幅度",
   "device": "",
   "buildType": "benchmarkRelease",
   "thresholdPercent": 10,

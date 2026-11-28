@@ -304,6 +304,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                             try {
                                 context.startActivity(Intent.createChooser(intent, share))
                             } catch (e: ActivityNotFoundException) {
+                                reportSettingsFailure("settings.share.launch", e)
                                 Toast.makeText(context, noShareApp, Toast.LENGTH_SHORT).show()
                             }
                         },

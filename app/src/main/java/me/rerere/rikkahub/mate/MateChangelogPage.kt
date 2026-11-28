@@ -1,5 +1,8 @@
 package me.rerere.rikkahub.mate
 
+import android.util.Log
+import me.rerere.rikkahub.ui.components.runUiOperation
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -55,7 +58,9 @@ fun MateChangelogPage() {
     LaunchedEffect(reloadKey) {
         loading = true
         // 保留上一次结果，刷新时不清空列表，避免界面跳动
-        val result = runCatching { checker.releaseNotes() }.getOrDefault(emptyList())
+        val result = runUiOperation("Updates.releaseNotes", { Log.w("MateChangelog", it) }, { loading = false }) {
+            checker.releaseNotes()
+        }.getOrDefault(emptyList())
         if (result.isNotEmpty()) {
             online = result.any { it.source != "bundled" }
             notes = result

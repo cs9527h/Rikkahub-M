@@ -322,6 +322,7 @@ private fun AddMediaProviderButton(onAdd: (MediaGenerationProviderSetting) -> Un
             { MediaGenerationProviderSetting.Volcengine() },
             { MediaGenerationProviderSetting.MiniMax() },
             { MediaGenerationProviderSetting.OpenRouter() },
+            { MediaGenerationProviderSetting.ApiMart() },
         )
     }
 
@@ -392,6 +393,7 @@ private fun MediaUploadS3Tab(
                     {
                         scope.launch {
                             testing = true
+                            try {
                             remoteFileStore.testConnection()
                                 .onSuccess {
                                     toaster.show(
@@ -400,12 +402,13 @@ private fun MediaUploadS3Tab(
                                     )
                                 }
                                 .onFailure {
+                                    reportSettingsFailure("settings.media.upload.test", it)
                                     toaster.show(
                                         resources.getString(R.string.backup_page_connection_failed, it.message ?: ""),
                                         type = ToastType.Error
                                     )
                                 }
-                            testing = false
+                            } finally { testing = false }
                         }
                     }
                 } else null,

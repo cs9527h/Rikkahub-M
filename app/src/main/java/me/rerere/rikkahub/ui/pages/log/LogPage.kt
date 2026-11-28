@@ -342,7 +342,10 @@ private fun RequestLogDetail(log: LogEntry.RequestLog) {
                                         clipboard.setClipEntry(
                                             ClipEntry(ClipData.newPlainText("Request Body", body))
                                         )
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
                                     } catch (e: RuntimeException) {
+                                        android.util.Log.w("LogPage", me.rerere.common.util.formatExceptionForLog("logs.clipboard.copy", e))
                                         // 内容过大时 Binder 会抛出 TransactionTooLargeException (被包装为 RuntimeException)
                                         Toast.makeText(
                                             context,

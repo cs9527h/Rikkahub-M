@@ -12,6 +12,7 @@ import me.rerere.tts.model.TTSRequest
 import me.rerere.tts.provider.TTSProvider
 import me.rerere.tts.provider.TTSProviderException
 import me.rerere.tts.provider.TTSProviderSetting
+import me.rerere.tts.provider.useCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,7 +64,10 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
             }
         }
 
-        Log.i(TAG, "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} format=${providerSetting.responseFormat}")
+        Log.i(
+            TAG,
+            "generateSpeech: model=${providerSetting.model} voice=${providerSetting.voice} format=${providerSetting.responseFormat}"
+        )
 
         val httpRequest = Request.Builder()
             .url("${providerSetting.baseUrl.trimEnd('/')}/v1/audio/speech")
@@ -73,18 +77,15 @@ class StepTTSProvider : TTSProvider<TTSProviderSetting.Step> {
             .post(requestBody.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val response = httpClient.newCall(httpRequest).execute()
-        if (!response.isSuccessful) {
-            // 把错误响应体读出来方便排查 (4xx 通常返回 JSON 错误信息)
-            val errorBody = runCatching { response.body?.string() }.getOrNull().orEmpty()
-            throw TTSProviderException(
-                message = "Step TTS request failed: HTTP ${response.code} ${response.message}. body=$errorBody",
-                statusCode = response.code
-            )
+        val audioBytes = httpClient.newCall(httpRequest).useCancellable { response ->
+            if (!response.isSuccessful) {
+                throw TTSProviderException(
+                    message = "Step TTS request failed: HTTP ${response.code}",
+                    statusCode = response.code
+                )
+            }
+            response.body.bytes()
         }
-
-        val audioBytes = response.body?.bytes()
-            ?: throw Exception("Step TTS returned empty body")
 
         if (audioBytes.isEmpty()) {
             throw Exception("Step TTS returned 0 bytes")

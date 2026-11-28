@@ -15,6 +15,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -71,7 +72,7 @@ object TinyfishSearchService : SearchService<SearchServiceOptions.TinyfishOption
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.TinyfishOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
             val purpose = params["purpose"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             val url = buildString {
@@ -118,7 +119,7 @@ object TinyfishSearchService : SearchService<SearchServiceOptions.TinyfishOption
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.TinyfishOptions
     ): Result<ScrapedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val url = params["url"]?.jsonPrimitive?.content ?: error("url is required")
             val body = buildJsonObject {
                 put("urls", kotlinx.serialization.json.buildJsonArray {

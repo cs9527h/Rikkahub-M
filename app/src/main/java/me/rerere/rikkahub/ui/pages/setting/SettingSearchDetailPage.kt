@@ -277,12 +277,18 @@ private fun SearchTestSection(
                             testing = true
                             result = null
                             scope.launch {
-                                val service = SearchService.getService(options)
-                                val params = JsonObject(
-                                    mapOf("query" to JsonPrimitive(query))
-                                )
-                                result = service.search(params, commonOptions, options)
-                                testing = false
+                                try {
+                                    val service = SearchService.getService(options)
+                                    val params = JsonObject(mapOf("query" to JsonPrimitive(query)))
+                                    result = service.search(params, commonOptions, options).onFailure {
+                                        reportSettingsFailure("settings.search.test", it)
+                                    }
+                                } catch (error: Exception) {
+                                    reportSettingsFailure("settings.search.test", error)
+                                    result = Result.failure(error)
+                                } finally {
+                                    testing = false
+                                }
                             }
                         }
                     },

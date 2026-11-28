@@ -64,6 +64,8 @@ class ChatVM(
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
     var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
+    // One UI scroll state per conversation, shared across compact/wide page layouts.
+    val scrollAnchor = ChatScrollAnchorState()
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
@@ -237,6 +239,7 @@ class ChatVM(
     fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
         if (content.isEmptyInputMessage()) return
 
+        scrollAnchor.anchorNextUserMessage(conversation.value.messageNodes)
         chatService.sendMessage(_conversationId, content, answer)
     }
 
@@ -248,10 +251,14 @@ class ChatVM(
         }
     }
 
-    fun handleCompressContext(additionalPrompt: String, keepRecentMessages: Int): Job {
-        return viewModelScope.launch {
+    fun handleCompressContext(additionalPrompt: String, keepRecentMessages: Int) {
+        viewModelScope.launch {
             chatService.compressConversation(_conversationId, additionalPrompt, keepRecentMessages).onFailure {
-                chatService.addError(it, title = context.getString(R.string.error_title_compress_conversation))
+                chatService.addError(
+                    it,
+                    conversationId = _conversationId,
+                    title = context.getString(R.string.error_title_compress_conversation),
+                )
             }
         }
     }
@@ -275,6 +282,7 @@ class ChatVM(
     }
 
     fun regenerateAtMessage(message: UIMessage) {
+        scrollAnchor.anchorTurnOf(conversation.value.messageNodes, message.id)
         chatService.regenerateAtMessage(_conversationId, message.id)
     }
 

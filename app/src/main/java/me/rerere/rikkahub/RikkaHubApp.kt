@@ -25,6 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import me.rerere.common.android.appTempFolder
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.memory.HistoryMemoryManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -83,7 +85,7 @@ class RikkaHubApp : Application() {
                     Toast.makeText(this, R.string.backup_page_restore_success, Toast.LENGTH_LONG).show()
                 }
             } catch (e: RestoreFailedException) {
-                Log.e(TAG, "Backup restore rolled back", e)
+                Log.e(TAG, formatExceptionForLog("Startup.restoreBackup", e))
                 Toast.makeText(this, "备份恢复失败，已保留原数据。请重新导入备份。", Toast.LENGTH_LONG).show()
             }
         }
@@ -126,8 +128,8 @@ class RikkaHubApp : Application() {
                 get<HistoryMemoryManager>().resumePending()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                Log.w(TAG, "Could not schedule pending history extraction")
+            } catch (error: Exception) {
+                Log.w(TAG, formatExceptionForLog("Startup.resumeHistoryExtraction", error))
             }
         }
         observeMateAutoBackup()
@@ -137,10 +139,10 @@ class RikkaHubApp : Application() {
 
     private fun resumeMediaCreations() {
         get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
+            runCatchingCancellable {
                 get<MediaCreationService>().resumePending()
             }.onFailure {
-                Log.e(TAG, "resumeMediaCreations failed", it)
+                Log.e(TAG, formatExceptionForLog("Startup.resumeMediaCreations", it))
             }
         }
     }
@@ -153,10 +155,10 @@ class RikkaHubApp : Application() {
             }
         )
         get<AppScope>().launch(Dispatchers.IO) {
-            runCatching {
+            runCatchingCancellable {
                 get<MemoryConsolidationScheduler>().resumePending()
             }.onFailure {
-                Log.e(TAG, "resumeMemoryConsolidation failed", it)
+                Log.e(TAG, formatExceptionForLog("Startup.resumeMemoryConsolidation", it))
             }
         }
     }
@@ -180,11 +182,11 @@ class RikkaHubApp : Application() {
 
     private fun incrementLaunchCount() {
         get<AppScope>().launch {
-            runCatching {
+            runCatchingCancellable {
                 val count = get<SettingsStore>().incrementLaunchCount()
                 Log.i(TAG, "incrementLaunchCount: $count")
             }.onFailure {
-                Log.e(TAG, "incrementLaunchCount failed", it)
+                Log.e(TAG, formatExceptionForLog("Startup.incrementLaunchCount", it))
             }
         }
     }
@@ -205,7 +207,7 @@ class RikkaHubApp : Application() {
 
     /** 单个维护步骤失败不影响后续步骤，也不应该把异常抛到 AppScope。 */
     private suspend fun runMaintenanceStep(name: String, block: suspend () -> Unit) {
-        runCatching { block() }.onFailure { Log.w(TAG, "startup maintenance step $name failed", it) }
+        runCatchingCancellable { block() }.onFailure { Log.w(TAG, formatExceptionForLog("Startup.$name", it)) }
     }
 
     private fun deleteTempFilesNow() {
@@ -231,7 +233,7 @@ class RikkaHubApp : Application() {
 
     private fun startWebServerIfEnabled() {
         get<AppScope>().launch {
-            runCatching {
+            runCatchingCancellable {
                 delay(500)
                 val settings = get<SettingsStore>().awaitLoaded()
                 if (settings.webServerEnabled) {
@@ -262,7 +264,7 @@ class RikkaHubApp : Application() {
                     startForegroundService(intent)
                 }
             }.onFailure {
-                Log.e(TAG, "startWebServerIfEnabled failed", it)
+                Log.e(TAG, formatExceptionForLog("Startup.startWebServer", it))
             }
         }
     }
@@ -324,6 +326,6 @@ class AppScope : CoroutineScope by CoroutineScope(
         Dispatchers.Main +
         CoroutineName("AppScope") +
         CoroutineExceptionHandler { _, e ->
-            Log.e(TAG, "AppScope exception", e)
+            Log.e(TAG, formatExceptionForLog("AppScope.uncaught", e))
         }
 )

@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.pages.imggen
 
+import android.util.Log
+import kotlinx.coroutines.CancellationException
+import me.rerere.common.util.runCatchingCancellable
+import me.rerere.common.util.formatExceptionForLog
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -369,7 +374,7 @@ private fun InputBar(
                 scope.launch {
                     val paths = selectedUris.mapNotNull { uri ->
                         withContext(Dispatchers.IO) {
-                            runCatching {
+                            runCatchingCancellable {
                                 val bitmap = ImageUtils.loadOptimizedBitmap(context, uri, maxSize = 2048)
                                     ?: error("Failed to decode image")
                                 val pngBytes = FileUtils.compressBitmapToPng(bitmap)
@@ -764,7 +769,10 @@ private fun ImageGalleryScreen(
                                                                 message = resources.getString(R.string.imggen_page_image_saved_success),
                                                                 type = ToastType.Success
                                                             )
+                                                        } catch (e: CancellationException) {
+                                                            throw e
                                                         } catch (e: Exception) {
+                                                            Log.e("ImgGenPage", formatExceptionForLog("Image.saveGenerated", e))
                                                             toaster.show(
                                                                 message = resources.getString(
                                                                     R.string.imggen_page_save_failed,

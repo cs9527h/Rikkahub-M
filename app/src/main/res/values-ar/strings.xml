@@ -344,6 +344,7 @@
   <string name="error_mcp_invalid_server_name">اسم خادم MCP غير صالح (يُسمح فقط بالأحرف والأرقام): %1$s</string>
   <string name="error_title_compress_conversation">فشل ضغط المحادثة</string>
   <string name="error_title_generate_title">فشل توليد العنوان التلقائي</string>
+  <string name="error_message_image_too_large">الصورة كبيرة جدًا للإرسال. قلّل عدد الصور أو حجمها، أو ابدأ محادثة جديدة.</string>
   <string name="error_title_generation">فشل توليد الرسالة</string>
   <string name="error_title_operation">فشلت العملية</string>
   <string name="error_title_regenerate_message">فشل إعادة توليد الرسالة</string>
@@ -1801,4 +1802,7 @@
   <string name="about_page_checking_update">جارٍ فحص التحديثات…</string>
   <string name="assistant_page_local_tools_phone_use_service_stopped">أوقفت خدمة إمكانية الوصول من جانب النظام رغم أنها ما زالت تظهر مفعّلة في الإعدادات (بعض الهواتف تفعل ذلك بعد إزالة التطبيق من قائمة التطبيقات الحديثة). أوقف هذا المفتاح ثم شغّله مرة أخرى لفتح الإعدادات، ثم أوقف \"RikkaHub Phone Use\" وأعد تشغيلها هناك. تثبيت RikkaHub في قائمة التطبيقات الحديثة والسماح بالتشغيل التلقائي يمنع تكرار ذلك.</string>
   <string name="assistant_page_local_tools_phone_use_restart_service">أوقف \"RikkaHub Phone Use\" في إعدادات إمكانية الوصول ثم شغّلها مرة أخرى</string>
+  <string name="setting_page_preferences_notification_battery_optimization">تجاهل تحسين البطارية</string>
+  <string name="setting_page_preferences_notification_battery_optimization_on">مسموح. من غير المرجح أن يوقف النظام عملية التوليد في الخلفية</string>
+  <string name="setting_page_preferences_notification_battery_optimization_off">غير مسموح. قد يوقف النظام عملية التوليد في الخلفية لتوفير طاقة البطارية</string>
 </resources>

@@ -31,6 +31,8 @@ import me.rerere.asr.ASRStatus
 import me.rerere.asr.appendAmplitude
 import me.rerere.asr.calculateRmsAmplitude
 import me.rerere.asr.pcm16ToWav
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -64,6 +66,7 @@ class DeepSeekASRController(
     private val provider: ASRProviderSetting.DeepSeek
 ) : ASRController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val requests = StepAsrRequests(httpClient)
 
     private val _state = MutableStateFlow(ASRState(isAvailable = true))
     override val state: StateFlow<ASRState> = _state.asStateFlow()
@@ -125,13 +128,15 @@ class DeepSeekASRController(
                 flushSegment()
                 _state.update { it.copy(status = ASRStatus.Idle) }
             } catch (e: Exception) {
-                Log.e(TAG, "Final flush failed", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("speech.DeepSeekASRController.Final.flush.failed", e))
                 setError(e.message ?: "DeepSeek ASR request failed")
             }
         }
     }
 
     override fun dispose() {
+        requests.dispose()
         recorderJob?.cancel()
         flushJob?.cancel()
         releaseRecorder()
@@ -184,7 +189,7 @@ class DeepSeekASRController(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                Log.e(TAG, "Audio recording failed", e)
+                Log.e(TAG, formatExceptionForLog("speech.DeepSeekASRController.Audio.recording.failed", e))
                 setError(e.message ?: "Audio recording failed")
             } finally {
                 runCatching { recorder.stop() }
@@ -197,9 +202,9 @@ class DeepSeekASRController(
     private fun triggerFlush() {
         if (flushJob?.isActive == true) return
         flushJob = scope.launch(Dispatchers.IO) {
-            runCatching { flushSegment() }
+            runCatchingCancellable { flushSegment() }
                 .onFailure { e ->
-                    Log.e(TAG, "Segment flush failed", e)
+                    Log.e(TAG, formatExceptionForLog("speech.DeepSeekASRController.Segment.flush.failed", e))
                     // 录音仍在继续, 只提示错误, 不切换状态
                     _state.update { it.copy(errorMessage = e.message ?: "DeepSeek ASR request failed") }
                 }
@@ -230,17 +235,15 @@ class DeepSeekASRController(
             .post(body)
             .build()
 
-        val text = withContext(Dispatchers.IO) {
-            httpClient.newCall(request).execute().use { resp ->
-                val respBody = resp.body.string()
-                if (!resp.isSuccessful) {
-                    throw IOException("DeepSeek ASR HTTP ${resp.code}: $respBody")
-                }
-                val json = runCatching { JSONObject(respBody) }.getOrElse {
-                    throw IOException("DeepSeek ASR response is not valid JSON: $respBody")
-                }
-                json.optString("text", "").trim()
+        val text = requests.execute(request) { resp ->
+            val respBody = resp.body.string()
+            if (!resp.isSuccessful) {
+                throw IOException("DeepSeek ASR HTTP ${resp.code}: $respBody")
             }
+            val json = runCatching { JSONObject(respBody) }.getOrElse {
+                throw IOException("DeepSeek ASR response is not valid JSON: $respBody")
+            }
+            json.optString("text", "").trim()
         }
 
         if (text.isNotEmpty()) {

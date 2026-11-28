@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.setting.components
 
+import me.rerere.common.util.runCatchingCancellable
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,6 +45,7 @@ import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
 import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.UiState
@@ -118,23 +121,25 @@ fun ProviderConnectionTestDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (model == null) return@TextButton
-                    val provider = providerManager.getProviderByType(internalProvider)
+                    val testModel = model ?: return@TextButton
+                    // 和聊天一致：模型设置了提供商重写时用重写后的配置（API Key、Base URL 等）发请求
+                    val providerSetting = testModel.findProvider(listOf(internalProvider)) ?: internalProvider
+                    val provider = providerManager.getProviderByType(providerSetting)
                     resetStates()
                     scope.launch {
                         launch {
-                            runCatching {
+                            runCatchingCancellable {
                                 nonStreamingState = UiState.Loading
                                 val result = provider.generateText(
-                                    providerSetting = internalProvider,
+                                    providerSetting = providerSetting,
                                     messages = listOf(
                                         UIMessage.system("You are a helpful assistant"),
                                         UIMessage.user("hello"),
                                     ),
                                     params = TextGenerationParams(
-                                        model = model!!,
-                                        customHeaders = model!!.customHeaders,
-                                        customBody = model!!.customBodies,
+                                        model = testModel,
+                                        customHeaders = testModel.customHeaders,
+                                        customBody = testModel.customBodies,
                                         reasoningLevel = ReasoningLevel.AUTO
                                     )
                                 )
@@ -142,21 +147,24 @@ fun ProviderConnectionTestDialog(
                                     .filterIsInstance<UIMessagePart.Text>()
                                     .joinToString("") { it.text }
                                 nonStreamingState = UiState.Success(text)
-                            }.onFailure { nonStreamingState = UiState.Error(it) }
+                            }.onFailure {
+                                me.rerere.rikkahub.ui.pages.setting.reportSettingsFailure("provider.test.nonstream", it)
+                                nonStreamingState = UiState.Error(it)
+                            }
                         }
                         launch {
-                            runCatching {
+                            runCatchingCancellable {
                                 streamingState = UiState.Loading
                                 val flow = provider.streamText(
-                                    providerSetting = internalProvider,
+                                    providerSetting = providerSetting,
                                     messages = listOf(
                                         UIMessage.system("You are a helpful assistant"),
                                         UIMessage.user("hello"),
                                     ),
                                     params = TextGenerationParams(
-                                        model = model!!,
-                                        customHeaders = model!!.customHeaders,
-                                        customBody = model!!.customBodies,
+                                        model = testModel,
+                                        customHeaders = testModel.customHeaders,
+                                        customBody = testModel.customBodies,
                                         reasoningLevel = ReasoningLevel.AUTO
                                     )
                                 )
@@ -166,10 +174,13 @@ fun ProviderConnectionTestDialog(
                                     }
                                 }
                                 streamingState = UiState.Success("")
-                            }.onFailure { streamingState = UiState.Error(it) }
+                            }.onFailure {
+                                me.rerere.rikkahub.ui.pages.setting.reportSettingsFailure("provider.test.stream", it)
+                                streamingState = UiState.Error(it)
+                            }
                         }
                         launch {
-                            runCatching {
+                            runCatchingCancellable {
                                 toolsState = UiState.Loading
                                 val testTool = Tool(
                                     name = "get_current_time",
@@ -177,16 +188,16 @@ fun ProviderConnectionTestDialog(
                                     execute = { emptyList() }
                                 )
                                 val result = provider.generateText(
-                                    providerSetting = internalProvider,
+                                    providerSetting = providerSetting,
                                     messages = listOf(
                                         UIMessage.system("You are a helpful assistant"),
                                         UIMessage.user("Use the get_current_time tool."),
                                     ),
                                     params = TextGenerationParams(
-                                        model = model!!,
+                                        model = testModel,
                                         tools = listOf(testTool),
-                                        customHeaders = model!!.customHeaders,
-                                        customBody = model!!.customBodies,
+                                        customHeaders = testModel.customHeaders,
+                                        customBody = testModel.customBodies,
                                         reasoningLevel = ReasoningLevel.AUTO
                                     )
                                 )
@@ -210,7 +221,10 @@ fun ProviderConnectionTestDialog(
                                     )
                                 }
                                 toolsState = UiState.Success(resultText)
-                            }.onFailure { toolsState = UiState.Error(it) }
+                            }.onFailure {
+                                me.rerere.rikkahub.ui.pages.setting.reportSettingsFailure("provider.test.tools", it)
+                                toolsState = UiState.Error(it)
+                            }
                         }
                     }
                 }

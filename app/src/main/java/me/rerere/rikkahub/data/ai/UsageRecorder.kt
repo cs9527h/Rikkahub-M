@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import me.rerere.common.util.runCatchingCancellable
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.core.merge
 import me.rerere.ai.provider.Provider
@@ -66,8 +68,8 @@ class UsageRecorder(
         )
         // Room 的 suspend 写入自己会切到后台线程
         scope.launch {
-            runCatching { dao.insert(record) }
-                .onFailure { Log.w(TAG, "Failed to record usage", it) }
+            runCatchingCancellable { dao.insert(record) }
+                .onFailure { Log.w(TAG, formatExceptionForLog("usage.persist", it)) }
         }
     }
 

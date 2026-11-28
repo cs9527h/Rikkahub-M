@@ -565,7 +565,7 @@ private fun ProviderConfigureGoogle(
         try {
             val content = context.contentResolver.openInputStream(uri)
                 ?.bufferedReader()
-                ?.readText()
+                ?.use { it.readText() }
                 ?: return@rememberLauncherForActivityResult
             val json = Json.parseToJsonElement(content).jsonObject
             onEdit(
@@ -577,6 +577,7 @@ private fun ProviderConfigureGoogle(
             )
             toaster.show("Service account imported", type = ToastType.Success)
         } catch (e: Exception) {
+            me.rerere.rikkahub.ui.pages.setting.reportSettingsFailure("provider.service-account.import", e)
             toaster.show("Failed to import: ${e.message}", type = ToastType.Error)
         }
     }

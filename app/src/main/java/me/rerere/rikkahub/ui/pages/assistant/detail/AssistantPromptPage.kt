@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.assistant.detail
 
+import me.rerere.common.util.runCatchingCancellable
+
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.Delete01
@@ -315,7 +317,7 @@ private fun AssistantPromptContent(
                         UiState.Success(rawMessages),
                         assistant
                     ) {
-                        value = runCatching {
+                        value = runCatchingCancellable {
                             UiState.Success(
                                 templateTransformer.transform(
                                     ctx = TransformerContext(

@@ -9,15 +9,15 @@ import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import me.rerere.ai.provider.ImageEditParams
 import me.rerere.ai.provider.ImageGenerationParams
@@ -25,6 +25,7 @@ import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.ui.ImageGenSize
 import me.rerere.ai.ui.ImageGenerationItem
 import me.rerere.common.android.appTempFolder
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
@@ -145,7 +146,7 @@ class ImgGenVM(
     }
 
     fun generateImage() {
-        if(prompt.value.isBlank()) return
+        if (prompt.value.isBlank()) return
         cancelJob?.cancel()
         cancelJob = viewModelScope.launch {
             try {
@@ -179,8 +180,8 @@ class ImgGenVM(
                     modelName = model.displayName,
                 )
             } catch (e: Exception) {
-                if(e is CancellationException) return@launch
-                Log.e(TAG, "Failed to generate image", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("Image.generate", e))
                 _error.value = e.message ?: "Unknown error occurred"
             } finally {
                 _isGenerating.value = false
@@ -227,8 +228,8 @@ class ImgGenVM(
                     sourcePaths = sourceImages.joinToString("\n"),
                 )
             } catch (e: Exception) {
-                if (e is CancellationException) return@launch
-                Log.e(TAG, "Failed to edit image", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("Image.edit", e))
                 _error.value = e.message ?: "Unknown error occurred"
             } finally {
                 _isGenerating.value = false
@@ -349,7 +350,8 @@ class ImgGenVM(
                     file.delete()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete image", e)
+                if (e is CancellationException) throw e
+                Log.e(TAG, formatExceptionForLog("Image.delete", e))
                 _error.value = "Failed to delete image"
             }
         }
@@ -366,7 +368,7 @@ class ImgGenVM(
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to delete image ${image.id}", e)
+                    Log.e(TAG, formatExceptionForLog("Image.deleteBatchItem", e))
                     true
                 }
             }

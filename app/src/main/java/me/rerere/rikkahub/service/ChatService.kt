@@ -42,6 +42,8 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.isEmptyInputMessage
 import me.rerere.common.android.Logging
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.ChatRequestFactory
@@ -92,9 +94,17 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
+
+// 一轮回复里连续调用工具可以跑很久，每隔这么久把已经执行完的步骤落一次库
+private val TurnCheckpointInterval = 30.seconds
+
+// 错误提示只留着给用户看：同样的问题反复出现会堆满列表，去重后总数也限制在这个值
+private const val MAX_ERRORS = 20
 
 data class ChatError(
     val id: Uuid = Uuid.random(),
@@ -108,6 +118,17 @@ data class ChatError(
 enum class ChatErrorSolution {
     CheckFastModelSettings,
 }
+
+// 去重用的身份：会话、标题和错误消息都相同就算同一个问题。
+// 没有消息的异常（比如直接 new 出来的）退回用异常类型，免得不同的无消息错误被当成同一条
+private fun ChatError.isSameProblemAs(other: ChatError): Boolean =
+    conversationId == other.conversationId &&
+        title == other.title &&
+        (error.message ?: error.javaClass.name) ==
+        (other.error.message ?: other.error.javaClass.name)
+
+internal fun appendRecentChatError(current: List<ChatError>, incoming: ChatError): List<ChatError> =
+    (current.filterNot { it.isSameProblemAs(incoming) } + incoming).takeLast(MAX_ERRORS)
 
 class ChatService(
     private val context: Application,
@@ -198,8 +219,16 @@ class ChatService(
         solution: ChatErrorSolution? = null,
     ) {
         if (error is CancellationException) return
-        _errors.update {
-            it + ChatError(title = title, error = error, conversationId = conversationId, solution = solution)
+        val incoming = ChatError(
+            title = title,
+            error = error,
+            conversationId = conversationId,
+            solution = solution,
+        )
+        _errors.update { current ->
+            // 同一个问题（同一会话、同一标题、同一错误消息）只保留最新一条，避免每轮失败都堆一条；
+            // 太长时丢掉最旧的，队列里始终是最近的这 MAX_ERRORS 条
+            appendRecentChatError(current, incoming)
         }
     }
 
@@ -428,7 +457,7 @@ class ChatService(
         val deletedFiles = previous.files.filter { it !in retainedFiles }
         if (deletedFiles.isNotEmpty()) {
             filesManager.deleteChatFiles(deletedFiles)
-            Log.w(TAG, "deleteUnreferencedFiles: $deletedFiles")
+            Log.d(TAG, "Deleted ${deletedFiles.size} unreferenced chat files")
         }
     }
 
@@ -480,7 +509,7 @@ class ChatService(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // 无法确认引用时保留文件，避免误删。
-                Log.w(TAG, "Failed to clean queued attachments", e)
+                Log.w(TAG, formatExceptionForLog("chat.clean-queued-attachments", e))
             }
         }
     }
@@ -595,7 +624,6 @@ class ChatService(
                 if (queued.reply == null) _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
                 queued.reply?.completeExceptionally(e)
-                e.printStackTrace()
                 reportFailure(session, e, R.string.error_title_send_message)
             }
         }
@@ -647,6 +675,7 @@ class ChatService(
     private fun reportFailure(session: ConversationSession, error: Exception, @StringRes title: Int) {
         if (error is CancellationException) throw error
         session.inbox.pause()
+        Log.e(TAG, formatExceptionForLog("chat.operation", error))
         addError(error, session.id, title = context.getString(title))
     }
 
@@ -787,6 +816,7 @@ class ChatService(
             // 上一段是压缩后新开的；摘要加系统提示词本身就超过阈值时再压也没用，这一轮不再压缩
             var afterCompression = false
             var compressionUseless = false
+            var lastCheckpoint = TimeSource.Monotonic.markNow()
             try {
                 while (true) {
                     val replyNodeId = target.nodeId
@@ -826,6 +856,15 @@ class ChatService(
                                         senderAvatar
                                     )
                                 )
+                                // 平时等这一轮结束才落库，中途进程崩溃或被杀时整轮的操作都没了。
+                                // 工具执行完是完整的一步，只在这里存，不会把生成到一半的内容写进库。
+                                // 限频是因为落库会重写会话的全部节点
+                                if (event.message.endsWithExecutedTool() &&
+                                    lastCheckpoint.elapsedNow() >= TurnCheckpointInterval
+                                ) {
+                                    lastCheckpoint = TimeSource.Monotonic.markNow()
+                                    saveTurnCheckpoint(session)
+                                }
                             }
 
                             is AgentEvent.Retrying -> {
@@ -894,11 +933,33 @@ class ChatService(
             // 兜底取消 Live Update 通知（生成开始前失败时上面的 finally 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, senderAvatar))
             session.inbox.pause()
-            e.printStackTrace()
             addError(e, conversationId, title = context.getString(R.string.error_title_generation))
-            Logging.log(TAG, "runTurn: $e")
-            Logging.log(TAG, e.stackTraceToString())
+            Logging.log(TAG, formatExceptionForLog("chat.generate", e))
             return TurnResult.Failed
+        } catch (e: OutOfMemoryError) {
+            // 组装请求体时一次性分配上百 MB（多张大图的 base64）会 OOM。它不是 Exception，
+            // 上面的 catch 接不住，不处理就只会落到 AppScope 打日志，界面看不到任何错误。
+            // 抛出后那块大分配已随栈展开释放，进程可以继续运行，这一轮当作失败结束
+            appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null, senderAvatar))
+            session.inbox.pause()
+            Logging.log(TAG, formatExceptionForLog("chat.generate.out-of-memory", e))
+            addError(
+                IllegalStateException(context.getString(R.string.error_message_image_too_large), e),
+                conversationId,
+                title = context.getString(R.string.error_title_generation),
+            )
+            return TurnResult.Failed
+        }
+    }
+
+    // 中途落库只是多一层保险，失败了不影响这一轮继续，结束时还会再存一次
+    private suspend fun saveTurnCheckpoint(session: ConversationSession) {
+        try {
+            session.flush()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, formatExceptionForLog("chat.checkpoint", e))
         }
     }
 
@@ -919,8 +980,8 @@ class ChatService(
     private fun logRetry(attempt: RetryAttempt) {
         Log.w(
             TAG,
-            "Provider connection failed, retrying in ${attempt.delay} (${attempt.retry}/${attempt.maxRetries})",
-            attempt.cause,
+            "Retry ${attempt.retry}/${attempt.maxRetries} after ${attempt.delay}: " +
+                formatExceptionForLog("chat.provider-retry", attempt.cause),
         )
     }
 
@@ -960,7 +1021,7 @@ class ChatService(
             // 关掉自动生成后只跳过对话结束时的自动调用，手动重新生成照常执行
             if (!force && !settings.enableAutoTitle) return@withLoadedSession
 
-            runCatching {
+            runCatchingCancellable {
                 val title = metaGenerator.generateTitle(settings, conversation)
                 // 只写标题这一列：这时可能已经在生成下一轮，不能把还没生成完的内容一起落库。
                 // 生成期间会话被删除的话不写入
@@ -971,7 +1032,7 @@ class ChatService(
                     expectedTitleRevision = titleRevision,
                 )
             }.onFailure {
-                it.printStackTrace()
+                Log.w(TAG, formatExceptionForLog("chat.title", it))
                 addError(
                     error = it,
                     conversationId = conversationId,
@@ -986,15 +1047,15 @@ class ChatService(
 
     private suspend fun generateSuggestion(conversationId: Uuid): Unit = withContext(Dispatchers.IO) {
         sessionManager.withSession<Unit>(conversationId) { session ->
-            runCatching {
+            runCatchingCancellable {
                 val settings = settingsStore.awaitLoaded()
-                if (!settings.enableSuggestion) return@runCatching
+                if (!settings.enableSuggestion) return@runCatchingCancellable
 
                 // 上一轮的建议在这一轮开始时已经清掉了
                 ensureInitialized(session)
                 val incarnation = session.incarnation
                 val suggestions = metaGenerator.generateSuggestions(settings, session.state.value)
-                    ?: return@runCatching
+                    ?: return@runCatchingCancellable
 
                 // 只写建议这一列，理由同标题
                 session.updateMetadata(
@@ -1003,7 +1064,7 @@ class ChatService(
                     expectedIncarnation = incarnation,
                 )
             }.onFailure {
-                it.printStackTrace()
+                Log.w(TAG, formatExceptionForLog("chat.suggestion", it))
             }
         }
     }
@@ -1011,7 +1072,8 @@ class ChatService(
     // ---- 压缩对话历史 ----
 
     /**
-     * 把上一个检查点之后的消息压缩成摘要检查点。
+     * 启动后台压缩，不等待摘要完成。任务属于会话而不是弹窗或 ViewModel，离开页面不取消它。
+     * 启动失败由调用方报告；启动后的失败归属此会话，停止生成仍可取消压缩。
      *
      * [keepRecentMessages] 为 0 时压缩全部消息，请求和上一轮对话前缀一致，缓存命中最好；
      * 大于 0 时最近的这些消息不参与压缩、留在检查点之后，对话已经超出模型上下文、整段发不出去时用来缩小压缩请求。
@@ -1020,10 +1082,9 @@ class ChatService(
         conversationId: Uuid,
         additionalPrompt: String,
         keepRecentMessages: Int = 0,
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = runCatchingCancellable {
         withLoadedSession<Unit>(conversationId) { session ->
-            val result = CompletableDeferred<Unit>()
-            val job = synchronized(session) {
+            synchronized(session) {
                 // 生成中的回复还没写完，压缩不到它，检查点也不能插到它前面。
                 // 等审批时允许压缩：保留区可以把待审批的工具留在检查点之后
                 check(session.getJob() == null) { context.getString(R.string.chat_page_compress_blocked_generating) }
@@ -1032,15 +1093,17 @@ class ChatService(
                     additionalPrompt = additionalPrompt,
                     keepRecentMessages = keepRecentMessages,
                     clearSuggestions = true,
-                    onResult = result::completeWith,
-                )
-            }
-            try {
-                result.await()
-            } catch (e: CancellationException) {
-                // 压缩弹窗取消时调用方被取消，压缩任务跟着取消
-                job.cancel()
-                throw e
+                ) { result ->
+                    // 任务已交给 AppScope/会话任务槽，弹窗关闭不再持有或取消这个 Job。
+                    // 停止生成导致的 CancellationException 由 addError 忽略。
+                    result.onFailure { error ->
+                        addError(
+                            error,
+                            session.id,
+                            title = context.getString(R.string.error_title_compress_conversation)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1070,7 +1133,8 @@ class ChatService(
                 clearSuggestions = false,
             ) { result ->
                 result.onFailure { e ->
-                    Log.w(TAG, "Auto compression failed", e)
+                    if (e is CancellationException) return@onFailure
+                    Log.w(TAG, formatExceptionForLog("chat.auto-compress", e))
                     // 这一轮的回复已经完成，压缩失败不暂停队列；取消时 addError 会忽略
                     addError(e, session.id, title = context.getString(R.string.error_title_auto_compress))
                 }
@@ -1143,7 +1207,7 @@ class ChatService(
             true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "Mid-turn compression failed", e)
+            Log.w(TAG, formatExceptionForLog("chat.mid-turn-compress", e))
             addError(e, session.id, title = context.getString(R.string.error_title_auto_compress))
             false
         } finally {
@@ -1600,4 +1664,12 @@ class ChatService(
         jobs.forEach { it.join() }
         if (session.isInitialized) finishInterruptedPendingTools(session)
     }
+}
+
+// 一批工具按顺序执行，最后一个有了 output 就说明这一步的工具都执行完了。
+// 模型开始输出新内容后末尾不再是工具，流式生成中的内容也满足不了这个条件，
+// 所以只在这完整的一步上落库，不会把半截流式消息写进库
+internal fun UIMessage.endsWithExecutedTool(): Boolean {
+    val last = parts.lastOrNull()
+    return last is UIMessagePart.Tool && last.isExecuted && getTools().all { it.isExecuted }
 }

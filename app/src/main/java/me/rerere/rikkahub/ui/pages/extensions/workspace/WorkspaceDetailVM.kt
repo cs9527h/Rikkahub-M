@@ -3,6 +3,7 @@ package me.rerere.rikkahub.ui.pages.extensions.workspace
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import android.webkit.MimeTypeMap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,10 +17,13 @@ import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.model.WorkspaceStorageMount
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.BackgroundShellManager
+import me.rerere.rikkahub.ui.components.runUiOperation
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceCommandResult
@@ -194,7 +198,7 @@ class WorkspaceDetailVM(
 
     fun delete(entry: WorkspaceFileEntry) {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 repository.deleteFile(
                     id = id,
                     area = state.value.area,
@@ -204,6 +208,7 @@ class WorkspaceDetailVM(
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
+                Log.e("WorkspaceDetailVM", formatExceptionForLog("Workspace.deleteFile", error))
                 _state.update { it.copy(error = error.message ?: "删除失败") }
             }
         }
@@ -211,7 +216,7 @@ class WorkspaceDetailVM(
 
     fun importFile(inputStream: InputStream, fileName: String) {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 repository.importFile(
                     id = id,
                     area = state.value.area,
@@ -222,6 +227,7 @@ class WorkspaceDetailVM(
             }.onSuccess {
                 refresh()
             }.onFailure { error ->
+                Log.e("WorkspaceDetailVM", formatExceptionForLog("Workspace.importFile", error))
                 _state.update { it.copy(error = error.message ?: "导入文件失败") }
             }
         }
@@ -229,7 +235,7 @@ class WorkspaceDetailVM(
 
     fun exportFile(entry: WorkspaceFileEntry, uri: Uri, resolver: ContentResolver) {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 // 部分 ROM 的 SAF 返回的 Uri 并没有真正创建文件, 打开时会抛 FileNotFoundException
                 val outputStream = withContext(Dispatchers.IO) { resolver.openOutputStream(uri) }
                     ?: error("无法打开目标文件")
@@ -240,6 +246,7 @@ class WorkspaceDetailVM(
                     outputStream = outputStream,
                 )
             }.onFailure { error ->
+                Log.e("WorkspaceDetailVM", formatExceptionForLog("Workspace.exportFile", error))
                 _state.update { it.copy(error = error.message ?: "导出文件失败") }
             }
         }
@@ -256,7 +263,7 @@ class WorkspaceDetailVM(
      */
     fun exportToCacheFile(entry: WorkspaceFileEntry, cacheDir: File, onReady: (File) -> Unit) {
         viewModelScope.launch {
-            runCatching {
+            runCatchingCancellable {
                 val dir = File(cacheDir, "workspace_share").apply { mkdirs() }
                 val file = File(dir, entry.name)
                 file.outputStream().use { output ->
@@ -325,7 +332,8 @@ class WorkspaceDetailVM(
                 refresh()
             } catch (e: CancellationException) {
                 throw e
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
+                Log.e("WorkspaceDetailVM", formatExceptionForLog("Workspace.installRootfs", error))
                 _installError.value = error.message ?: "Rootfs 安装失败"
             } finally {
                 _installProgress.value = null
@@ -354,7 +362,9 @@ class WorkspaceDetailVM(
         }
         if (previous.running) return
         viewModelScope.launch {
-            runCatching {
+            runUiOperation("Workspace.executeCommand", { Log.e("WorkspaceDetailVM", it) }, {
+                _terminalState.update { it.copy(running = false) }
+            }) {
                 repository.executeCommand(id, trimmed)
             }.onSuccess { result ->
                 _terminalState.update {

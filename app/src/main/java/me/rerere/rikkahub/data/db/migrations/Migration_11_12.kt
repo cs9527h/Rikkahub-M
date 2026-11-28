@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.rikkahub.data.db.DatabaseMigrationTracker
 import me.rerere.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
@@ -20,7 +21,6 @@ val Migration_11_12 = object : Migration(11, 12) {
         DatabaseMigrationTracker.onMigrationStart(11, 12)
         db.beginTransaction()
         try {
-            // 1. 创建 message_node 表
             db.execSQL(
                 """
                 CREATE TABLE IF NOT EXISTS message_node (
@@ -35,61 +35,50 @@ val Migration_11_12 = object : Migration(11, 12) {
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS index_message_node_conversation_id ON message_node(conversation_id)")
 
-            // 2. 从 conversationentity.nodes 迁移数据到 message_node
-            val cursor = db.query("SELECT id FROM conversationentity")
             var migratedCount = 0
             var nodeCount = 0
             var skippedCount = 0
-
-            while (cursor.moveToNext()) {
-                val conversationId = cursor.getString(0)
-                try {
-                    val nodeCursor = db.query(
-                        "SELECT nodes FROM conversationentity WHERE id = ?",
-                        arrayOf(conversationId)
-                    )
+            db.query("SELECT id FROM conversationentity").use { cursor ->
+                while (cursor.moveToNext()) {
+                    val conversationId = cursor.getString(0)
                     try {
-                        if (!nodeCursor.moveToFirst()) {
-                            continue
-                        }
-                        val nodesJson = nodeCursor.getString(0)
-                        // 使用原始 JSON 解析，避免因 UIMessagePart 类型名变更导致的反序列化失败
-                        // 同时应用类型名映射（与 Migration_13_14 相同的逻辑）
-                        val nodesArray = runCatching {
-                            JsonInstant.parseToJsonElement(nodesJson) as? JsonArray
-                        }.getOrNull() ?: JsonArray(emptyList())
-
-                        nodesArray.forEachIndexed { index, nodeElement ->
-                            val nodeObject = nodeElement as? JsonObject ?: return@forEachIndexed
-                            val messagesElement = nodeObject["messages"] ?: JsonArray(emptyList())
-                            // 迁移消息中的 UIMessagePart 类型名（旧完整类名 -> 新 @SerialName）
-                            val migratedMessages = migrateMessagesElement(messagesElement)
-                            val messagesJson = JsonInstant.encodeToString(migratedMessages)
-                            val selectIndex = runCatching {
-                                nodeObject["selectIndex"]?.jsonPrimitive?.int ?: 0
-                            }.getOrDefault(0)
-                            val nodeId = Uuid.random().toString()
-                            db.execSQL(
-                                "INSERT INTO message_node (id, conversation_id, node_index, messages, select_index) VALUES (?, ?, ?, ?, ?)",
-                                arrayOf(nodeId, conversationId, index, messagesJson, selectIndex)
-                            )
-                            nodeCount++
-                        }
-                        db.execSQL(
-                            "UPDATE conversationentity SET nodes = '[]' WHERE id = ?",
+                        db.query(
+                            "SELECT nodes FROM conversationentity WHERE id = ?",
                             arrayOf(conversationId)
-                        )
-                        migratedCount++
-                    } finally {
-                        nodeCursor.close()
+                        ).use { nodeCursor ->
+                            if (!nodeCursor.moveToFirst()) return@use
+                            val nodesJson = nodeCursor.getString(0)
+                            // Validate all source nodes before inserting any or clearing the source.
+                            // A malformed row must abort the transaction, never become empty history.
+                            val nodesArray = legacyNodesForMigration(nodesJson)
+                            nodesArray.forEachIndexed { index, nodeElement ->
+                                val nodeObject = nodeElement as JsonObject
+                                val messagesElement = nodeObject.getValue("messages") as JsonArray
+                                val migratedMessages = migrateMessagesElement(messagesElement)
+                                val messagesJson = JsonInstant.encodeToString(migratedMessages)
+                                val selectIndex = runCatching {
+                                    nodeObject["selectIndex"]?.jsonPrimitive?.int ?: 0
+                                }.getOrDefault(0)
+                                val nodeId = Uuid.random().toString()
+                                db.execSQL(
+                                    "INSERT INTO message_node (id, conversation_id, node_index, messages, select_index) VALUES (?, ?, ?, ?, ?)",
+                                    arrayOf(nodeId, conversationId, index, messagesJson, selectIndex)
+                                )
+                                nodeCount++
+                            }
+                            db.execSQL(
+                                "UPDATE conversationentity SET nodes = '[]' WHERE id = ?",
+                                arrayOf(conversationId)
+                            )
+                            migratedCount++
+                        }
+                    } catch (e: SQLiteBlobTooBigException) {
+                        // Keep the historical large-blob fallback: source nodes remain untouched.
+                        skippedCount++
+                        Log.w(TAG, formatExceptionForLog("migration11.readLargeNodes", e))
                     }
-                } catch (e: SQLiteBlobTooBigException) {
-                    skippedCount++
-                    Log.w(TAG, "migrate: skip conversation $conversationId due to large nodes blob", e)
-                    continue
                 }
             }
-            cursor.close()
 
             db.setTransactionSuccessful()
             Log.i(

@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.pages.memory
 
+import me.rerere.common.util.runCatchingCancellable
+
 import android.provider.Settings as AndroidSettings
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
@@ -496,7 +498,7 @@ private fun MemoryCenterHome(
 
     val preview by produceState<List<MemoryFile>?>(initialValue = null, key1 = query, key2 = scopeKey) {
         value = if (query.isBlank()) null else withContext(Dispatchers.Default) {
-            runCatching { previewRecall(query) }.getOrDefault(emptyList())
+            runCatchingCancellable { previewRecall(query) }.getOrDefault(emptyList())
         }
     }
 

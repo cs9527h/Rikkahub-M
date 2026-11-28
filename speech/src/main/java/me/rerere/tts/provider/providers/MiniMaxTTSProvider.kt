@@ -2,6 +2,7 @@ package me.rerere.tts.provider.providers
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.Serializable
@@ -10,6 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.common.http.SseEvent
 import me.rerere.common.http.sseFlow
+import me.rerere.common.util.formatExceptionForLog
 import me.rerere.tts.model.AudioChunk
 import me.rerere.tts.model.AudioFormat
 import me.rerere.tts.model.TTSRequest
@@ -80,31 +82,29 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
             when (it) {
                 is SseEvent.Open -> Log.i(TAG, "SSE connection opened")
                 is SseEvent.Event -> {
-                    try {
+                    val chunk = try {
                         val data = json.decodeFromString<MiniMaxResponse>(it.data)
-
-                        // Convert hex string to bytes
-                        val audioBytes = hexStringToBytes(data.data.audio)
-
-                        emit(
-                            AudioChunk(
-                                data = audioBytes,
-                                format = AudioFormat.MP3, // MiniMax returns MP3 format
-                                sampleRate = 32000, // Default sample rate from MiniMax
-                                isLast = false, // Will be set to true on last chunk
-                                metadata = mapOf(
-                                    "provider" to "minimax",
-                                    "model" to providerSetting.model,
-                                    "voice" to providerSetting.voiceId,
-                                    "status" to data.data.status.toString(),
-                                    "ced" to data.data.ced
-                                )
+                        AudioChunk(
+                            data = hexStringToBytes(data.data.audio),
+                            format = AudioFormat.MP3,
+                            sampleRate = 32000,
+                            isLast = false,
+                            metadata = mapOf(
+                                "provider" to "minimax",
+                                "model" to providerSetting.model,
+                                "voice" to providerSetting.voiceId,
+                                "status" to data.data.status.toString(),
+                                "ced" to data.data.ced
                             )
                         )
-                        hasEmittedAudio = true
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed to process audio chunk", e)
+                        if (e is CancellationException) throw e
+                        Log.e(TAG, formatExceptionForLog("speech.minimax.decode", e))
+                        return@collect
                     }
+                    // Downstream failure/cancellation is not a malformed audio event.
+                    emit(chunk)
+                    hasEmittedAudio = true
                 }
 
                 is SseEvent.Closed -> {
@@ -124,7 +124,9 @@ class MiniMaxTTSProvider : TTSProvider<TTSProviderSetting.MiniMax> {
                 }
 
                 is SseEvent.Failure -> {
-                    Log.e(TAG, "SSE connection failed", it.throwable)
+                    Log.e(TAG, it.throwable?.let { error ->
+                        formatExceptionForLog("speech.minimax.stream", error)
+                    } ?: "speech.minimax.stream failed")
                     val statusCode = it.response?.code
                     if (statusCode != null) {
                         throw TTSProviderException(

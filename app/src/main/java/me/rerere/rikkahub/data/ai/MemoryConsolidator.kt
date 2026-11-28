@@ -20,6 +20,8 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.ui.UIMessage
 import me.rerere.common.android.Logging
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.rikkahub.data.ai.prompts.MemoryConsolidationConversation
 import me.rerere.rikkahub.data.ai.prompts.buildMemoryConsolidationInput
 import me.rerere.rikkahub.data.ai.prompts.buildMemoryConsolidationPrompt
@@ -142,7 +144,7 @@ class MemoryConsolidator(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logging.log(TAG, "consolidate $memoryId: $e")
+            Logging.log(TAG, formatExceptionForLog("memory.consolidate", e))
             throw e
         }
     }
@@ -255,11 +257,11 @@ class MemoryConsolidator(
     }
 
     // 返回进度是否写进去了
-    private suspend fun advance(conversationId: Uuid, consolidatedAt: Long): Boolean = runCatching {
+    private suspend fun advance(conversationId: Uuid, consolidatedAt: Long): Boolean = runCatchingCancellable {
         consolidationDao.upsert(MemoryConsolidationEntity(conversationId.toString(), consolidatedAt))
     }.onFailure {
         // 对话在整理期间被删掉时外键约束会拒绝写入
-        Logging.log(TAG, "advance $conversationId: $it")
+        Logging.log(TAG, formatExceptionForLog("memory.advance-progress", it))
     }.isSuccess
 }
 

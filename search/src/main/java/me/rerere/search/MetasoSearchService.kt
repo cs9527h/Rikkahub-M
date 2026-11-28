@@ -16,6 +16,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.common.util.formatExceptionForLog
+import me.rerere.common.util.runCatchingCancellable
 import me.rerere.search.SearchResult.SearchResultItem
 import me.rerere.search.SearchService.Companion.httpClient
 import me.rerere.search.SearchService.Companion.json
@@ -56,7 +58,7 @@ object MetasoSearchService : SearchService<SearchServiceOptions.MetasoOptions> {
         commonOptions: SearchCommonOptions,
         serviceOptions: SearchServiceOptions.MetasoOptions
     ): Result<SearchResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        runCatchingCancellable {
             val query = params["query"]?.jsonPrimitive?.content ?: error("query is required")
 
             val requestBody = buildJsonObject {
@@ -80,8 +82,7 @@ object MetasoSearchService : SearchService<SearchServiceOptions.MetasoOptions> {
                     val searchResponse = runCatching {
                         json.decodeFromString<MetasoSearchResponse>(bodyRaw)
                     }.onFailure {
-                        Log.w(TAG, "decode Metaso response failed", it)
-                        error("Failed to decode response: $bodyRaw")
+                        Log.w(TAG, formatExceptionForLog("search.decode", it))
                     }.getOrThrow()
 
                     return@withContext Result.success(

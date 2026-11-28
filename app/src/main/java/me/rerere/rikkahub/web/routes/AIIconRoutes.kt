@@ -24,17 +24,16 @@ fun Route.aiIconRoutes(context: Context) {
             val iconPath = computeAIIconByName(name)
             if (iconPath != null) {
                 val assetPath = "icons/$iconPath"
-                runCatching {
-                    context.assets.open(assetPath).use { input ->
-                        call.response.header(HttpHeaders.CacheControl, "public, max-age=86400")
-                        call.response.header(HttpHeaders.ContentType, resolveContentType(iconPath).toString())
-                        call.respondOutputStream {
-                            input.copyTo(this)
-                        }
-                    }
-                }.onSuccess {
-                    return@get
+                val served = me.rerere.rikkahub.web.respondAsset(
+                    open = { context.assets.open(assetPath) },
+                    onOpenFailure = { false }, // Optional bundled icon: only an open failure uses the SVG fallback.
+                ) { input ->
+                    call.response.header(HttpHeaders.CacheControl, "public, max-age=86400")
+                    call.response.header(HttpHeaders.ContentType, resolveContentType(iconPath).toString())
+                    call.respondOutputStream { input.copyTo(this) }
+                    true
                 }
+                if (served) return@get
             }
 
             call.response.header(HttpHeaders.CacheControl, "public, max-age=3600")
